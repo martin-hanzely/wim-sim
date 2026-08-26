@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# generated runs and results -- regenerable from config + seed by construction
+data/synthetic/*
+!data/synthetic/.gitkeep
+data/results/*
+!data/results/.gitkeep
+
+# real recordings are large and not ours to redistribute
+data/real/*
+!data/real/.gitkeep
+!data/real/EXAMPLE/
+.ruff_cache/
