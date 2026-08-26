@@ -1,0 +1,10 @@
+# Normalise text to LF in the repository regardless of the platform it was authored on.
+# This matters more than usual here: `wimsim` is developed on Windows and intended to be
+# cross-deployed to a Raspberry Pi / Jetson, and a config file that changes bytes between
+# checkouts changes its config_hash, which would make provenance disagree across machines.
+* text=auto eol=lf
+
+# Binary, never touched.
+*.parquet binary
+*.png binary
+*.pdf binary
