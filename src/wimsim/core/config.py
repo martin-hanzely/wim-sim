@@ -736,6 +736,13 @@ class DetectConfig(_Base):
         description="Fall below which closes it. Strictly less than start_threshold: that gap is "
         "the hysteresis, and without it noise around one threshold chatters.",
     )
+    end_hold_s: float = Field(
+        0.002,
+        ge=0,
+        description="The signal must stay below end_threshold for this long before a window is "
+        "considered closed. Without it a single noise sample dipping past the lower threshold "
+        "splits one axle into two, which hysteresis alone does not prevent -- it only makes rare.",
+    )
     min_duration_s: float = Field(
         0.001, gt=0, description="Windows shorter than this are noise, not axles."
     )
@@ -761,6 +768,14 @@ class DetectConfig(_Base):
         description="Refine the peak by fitting a parabola through the sample maximum and its "
         "neighbours. Phase 1 measured that discrete peak-picking cannot reach 0.1 % at 2 kHz; this "
         "recovers it and costs three multiplications.",
+    )
+    area_pad_widths: float = Field(
+        1.0,
+        ge=0,
+        description="Extend the integration window by this multiple of the detected duration on "
+        "each side. Integrating only between the threshold crossings truncates the pulse tails, "
+        "and by an amount that depends on how far the peak sits above the threshold -- so the bias "
+        "would vary with load rather than being a constant the fitted gain could absorb.",
     )
 
 
