@@ -8,8 +8,17 @@ Two YAML documents describe a run:
   traffic, how the baseline drifts, what faults are injected.
 
 They compose into a :class:`RunConfig`, which is hashed to a ``config_hash`` that appears in every
-artifact and every emitted event (principle 3). Everything is a pydantic model with
-``extra="forbid"``: a typo in a YAML key is an error, never a silently ignored setting.
+artifact and every emitted event (principle 3).
+
+A third, independent document describes how the *edge* processes whatever it is given:
+
+* an **edge config** (``configs/estimators/*.yaml``) -- filter chain, zero-line tracking, detector
+  thresholds, which feature drives mass, which estimator. Separate from the run on purpose: the
+  same pipeline settings must be applicable to a synthetic scenario and to a replayed recording,
+  and an experiment sweeps scenario against pipeline as two independent axes.
+
+Everything is a pydantic model with ``extra="forbid"``: a typo in a YAML key is an error, never a
+silently ignored setting.
 
 Units are stated in every field description and are the *sensor units* declared by the station
 (``adc.unit``, by default mV/V -- the natural output of a strain-gauge bridge). The simulator is
@@ -31,10 +40,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 __all__ = [
     "CONFIG_ROOT",
+    "DetectConfig",
+    "EdgeConfig",
+    "EstimateConfig",
+    "PreprocessConfig",
     "RunConfig",
     "ScenarioConfig",
     "StationConfig",
     "config_hash",
+    "load_edge_config",
     "load_run_config",
 ]
 
@@ -626,6 +640,188 @@ def config_hash(cfg: RunConfig) -> str:
 
 
 # --------------------------------------------------------------------------------------------
+# Edge pipeline
+# --------------------------------------------------------------------------------------------
+
+
+class PreprocessConfig(_Base):
+    """Filter chain, zero-line tracking and temperature compensation.
+
+    The filter is **causal**. A station cannot look into the future, so zero-phase filtering is not
+    on the menu, and the group delay that costs is measured and reported rather than pretended away.
+    """
+
+    despike: bool = Field(
+        False,
+        description="Replace isolated outliers with the local median. Only samples exceeding "
+        "despike_threshold robust deviations are touched -- a blanket median filter wide enough to "
+        "despike would flatten a 5 ms axle pulse.",
+    )
+    despike_window: int = Field(
+        11,
+        ge=3,
+        description="Centred median width, samples. Odd. Kept short so it tracks a pulse rather "
+        "than flattening it; this sets what a sample is compared *against*, not the noise scale.",
+    )
+    despike_scale_window_s: float = Field(
+        1.0,
+        gt=0,
+        description="Trailing window over which the channel's noise scale is estimated. Long on "
+        "purpose: an 11-sample MAD has enormous variance, and thresholding against it flags "
+        "roughly one quiet sample in three hundred as a spike.",
+    )
+    despike_threshold: float = Field(
+        6.0, gt=0, description="Noise scales beyond which a sample is an outlier."
+    )
+
+    filter: Literal["none", "moving_average", "butterworth"] = "none"
+    window: int = Field(1, ge=1, description="Moving-average width in samples.")
+    cutoff_hz: float | None = Field(None, gt=0, description="Butterworth -3 dB corner, Hz.")
+    order: int = Field(4, ge=1, le=10, description="Butterworth order.")
+    compensate_group_delay: bool = Field(
+        True,
+        description="Shift the filtered signal back by the chain's DC group delay, so a reported "
+        "ts_peak means the time the axle crossed rather than the time the filter noticed. Exact "
+        "for a moving average; a DC approximation for Butterworth, whose delay is "
+        "frequency-dependent.",
+    )
+
+    zero_window_s: float = Field(
+        2.0,
+        gt=0,
+        description="Trailing window over which the zero line is estimated as a median. The median "
+        "is unbiased for symmetric noise and immune to vehicles while they occupy less than half "
+        "the window -- which is why it is a median and not a mean.",
+    )
+    zero_update_s: float = Field(
+        0.25,
+        gt=0,
+        description="How often the zero estimate is recomputed. Held constant between updates, so "
+        "the estimate at any instant depends only on the past.",
+    )
+    zero_occupancy_warn: float = Field(
+        0.35,
+        gt=0,
+        lt=0.5,
+        description="Flag the zero estimate as suspect once this fraction of the window sits well "
+        "above the baseline. Past 0.5 the median stops being the baseline at all.",
+    )
+
+    @model_validator(mode="after")
+    def _coherent(self) -> PreprocessConfig:
+        if self.filter == "butterworth" and self.cutoff_hz is None:
+            raise ValueError("filter: butterworth requires cutoff_hz")
+        if self.filter == "moving_average" and self.window < 2:
+            raise ValueError("filter: moving_average requires window >= 2")
+        if self.despike and self.despike_window % 2 == 0:
+            raise ValueError("despike_window must be odd so the median has a defined centre")
+        if self.zero_update_s > self.zero_window_s:
+            raise ValueError("zero_update_s cannot exceed zero_window_s")
+        return self
+
+
+class DetectConfig(_Base):
+    """Dual-threshold hysteresis with minimum-duration and refractory constraints.
+
+    Thresholds are in **sensor units above the zero line**, i.e. they apply to the compensated
+    signal, so they do not have to be retuned every time the baseline drifts.
+    """
+
+    start_threshold: float = Field(
+        0.05, gt=0, description="Rise above the zero line that opens a candidate window."
+    )
+    end_threshold: float = Field(
+        0.02,
+        gt=0,
+        description="Fall below which closes it. Strictly less than start_threshold: that gap is "
+        "the hysteresis, and without it noise around one threshold chatters.",
+    )
+    min_duration_s: float = Field(
+        0.001, gt=0, description="Windows shorter than this are noise, not axles."
+    )
+    max_duration_s: float = Field(
+        2.0,
+        gt=0,
+        description="Windows longer than this are a stuck channel or a stopped vehicle, not a pass.",
+    )
+    refractory_s: float = Field(
+        0.0,
+        ge=0,
+        description="Dead time after a window closes. 0 by default: axles within a bogie are only "
+        "milliseconds apart and suppressing them would destroy the axle count.",
+    )
+    merge_gap_s: float = Field(
+        0.0,
+        ge=0,
+        description="Windows separated by less than this are merged into one vehicle. Set from the "
+        "longest axle spacing divided by the slowest speed to group axles into vehicles.",
+    )
+    subsample_peak: bool = Field(
+        True,
+        description="Refine the peak by fitting a parabola through the sample maximum and its "
+        "neighbours. Phase 1 measured that discrete peak-picking cannot reach 0.1 % at 2 kHz; this "
+        "recovers it and costs three multiplications.",
+    )
+
+
+class EstimateConfig(_Base):
+    """How a detected window becomes a mass."""
+
+    feature: Literal["peak", "area"] = Field(
+        "peak",
+        description="Which detector feature drives the estimate. Peak is speed-invariant; area "
+        "averages noise but scales with 1/speed. Which wins is an experimental question -- see "
+        "docs/signal-model.md -- so it is a config switch, not a hard-coded choice.",
+    )
+    axle_summation: Literal["per_axle_sum", "whole_signal"] = Field(
+        "whole_signal",
+        description="per_axle_sum estimates each axle and adds; whole_signal treats the merged "
+        "vehicle window as one measurement.",
+    )
+    estimator: Literal["static_affine"] = Field(
+        "static_affine", description="RLS, Kalman and the residual learner arrive in phase 5."
+    )
+    coverage_target: float = Field(0.95, gt=0, lt=1)
+    bootstrap_passes: int = Field(
+        50,
+        ge=2,
+        description="Reference passes used to fit the initial profile. Phase 2 bootstraps from "
+        "truth in an offline calibration split; phase 5 replaces this with the reference-observation "
+        "modes.",
+    )
+
+
+class EdgeConfig(_Base):
+    """One complete pipeline configuration. Hashed into every event's provenance."""
+
+    name: str
+    description: str = ""
+    preprocess: PreprocessConfig = PreprocessConfig()
+    detect: DetectConfig = DetectConfig()
+    estimate: EstimateConfig = EstimateConfig()
+
+    @model_validator(mode="after")
+    def _hysteresis_is_a_gap(self) -> EdgeConfig:
+        if self.detect.end_threshold >= self.detect.start_threshold:
+            raise ValueError(
+                f"end_threshold ({self.detect.end_threshold}) must be strictly below "
+                f"start_threshold ({self.detect.start_threshold}); equal thresholds are not "
+                "hysteresis and will chatter on noise"
+            )
+        if self.detect.max_duration_s <= self.detect.min_duration_s:
+            raise ValueError("max_duration_s must exceed min_duration_s")
+        return self
+
+    def canonical(self) -> str:
+        return json.dumps(
+            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
+
+    def config_hash(self) -> str:
+        return hashlib.sha256(self.canonical().encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------------------------------------
 # Loading
 # --------------------------------------------------------------------------------------------
 
@@ -726,3 +922,33 @@ def load_run_config(
         tree["scenario"]["seed"] = int(seed)
 
     return RunConfig.model_validate(tree)
+
+
+def load_edge_config(
+    name: str,
+    *,
+    overrides: list[str] | None = None,
+    root: Path | None = None,
+) -> EdgeConfig:
+    """Load a pipeline configuration from ``configs/estimators/``.
+
+    Independent of :func:`load_run_config` on purpose: the same pipeline settings must apply to a
+    synthetic scenario and to a replayed recording, and an experiment sweeps the two axes
+    separately.
+    """
+    root = root or CONFIG_ROOT
+    raw = _read_yaml(_resolve(name, "estimators", root))
+
+    seen = {_resolve(name, "estimators", root).resolve()}
+    while "extends" in raw:
+        parent_name = raw.pop("extends")
+        parent_path = _resolve(parent_name, "estimators", root)
+        if parent_path.resolve() in seen:
+            raise ValueError(f"circular 'extends' involving {parent_path}")
+        seen.add(parent_path.resolve())
+        raw = _deep_merge(_read_yaml(parent_path), raw)
+
+    tree = {"edge": raw}
+    for ov in overrides or []:
+        _apply_override(tree, ov)
+    return EdgeConfig.model_validate(tree["edge"])
