@@ -1,0 +1,63 @@
+# S2 -- thermal cycle. 72 h of daily temperature swing through a 30-minute thermal lag.
+#
+# The point of this scenario is the *lag*, not the swing. Ambient peaks at 15:00; the sensor body
+# peaks roughly half an hour later and with a smaller amplitude, and the probe later still. An
+# estimator that compensates on the instantaneous probe reading is therefore always correcting for
+# the wrong temperature, and the residual traces a hysteresis loop against ambient rather than
+# scattering about zero. That loop is the figure this scenario exists to produce.
+#
+# alpha itself drifts slowly, so no fixed temperature coefficient is correct for the whole run.
+
+extends: _base_traffic
+name: S2_thermal_cycle
+description: 72 h daily thermal cycle with first-order sensor lag and slowly drifting alpha.
+station: endurance
+station_overrides:
+  sensor:
+    # 3e-8 /degC per sqrt(s) => alpha wanders by ~1.6e-5 /degC over 72 h, i.e. ~8 % of its
+    # nominal -2e-4. Small, slow, and fatal to any fixed compensation coefficient.
+    alpha_walk_sigma_per_sqrt_s: 3.0e-8
+
+duration_s: 259200.0        # 72 h
+seed: 20250602
+block_seconds: 60.0
+plant_rate_hz: 50.0
+
+traffic:
+  rate_per_hour: 180.0
+  dynamic_load: {enabled: true, amplitude: 0.06, freq_hz_mean: 2.0, freq_hz_std: 0.4}
+
+temperature:
+  mean_c: 14.0
+  daily_amplitude_c: 9.0
+  peak_hour_utc: 15.0
+  trend_c_per_day: 0.4        # a warming spell across the three days
+  noise_sigma_c: 0.35
+  noise_tau_s: 900.0
+
+zero_drift:
+  q0: 0.05
+  random_walk_sigma_per_sqrt_s: 0.0
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 1.2e-4   # the zero line also breathes with temperature
+
+noise:
+  white_sigma: 2.0e-4
+  pink_sigma: 1.5e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 8.0e-5, harmonics: [0.3, 0.12]}
+
+pulse:
+  shape: emg
+  emg_tau_ratio: 0.55
+  support_widths: 8.0
+
+faults: []
+
+output:
+  truth_rate_hz: 0.2          # one truth row per 5 s; the plant moves on a scale of minutes
+  samples: windows
+  window_pad_s: 2.0

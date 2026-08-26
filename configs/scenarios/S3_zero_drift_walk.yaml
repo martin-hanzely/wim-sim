@@ -1,0 +1,60 @@
+# S3 -- zero-line random walk, plus occasional mechanical settling steps.
+#
+# Temperature is held flat so that drift and temperature cannot be confused: whatever the estimator
+# fails to track here, it fails to track for reasons that have nothing to do with thermal effects.
+#
+# The random walk is unbounded by construction, which is the interesting part. A forgetting-factor
+# estimator has to keep up with a process that never returns to where it started, and the choice of
+# lambda becomes a bias/variance trade-off with no static optimum. Settling steps on top of that
+# give the drift detectors something abrupt to find.
+
+extends: _base_traffic
+name: S3_zero_drift_walk
+description: Brownian zero-line drift with Poisson settling steps, at constant temperature.
+station: endurance
+
+duration_s: 86400.0         # 24 h
+seed: 20250603
+block_seconds: 60.0
+plant_rate_hz: 50.0
+
+traffic:
+  rate_per_hour: 200.0
+  dynamic_load: {enabled: true, amplitude: 0.06, freq_hz_mean: 2.0, freq_hz_std: 0.4}
+
+temperature:
+  mean_c: 20.0
+  daily_amplitude_c: 0.0
+  peak_hour_utc: 15.0
+  trend_c_per_day: 0.0
+  noise_sigma_c: 0.1
+  noise_tau_s: 600.0
+
+zero_drift:
+  q0: 0.05
+  # 8e-5 per sqrt(s) => sd of ~0.024 mV/V after 24 h, i.e. a drift of order 120 kg-equivalent
+  random_walk_sigma_per_sqrt_s: 8.0e-5
+  linear_slope_per_hour: 2.0e-4
+  steps: []
+  step_rate_per_hour: 0.15        # roughly four settling events per day
+  step_magnitude_sigma: 0.008
+  temp_coupling_per_c: 0.0
+
+noise:
+  white_sigma: 2.0e-4
+  pink_sigma: 1.5e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: false, freq_hz: 50.0, amplitude: 1.0e-4, harmonics: [0.3, 0.1]}
+
+pulse:
+  shape: emg
+  emg_tau_ratio: 0.55
+  support_widths: 8.0
+
+faults: []
+
+output:
+  truth_rate_hz: 0.5
+  samples: windows
+  window_pad_s: 2.0

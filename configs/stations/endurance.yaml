@@ -1,0 +1,37 @@
+# Same installation, acquired at 500 Hz.
+#
+# Used by the multi-day scenarios. 500 Hz still resolves a 9 ms axle pulse with ~5 samples across
+# the FWHM, which is thin but is exactly the regime real long-deployment loggers run in -- and it
+# means a 72 h run is 1.3e8 samples instead of 5.2e8.
+
+station_id: ST-DEMO-01
+sensor_id: S1
+description: >
+  Reference station configured for multi-day runs: identical physics, quarter sample rate.
+
+sample_rate_hz: 500.0
+lane_count: 1
+
+adc:
+  bits: 16
+  range_min: -0.5
+  range_max: 3.0
+  unit: mV/V
+
+sensor:
+  k0: 2.0e-4
+  alpha0_per_c: -2.0e-4
+  alpha_walk_sigma_per_sqrt_s: 0.0
+  t_ref_c: 20.0
+  contact_patch_m: 0.22
+
+thermal:
+  tau_thermal_s: 1800.0
+  t_sensor_init_c: null
+
+temperature_probe:
+  enabled: true
+  lag_s: 120.0
+  offset_c: 0.0
+  noise_sigma_c: 0.05
+  resolution_c: 0.0625

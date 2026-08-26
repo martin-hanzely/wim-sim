@@ -1,0 +1,78 @@
+# S5 -- a 20-minute connectivity loss in the middle of a thermal ramp.
+#
+# The interesting property is not that data is lost -- it must not be -- but that the plant keeps
+# moving while the link is down. When the buffer drains, the estimator receives twenty minutes of
+# events out of real-time order, all of them stale, all of them from a period during which the gain
+# changed. A controller that updates on arrival time rather than measurement time will step the
+# wrong way. This scenario is what makes that bug visible.
+#
+# Two of the three faults here are *pipeline* faults and are applied from phase 3 onward, by the
+# publisher and the ingest layer. Phase 1 records them in the run manifest under
+# `faults_unapplied` rather than silently dropping them; the sensor dropout is a signal-level fault
+# and is applied now.
+
+extends: _base_traffic
+name: S5_outage
+description: 20 min connectivity loss during a thermal ramp, plus a short channel dropout.
+station: endurance
+
+duration_s: 21600.0         # 6 h
+seed: 20250605
+block_seconds: 60.0
+plant_rate_hz: 50.0
+
+traffic:
+  rate_per_hour: 240.0
+  dynamic_load: {enabled: true, amplitude: 0.06, freq_hz_mean: 2.0, freq_hz_std: 0.4}
+
+temperature:
+  mean_c: 12.0
+  daily_amplitude_c: 10.0     # the run sits on the steep part of the daily ramp
+  peak_hour_utc: 15.0
+  trend_c_per_day: 0.0
+  noise_sigma_c: 0.3
+  noise_tau_s: 900.0
+
+zero_drift:
+  q0: 0.05
+  random_walk_sigma_per_sqrt_s: 3.0e-5
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 1.0e-4
+
+noise:
+  white_sigma: 2.0e-4
+  pink_sigma: 1.2e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: false, freq_hz: 50.0, amplitude: 1.0e-4, harmonics: [0.3, 0.1]}
+
+pulse:
+  shape: emg
+  emg_tau_ratio: 0.55
+  support_widths: 8.0
+
+faults:
+  - type: connectivity_loss   # phase 3: publisher buffers, replays in timestamp order
+    label: link_down
+    t_start_s: 7200.0         # 2 h
+    duration_s: 1200.0        # 20 min
+
+  - type: publish_delay       # phase 3: the link comes back degraded before it comes back well
+    label: slow_link
+    t_start_s: 8400.0
+    duration_s: 900.0
+    delay_ms: 2500.0
+
+  - type: channel_dropout     # phase 1: applied here, at the ADC
+    label: adc_stuck
+    t_start_s: 12600.0        # 3.5 h
+    duration_s: 45.0
+    mode: stuck
+    stuck_value: null         # hold whatever the channel last read
+
+output:
+  truth_rate_hz: 1.0
+  samples: windows
+  window_pad_s: 2.0

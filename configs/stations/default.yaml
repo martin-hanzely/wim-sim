@@ -1,0 +1,38 @@
+# Reference single-lane installation.
+#
+# Sensor units are mV/V -- the natural output of a strain-gauge bridge, before the amplifier.
+# k0 = 2.0e-4 mV/V per kg means a 10 t axle produces 2.0 mV/V, i.e. bridge full scale, which is a
+# realistic design point for a bending-plate or strip sensor sized for heavy-goods traffic.
+
+station_id: ST-DEMO-01
+sensor_id: S1
+description: >
+  Reference synthetic station. Single lane, single strip sensor, 2 kHz acquisition.
+  Values are representative rather than taken from any particular product.
+
+sample_rate_hz: 2000.0
+lane_count: 1
+
+adc:
+  bits: 16
+  range_min: -0.5     # headroom below zero so a negative drift excursion is still measurable
+  range_max: 3.0      # ~15 t single-axle ceiling before saturation
+  unit: mV/V
+
+sensor:
+  k0: 2.0e-4                    # mV/V per kg
+  alpha0_per_c: -2.0e-4         # -200 ppm/degC, typical for a steel-bodied gauged element
+  alpha_walk_sigma_per_sqrt_s: 0.0
+  t_ref_c: 20.0
+  contact_patch_m: 0.22         # tyre footprint length; sets pulse width via speed
+
+thermal:
+  tau_thermal_s: 1800.0         # 30 min: a sensor grouted into pavement follows air slowly
+  t_sensor_init_c: null         # start in equilibrium with ambient
+
+temperature_probe:
+  enabled: true
+  lag_s: 120.0
+  offset_c: 0.0
+  noise_sigma_c: 0.05
+  resolution_c: 0.0625          # 1/16 degC, i.e. a 12-bit digital sensor

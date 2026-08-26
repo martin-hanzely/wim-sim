@@ -1,0 +1,62 @@
+# Shared traffic population, inherited via `extends: _base_traffic`.
+#
+# A mixed motorway stream: mostly cars, a tenth heavy goods. Axle loads and spacings are
+# representative European values; the point is a realistic spread of masses and axle
+# configurations, not a specific fleet.
+#
+# This file is not runnable on its own -- it has no duration and is only ever extended.
+
+name: _base_traffic
+description: Shared vehicle population. Extend, do not run.
+duration_s: 600.0
+station: default
+
+traffic:
+  mode: poisson
+  rate_per_hour: 240.0
+  min_headway_s: 3.0
+  dynamic_load:
+    enabled: false          # scenarios turn this on deliberately; S1 stays clean
+    amplitude: 0.06
+    freq_hz_mean: 2.0
+    freq_hz_std: 0.4
+  classes:
+    - name: car
+      probability: 0.62
+      axle_spacing_m: [2.65]
+      axle_load_kg:
+        - {mean_kg: 780.0, cv: 0.18}
+        - {mean_kg: 620.0, cv: 0.20}
+      speed: {mean_kmh: 112.0, std_kmh: 11.0, min_kmh: 60.0, max_kmh: 150.0}
+      contact_patch_m: 0.16
+
+    - name: van
+      probability: 0.20
+      axle_spacing_m: [3.30]
+      axle_load_kg:
+        - {mean_kg: 1350.0, cv: 0.16}
+        - {mean_kg: 1500.0, cv: 0.30}
+      speed: {mean_kmh: 102.0, std_kmh: 9.0, min_kmh: 60.0, max_kmh: 130.0}
+      contact_patch_m: 0.19
+
+    - name: rigid_truck
+      probability: 0.10
+      axle_spacing_m: [4.60, 1.35]
+      axle_load_kg:
+        - {mean_kg: 5800.0, cv: 0.12}
+        - {mean_kg: 7200.0, cv: 0.22}
+        - {mean_kg: 7000.0, cv: 0.24}
+      speed: {mean_kmh: 86.0, std_kmh: 6.0, min_kmh: 50.0, max_kmh: 100.0}
+      contact_patch_m: 0.24
+
+    - name: artic_5axle
+      probability: 0.08
+      axle_spacing_m: [3.60, 6.10, 1.31, 1.31]
+      axle_load_kg:
+        - {mean_kg: 6300.0, cv: 0.10}
+        - {mean_kg: 8100.0, cv: 0.18}
+        - {mean_kg: 7300.0, cv: 0.24}
+        - {mean_kg: 7300.0, cv: 0.24}
+        - {mean_kg: 7300.0, cv: 0.24}
+      speed: {mean_kmh: 84.0, std_kmh: 5.0, min_kmh: 50.0, max_kmh: 95.0}
+      contact_patch_m: 0.26

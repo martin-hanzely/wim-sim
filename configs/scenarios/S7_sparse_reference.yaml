@@ -1,0 +1,74 @@
+# S7 -- sparse reference. Tests population-mode self-calibration.
+#
+# In the field you rarely get a known reference vehicle. The classical WiM auto-calibration
+# assumption is that you do not need one: the *distribution* of a large axle-load population is
+# stable enough that its statistics can stand in for a reference. This scenario is built to make
+# that assumption testable, and to make it fail honestly.
+#
+# Two things are arranged deliberately:
+#
+#   * heavy traffic (600 veh/h) so the population statistic has something to converge on;
+#   * a traffic mix that *shifts* halfway through the run -- the share of loaded artics rises --
+#     which is precisely the condition under which population self-calibration mistakes a change in
+#     the fleet for a change in the sensor. A method that cannot tell those apart should be shown
+#     failing here rather than only succeeding on S1.
+#
+# The mix shift is expressed as a second scenario file (S7b) rather than as a time-varying mix,
+# because the traffic model is stationary by construction; run both and concatenate in scoring.
+# Phase 6's experiment runner does this.
+
+extends: _base_traffic
+name: S7_sparse_reference
+description: Dense traffic, no reference vehicles -- population-mode self-calibration.
+station: endurance
+
+duration_s: 43200.0         # 12 h
+seed: 20250607
+block_seconds: 60.0
+plant_rate_hz: 50.0
+
+traffic:
+  rate_per_hour: 600.0
+  min_headway_s: 2.0
+  dynamic_load: {enabled: true, amplitude: 0.07, freq_hz_mean: 2.0, freq_hz_std: 0.4}
+
+temperature:
+  mean_c: 15.0
+  daily_amplitude_c: 7.0
+  peak_hour_utc: 15.0
+  trend_c_per_day: 0.0
+  noise_sigma_c: 0.3
+  noise_tau_s: 900.0
+
+zero_drift:
+  q0: 0.05
+  random_walk_sigma_per_sqrt_s: 4.0e-5
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 1.0e-4
+
+noise:
+  white_sigma: 2.0e-4
+  pink_sigma: 1.5e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: false, freq_hz: 50.0, amplitude: 1.0e-4, harmonics: [0.3, 0.1]}
+
+pulse:
+  shape: emg
+  emg_tau_ratio: 0.55
+  support_widths: 8.0
+
+faults:
+  - type: gain_instability
+    label: slow_sensitivity_loss
+    t_start_s: 21600.0        # 6 h
+    duration_s: null
+    factor: 0.97
+    ramp_s: 7200.0            # 2 h ramp -- slow enough to hide inside population variance
+
+output:
+  truth_rate_hz: 1.0
+  samples: none               # 12 h of dense traffic; only events and truth are scored here
+  window_pad_s: 2.0

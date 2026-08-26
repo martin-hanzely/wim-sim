@@ -1,0 +1,101 @@
+# S6 -- everything at once. The stress case.
+#
+# Thermal cycling with a drifting alpha, Brownian zero drift, settling steps, a ramped gain fault, a
+# mechanical displacement, an ADC dropout, clock skew, and a link outage. Nothing here is
+# individually novel; the point is that the failure modes overlap in time, so a detector cannot
+# assume it is looking at one thing at a time and a recalibration policy cannot assume the plant
+# holds still while it verifies.
+#
+# The gain fault is *ramped* over an hour rather than stepped. Slow faults are the ones detectors
+# miss, and a scenario suite that only injects steps flatters CUSUM.
+
+extends: _base_traffic
+name: S6_combined
+description: All fault mechanisms overlapping. The stress case.
+station: endurance
+station_overrides:
+  sensor:
+    alpha_walk_sigma_per_sqrt_s: 3.0e-8
+
+duration_s: 172800.0        # 48 h
+seed: 20250606
+block_seconds: 60.0
+plant_rate_hz: 50.0
+
+traffic:
+  rate_per_hour: 200.0
+  dynamic_load: {enabled: true, amplitude: 0.08, freq_hz_mean: 2.1, freq_hz_std: 0.5}
+
+temperature:
+  mean_c: 11.0
+  daily_amplitude_c: 11.0
+  peak_hour_utc: 15.0
+  trend_c_per_day: -0.6
+  noise_sigma_c: 0.45
+  noise_tau_s: 900.0
+
+zero_drift:
+  q0: 0.05
+  random_walk_sigma_per_sqrt_s: 6.0e-5
+  linear_slope_per_hour: 1.0e-4
+  steps:
+    - {t_s: 96000.0, delta: 0.015}
+  step_rate_per_hour: 0.08
+  step_magnitude_sigma: 0.006
+  temp_coupling_per_c: 1.2e-4
+
+noise:
+  white_sigma: 2.5e-4
+  pink_sigma: 2.0e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 1.0e-4, harmonics: [0.3, 0.12]}
+
+pulse:
+  shape: ringing
+  ring_freq_hz: 60.0
+  ring_damping: 0.12
+  ring_amplitude: 0.25
+  support_widths: 8.0
+
+faults:
+  - type: gain_instability
+    label: amp_creep
+    t_start_s: 43200.0        # 12 h
+    duration_s: null
+    factor: 0.955
+    ramp_s: 3600.0            # ramped over an hour: the fault detectors find hardest
+
+  - type: sensor_displacement
+    label: pad_shift
+    t_s: 122400.0             # 34 h
+    k_factor: 1.03
+    q_delta: 0.025
+
+  - type: channel_dropout
+    label: adc_stuck
+    t_start_s: 64800.0        # 18 h
+    duration_s: 90.0
+    mode: stuck
+    stuck_value: null
+
+  - type: clock_skew
+    label: ntp_slip
+    t_start_s: 86400.0        # 24 h
+    offset_s: 0.35
+    drift_ppm: 45.0
+
+  - type: connectivity_loss   # phase 3
+    label: link_down
+    t_start_s: 100800.0       # 28 h
+    duration_s: 1800.0
+
+  - type: heartbeat_loss      # phase 3
+    label: heartbeat_gap
+    t_start_s: 100800.0
+    duration_s: 2100.0
+
+output:
+  truth_rate_hz: 0.5
+  samples: windows
+  window_pad_s: 2.0

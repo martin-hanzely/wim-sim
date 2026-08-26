@@ -1,0 +1,52 @@
+# S8 -- replay of the real test drives. Activated when the recordings land in data/real/.
+#
+# This file exists now, before the data does, and that is the point. Principle 2 says everything
+# downstream of SourceAdapter is identical for synthetic and real input; if that is true then
+# switching to real data is a config change and nothing else, and this file is the whole change.
+#
+# What is still needed from the recordings is fixed in docs/real-data-schema.md. Drop a run into
+# data/real/<run_id>/ and check it before touching the pipeline:
+#
+#     wimsim validate-real-data data/real/<run_id>
+#
+# The generative parameters below are ignored in replay mode. They are kept so that the same file
+# can be run in synthetic mode for a like-for-like comparison -- the sim-to-real gap report of
+# phase 6 fits these values to the recordings and reports the difference.
+
+extends: _base_traffic
+name: S8_replay_real
+description: Replay of recorded vehicle passes. Requires data/real/<run_id>.
+station: default
+
+source:
+  kind: replay
+  replay:
+    run_dir: drive_01
+    rate: accelerated
+
+duration_s: 3600.0          # placeholder; the recording's own length wins in replay mode
+seed: 20250608
+block_seconds: 30.0
+plant_rate_hz: 50.0
+
+temperature: {mean_c: 15.0, daily_amplitude_c: 6.0, peak_hour_utc: 15.0, trend_c_per_day: 0.0, noise_sigma_c: 0.3, noise_tau_s: 900.0}
+
+zero_drift:
+  q0: 0.05
+  random_walk_sigma_per_sqrt_s: 3.0e-5
+  temp_coupling_per_c: 1.0e-4
+
+noise:
+  white_sigma: 2.0e-4
+  pink_sigma: 1.5e-4
+
+pulse:
+  shape: emg
+  emg_tau_ratio: 0.55
+
+faults: []
+
+output:
+  truth_rate_hz: 1.0
+  samples: full             # real runs are short; keep everything
+  window_pad_s: 2.0

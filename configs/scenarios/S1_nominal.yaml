@@ -1,0 +1,49 @@
+# S1 -- nominal. The sanity baseline everything else is measured against.
+#
+# Constant temperature, no drift, no faults, no body bounce. Under these conditions a correctly
+# implemented static affine estimator must recover mass to well under 0.1 %; if it cannot, the bug
+# is in the pipeline, not in the algorithm. tests/test_perfect_conditions.py asserts exactly that.
+
+extends: _base_traffic
+name: S1_nominal
+description: Clean conditions. No drift, no faults, no dynamics. The floor.
+station: default
+
+duration_s: 900.0
+seed: 20250601
+block_seconds: 30.0
+plant_rate_hz: 50.0
+
+temperature:
+  mean_c: 20.0            # equal to sensor.t_ref_c, so k == k0 exactly
+  daily_amplitude_c: 0.0
+  peak_hour_utc: 15.0
+  trend_c_per_day: 0.0
+  noise_sigma_c: 0.0
+  noise_tau_s: 600.0
+
+zero_drift:
+  q0: 0.05
+  random_walk_sigma_per_sqrt_s: 0.0
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 0.0
+
+noise:
+  white_sigma: 2.0e-4
+  pink_sigma: 1.0e-4
+  pink_f_min_hz: 0.001
+  pink_f_max_hz: 20.0
+  mains: {enabled: false, freq_hz: 50.0, amplitude: 1.0e-4, harmonics: [0.3, 0.1]}
+
+pulse:
+  shape: gaussian
+  support_widths: 8.0
+
+faults: []
+
+output:
+  truth_rate_hz: 1.0
+  samples: windows
+  window_pad_s: 2.0
