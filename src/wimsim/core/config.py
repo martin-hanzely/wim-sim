@@ -758,10 +758,13 @@ class DetectConfig(_Base):
         "milliseconds apart and suppressing them would destroy the axle count.",
     )
     merge_gap_s: float = Field(
-        0.0,
+        0.6,
         ge=0,
-        description="Windows separated by less than this are merged into one vehicle. Set from the "
-        "longest axle spacing divided by the slowest speed to group axles into vehicles.",
+        description="Windows separated by less than this are merged into one vehicle. The default "
+        "comes from the traffic, not from taste: the longest axle spacing in the shipped fleet is "
+        "6.1 m and the slowest heavy vehicle does 50 km/h, giving 0.44 s, while the minimum "
+        "headway between vehicles is 3 s. 0.6 s sits comfortably between the two. Set it to 0 to "
+        "emit axle-level events instead of vehicle-level ones.",
     )
     subsample_peak: bool = Field(
         True,

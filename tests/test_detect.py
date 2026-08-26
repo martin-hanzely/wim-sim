@@ -60,11 +60,18 @@ def _gauss(n: int, *, at: float, fwhm_s: float, amplitude: float) -> np.ndarray:
 
 
 def _cfg(**over) -> DetectConfig:
+    """Axle-level by default.
+
+    ``merge_gap_s`` is 0 here even though the shipped default groups axles into vehicles: most of
+    this file is about what one threshold excursion does, and grouping would hide it. The tests
+    that care about grouping set it explicitly.
+    """
     base = {
         "start_threshold": 0.1,
         "end_threshold": 0.03,
         "min_duration_s": 0.001,
         "max_duration_s": 2.0,
+        "merge_gap_s": 0.0,
     }
     return DetectConfig(**{**base, **over})
 

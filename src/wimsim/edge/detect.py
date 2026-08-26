@@ -114,6 +114,21 @@ class DetectedEvent:
         return len(self.axles)
 
     @property
+    def axle_peak_sum(self) -> float:
+        """Sum of the axle peaks -- the quantity proportional to *mass*.
+
+        ``peak`` is the largest axle, which is what the event schema reports as
+        ``compensated_peak``: an instantaneous force, and the right thing to compare against an
+        overload threshold. It is not a mass proxy. A vehicle's mass is carried by all of its axles,
+        so conflating the two would weigh every truck as though it were its heaviest axle.
+        """
+        return float(sum(a.peak for a in self.axles))
+
+    @property
+    def raw_axle_peak_sum(self) -> float:
+        return float(sum(a.raw_peak for a in self.axles))
+
+    @property
     def duration_s(self) -> float:
         return self.t_end_s - self.t_start_s
 
