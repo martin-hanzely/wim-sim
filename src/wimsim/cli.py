@@ -1,0 +1,416 @@
+"""``wimsim`` -- the command line.
+
+Phase 1 surface:
+
+    wimsim scenarios                       list what is available
+    wimsim config-hash SCENARIO            resolve a config and print its hash
+    wimsim generate SCENARIO --out DIR     generate a run
+    wimsim inspect DIR                     what is in a run directory
+    wimsim plot-pass DIR --index 0         the phase-1 checkpoint figure
+    wimsim plot-run DIR                    plant ground truth over the whole run
+    wimsim verify-determinism DIR_A DIR_B  prove two runs are byte-identical
+    wimsim validate-real-data DIR          check a dropped-in recording
+    wimsim real-data-schema                print the schema real recordings must satisfy
+
+Every command that resolves a config accepts ``--set path.to.key=value``, so an experiment sweep
+never needs a generated YAML file.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import time
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from wimsim import __version__
+from wimsim.core.config import CONFIG_ROOT, load_run_config
+from wimsim.core.provenance import sha256_file
+
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="Weigh-in-Motion self-calibration testbed. Not a metrological instrument.",
+)
+
+ScenarioArg = Annotated[str, typer.Argument(help="Scenario name (configs/scenarios) or a path.")]
+StationOpt = Annotated[
+    str | None, typer.Option("--station", help="Override the scenario's station config.")
+]
+SetOpt = Annotated[
+    list[str] | None,
+    typer.Option("--set", "-s", help="Override a config value: scenario.duration_s=600"),
+]
+SeedOpt = Annotated[int | None, typer.Option("--seed", help="Override the scenario seed.")]
+
+
+def _resolve(scenario: str, station: str | None, sets: list[str] | None, seed: int | None):
+    try:
+        return load_run_config(scenario, station, overrides=list(sets or []), seed=seed)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+
+def _echo_kv(rows: list[tuple[str, object]], width: int = 24) -> None:
+    for key, value in rows:
+        typer.echo(f"  {key:<{width}} {value}")
+
+
+# ------------------------------------------------------------------------------------------
+
+
+@app.command()
+def version() -> None:
+    """Print the version and schema version."""
+    from wimsim import SCHEMA_VERSION
+
+    typer.echo(f"wimsim {__version__} (event schema {SCHEMA_VERSION})")
+
+
+@app.command()
+def scenarios() -> None:
+    """List available scenarios and stations."""
+    typer.secho("stations", bold=True)
+    for path in sorted(CONFIG_ROOT.joinpath("stations").glob("*.y*ml")):
+        typer.echo(f"  {path.stem}")
+    typer.secho("scenarios", bold=True)
+    for path in sorted(CONFIG_ROOT.joinpath("scenarios").glob("*.y*ml")):
+        if path.stem.startswith("_"):
+            continue
+        try:
+            cfg = load_run_config(path.stem)
+        except Exception as exc:  # a broken config should be visible here, not at run time
+            typer.secho(f"  {path.stem:<22} BROKEN: {type(exc).__name__}", fg=typer.colors.RED)
+            continue
+        hours = cfg.scenario.duration_s / 3600.0
+        typer.echo(
+            f"  {path.stem:<22} {hours:6.1f} h  {cfg.station.sample_rate_hz:>6.0f} Hz  "
+            f"{cfg.mode:<9} {len(cfg.scenario.faults)} faults  {cfg.scenario.description[:44]}"
+        )
+
+
+@app.command("config-hash")
+def config_hash_cmd(
+    scenario: ScenarioArg,
+    station: StationOpt = None,
+    set_: SetOpt = None,
+    seed: SeedOpt = None,
+    show: Annotated[
+        bool, typer.Option("--show", help="Also print the resolved config as JSON.")
+    ] = False,
+) -> None:
+    """Resolve a config and print its hash. The hash is what stamps every artifact."""
+    cfg = _resolve(scenario, station, set_, seed)
+    typer.echo(cfg.config_hash())
+    if show:
+        typer.echo(json.dumps(cfg.model_dump(mode="json"), indent=2, sort_keys=True))
+
+
+@app.command()
+def generate(
+    scenario: ScenarioArg,
+    out: Annotated[Path, typer.Option("--out", "-o", help="Run directory to write.")],
+    station: StationOpt = None,
+    set_: SetOpt = None,
+    seed: SeedOpt = None,
+    samples: Annotated[
+        str | None, typer.Option("--samples", help="Override output.samples: full|windows|none")
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Write more rows than max_sample_rows.")
+    ] = False,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress progress output.")] = False,
+) -> None:
+    """Generate a synthetic run into a run directory."""
+    sets = list(set_ or [])
+    if samples is not None:
+        sets.append(f"scenario.output.samples={samples}")
+    cfg = _resolve(scenario, station, sets, seed)
+
+    if cfg.mode != "synthetic":
+        typer.secho(
+            f"scenario {cfg.scenario.name!r} has source.kind={cfg.mode!r}. Generation is for "
+            "synthetic scenarios; replay is driven by the pipeline from phase 6.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    from wimsim.signal.writer import write_run
+
+    if not quiet:
+        typer.secho(f"{cfg.scenario.name}", bold=True)
+        _echo_kv(
+            [
+                ("station", f"{cfg.station.station_id}/{cfg.station.sensor_id}"),
+                (
+                    "duration",
+                    f"{cfg.scenario.duration_s:,.0f} s ({cfg.scenario.duration_s / 3600:.2f} h)",
+                ),
+                (
+                    "sample rate",
+                    f"{cfg.station.sample_rate_hz:,.0f} Hz -> {cfg.sample_count:,} samples",
+                ),
+                ("plant grid", f"{cfg.scenario.plant_rate_hz:,.0f} Hz"),
+                ("seed", cfg.scenario.seed),
+                ("config hash", cfg.config_hash()[:16]),
+                ("samples policy", cfg.scenario.output.samples),
+                ("faults", ", ".join(f.label for f in cfg.scenario.faults) or "none"),
+            ]
+        )
+
+    last = [0.0]
+
+    def progress(done: int, total: int) -> None:
+        now = time.perf_counter()
+        if quiet or (now - last[0] < 0.4 and done != total):
+            return
+        last[0] = now
+        bar = int(30 * done / max(total, 1))
+        sys.stderr.write(f"\r  [{'#' * bar}{'.' * (30 - bar)}] block {done}/{total}")
+        sys.stderr.flush()
+        if done == total:
+            sys.stderr.write("\n")
+
+    t0 = time.perf_counter()
+    try:
+        result = write_run(cfg, out, force=force, progress=progress)
+    except ValueError as exc:
+        typer.secho(f"\n{exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+    elapsed = time.perf_counter() - t0
+
+    if not quiet:
+        counts = result.manifest["counts"]
+        typer.secho(f"wrote {out}", fg=typer.colors.GREEN)
+        _echo_kv(
+            [
+                ("elapsed", f"{elapsed:.1f} s"),
+                ("passes", counts["passes_scheduled"]),
+                ("sample rows", f"{counts['sample_rows']:,}"),
+                ("truth rows", f"{counts['truth_timeseries_rows']:,}"),
+                ("output hash", result.manifest["output_hash"][:16]),
+            ]
+        )
+        if result.manifest["faults_unapplied"]:
+            typer.secho(
+                "  note: these faults belong to later phases and were NOT applied: "
+                + ", ".join(result.manifest["faults_unapplied"]),
+                fg=typer.colors.YELLOW,
+            )
+        if result.manifest["provenance"]["git_dirty"]:
+            typer.secho(
+                "  note: working tree is dirty, so git_commit does not identify the code that ran",
+                fg=typer.colors.YELLOW,
+            )
+
+
+@app.command()
+def inspect(run_dir: Annotated[Path, typer.Argument(help="A run directory.")]) -> None:
+    """Summarise a run directory: provenance, counts, faults, truth statistics."""
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.exists():
+        typer.secho(f"{run_dir} has no manifest.json", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    prov = manifest["provenance"]
+
+    typer.secho(f"{manifest['scenario']}  ({manifest['run_id']})", bold=True)
+    _echo_kv(
+        [
+            ("station", f"{manifest['station_id']}/{manifest['sensor_id']}"),
+            ("mode", prov["mode"]),
+            ("duration", f"{manifest['duration_s']:,.0f} s"),
+            ("sample rate", f"{manifest['sample_rate_hz']:,.0f} Hz"),
+            ("seed", prov["seed"]),
+            ("config hash", prov["config_hash"]),
+            ("output hash", manifest["output_hash"]),
+            ("schema version", prov["schema_version"]),
+            (
+                "git",
+                f"{prov['git_commit'] or 'not a checkout'}{' (dirty)' if prov['git_dirty'] else ''}",
+            ),
+            ("created", prov["created_at"]),
+            ("wimsim", f"{prov['wimsim_version']} on python {prov['python_version']}"),
+        ]
+    )
+    typer.secho("counts", bold=True)
+    _echo_kv([(k, f"{v:,}") for k, v in manifest["counts"].items()])
+    typer.secho("files", bold=True)
+    _echo_kv([(k, f"{v / 1e6:,.1f} MB") for k, v in manifest["files"].items()])
+
+    if manifest["faults_applied"]:
+        typer.secho("faults applied", bold=True)
+        for f in manifest["faults_applied"]:
+            typer.echo(f"  {f['label']:<22} {f['type']}")
+    if manifest["faults_unapplied"]:
+        typer.secho("faults NOT applied (later phases)", bold=True, fg=typer.colors.YELLOW)
+        _echo_kv([(label, "") for label in manifest["faults_unapplied"]])
+
+    try:
+        import pandas as pd
+    except ImportError:  # pragma: no cover
+        return
+    passes_path = run_dir / "truth_passes.parquet"
+    if passes_path.exists():
+        p = pd.read_parquet(passes_path)
+        typer.secho("truth passes", bold=True)
+        _echo_kv(
+            [
+                (
+                    "classes",
+                    ", ".join(f"{k}={v}" for k, v in p.vehicle_class.value_counts().items()),
+                ),
+                (
+                    "mass kg",
+                    f"min {p.true_mass_kg.min():,.0f}  mean {p.true_mass_kg.mean():,.0f}  max {p.true_mass_kg.max():,.0f}",
+                ),
+                (
+                    "speed km/h",
+                    f"min {p.speed_kmh.min():.0f}  mean {p.speed_kmh.mean():.0f}  max {p.speed_kmh.max():.0f}",
+                ),
+                (
+                    "dynamic error kg",
+                    f"sd {p.dynamic_error_kg.std():,.1f}  max |{p.dynamic_error_kg.abs().max():,.0f}|",
+                ),
+                ("truncated", int(p.truncated.sum())),
+            ]
+        )
+    ts_path = run_dir / "truth_timeseries.parquet"
+    if ts_path.exists():
+        t = pd.read_parquet(ts_path)
+        k0 = manifest["config"]["station"]["sensor"]["k0"]
+        typer.secho("truth plant state", bold=True)
+        _echo_kv(
+            [
+                ("q range", f"{t.q_true.min():.5f} .. {t.q_true.max():.5f}"),
+                (
+                    "k/k0 - 1",
+                    f"{100 * (t.k_true.min() / k0 - 1):+.3f} % .. {100 * (t.k_true.max() / k0 - 1):+.3f} %",
+                ),
+                ("T sensor", f"{t.t_sensor_true.min():.1f} .. {t.t_sensor_true.max():.1f} degC"),
+                ("T ambient", f"{t.t_ambient_true.min():.1f} .. {t.t_ambient_true.max():.1f} degC"),
+                ("faulted time", f"{100 * (t.active_faults.fillna('') != '').mean():.1f} %"),
+            ]
+        )
+
+
+@app.command("plot-pass")
+def plot_pass_cmd(
+    run_dir: Annotated[Path, typer.Argument(help="A run directory.")],
+    index: Annotated[int, typer.Option("--index", "-i", help="Pass index within the run.")] = 0,
+    pass_id: Annotated[
+        str | None, typer.Option("--pass-id", help="Select by pass_id instead.")
+    ] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o")] = None,
+) -> None:
+    """Plot one vehicle pass with its ground truth. The phase-1 checkpoint."""
+    from wimsim.plots import plot_pass
+
+    path = plot_pass(run_dir, index=index, pass_id=pass_id, out_path=out)
+    typer.secho(f"wrote {path}", fg=typer.colors.GREEN)
+
+
+@app.command("plot-run")
+def plot_run_cmd(
+    run_dir: Annotated[Path, typer.Argument(help="A run directory.")],
+    out: Annotated[Path | None, typer.Option("--out", "-o")] = None,
+) -> None:
+    """Plot the plant ground truth over a whole run."""
+    from wimsim.plots import plot_run
+
+    path = plot_run(run_dir, out_path=out)
+    typer.secho(f"wrote {path}", fg=typer.colors.GREEN)
+
+
+@app.command("verify-determinism")
+def verify_determinism(
+    a: Annotated[Path, typer.Argument(help="First run directory.")],
+    b: Annotated[Path, typer.Argument(help="Second run directory.")],
+) -> None:
+    """Compare two run directories. Same seed + same config must mean byte-identical output."""
+    names = ["samples.parquet", "truth_passes.parquet", "truth_timeseries.parquet"]
+    ok = True
+    for name in names:
+        pa, pb = a / name, b / name
+        if pa.exists() != pb.exists():
+            typer.secho(f"  {name:<26} MISSING on one side", fg=typer.colors.RED)
+            ok = False
+            continue
+        if not pa.exists():
+            continue
+        ha, hb = sha256_file(pa), sha256_file(pb)
+        same = ha == hb
+        ok &= same
+        colour = typer.colors.GREEN if same else typer.colors.RED
+        typer.secho(f"  {name:<26} {'identical' if same else 'DIFFERS'}  {ha[:16]}", fg=colour)
+
+    for path in (a, b):
+        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        typer.echo(
+            f"  {path!s:<26} config {manifest['provenance']['config_hash'][:16]}  "
+            f"output {manifest['output_hash'][:16]}"
+        )
+    if not ok:
+        typer.secho("determinism check FAILED", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+    typer.secho("determinism check passed", fg=typer.colors.GREEN)
+
+
+@app.command("validate-real-data")
+def validate_real_data(
+    run_dir: Annotated[Path, typer.Argument(help="A directory under data/real/.")],
+    gap_tolerance: Annotated[
+        float, typer.Option("--gap-tolerance", help="Flag gaps beyond this many sample intervals.")
+    ] = 3.0,
+) -> None:
+    """Check a dropped-in real recording against the expected schema, before it reaches the pipeline."""
+    from wimsim.source.real_schema import validate_run
+
+    report = validate_run(run_dir, gap_tolerance=gap_tolerance)
+
+    if report.stats:
+        typer.secho("stats", bold=True)
+        _echo_kv(list(report.stats.items()), width=26)
+    if report.warnings:
+        typer.secho("warnings", bold=True, fg=typer.colors.YELLOW)
+        for w in report.warnings:
+            typer.echo(f"  - {w}")
+    if report.errors:
+        typer.secho("errors", bold=True, fg=typer.colors.RED)
+        for e in report.errors:
+            typer.echo(f"  - {e}")
+        typer.secho(f"{run_dir} does NOT satisfy the schema", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+    typer.secho(f"{run_dir} satisfies the real-data schema", fg=typer.colors.GREEN)
+
+
+@app.command("real-data-schema")
+def real_data_schema() -> None:
+    """Print the schema a real recording must satisfy. Fixed before the data exists, on purpose."""
+    from wimsim.source import real_schema as rs
+
+    def block(title: str, required: dict[str, str], optional: dict[str, str]) -> None:
+        typer.secho(title, bold=True)
+        for name, desc in required.items():
+            typer.echo(f"  {name:<22} required   {desc}")
+        for name, desc in optional.items():
+            typer.echo(f"  {name:<22} optional   {desc}")
+
+    typer.echo("data/real/<run_id>/")
+    block("  samples.parquet", rs.REQUIRED_SAMPLE_COLUMNS, rs.OPTIONAL_SAMPLE_COLUMNS)
+    block("  run.yaml", rs.REQUIRED_RUN_KEYS, rs.OPTIONAL_RUN_KEYS)
+    block("  reference.csv", rs.REQUIRED_REFERENCE_COLUMNS, rs.OPTIONAL_REFERENCE_COLUMNS)
+    typer.echo("\nSee docs/real-data-schema.md for the reasoning behind each field.")
+
+
+def main() -> None:  # pragma: no cover
+    app()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
