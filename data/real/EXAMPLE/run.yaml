@@ -1,0 +1,18 @@
+adc_bits: 16
+adc_range:
+- -0.5
+- 3.0
+channel_map:
+  S1:
+    lane: 1
+    role: primary
+    sensor_id: S1
+excitation_v: 5.0
+gauge_factor: 2.05
+notes: SYNTHETIC. Not a real recording. This directory exists so the real-data schema
+  is concrete and so `wimsim validate-real-data` can be exercised before any drive
+  arrives. Generated from S1_nominal; see docs/real-data-schema.md.
+raw_value_kind: counts
+sample_rate_hz: 2000.0
+start_time: '2025-06-01T00:00:00+00:00'
+station_id: ST-DEMO-01

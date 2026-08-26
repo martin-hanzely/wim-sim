@@ -1,0 +1,4 @@
+pass_id,reference_mass_kg,t_approx,axle_reference_kg,vehicle_description,speed_kmh
+8ae90c9c-ff5d-5683-ae0f-fa5f59750ac4,1744,2025-06-01T00:00:00+00:00,1056;688,car,112.4
+805e61fa-ba16-5306-a114-fb18b5ae2bd5,1485,2025-06-01T00:00:00+00:00,961;524,car,105.8
+d418f94c-f263-51a4-9c36-7714fb0c6c11,1530,2025-06-01T00:00:00+00:00,967;564,car,85.8
