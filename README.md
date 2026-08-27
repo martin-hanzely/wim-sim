@@ -40,7 +40,7 @@ These constrain every decision in this repository.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Skeleton and truth: config, domain types, generative signal model, truth log, `SyntheticSource`, CLI, determinism test | **done** |
-| 2 | Edge pipeline offline: preprocessor, event detector, `StaticAffine`, scoring vs. truth | not started |
+| 2 | Edge pipeline offline: preprocessor, event detector, `StaticAffine`, scoring vs. truth | **done** -- MAE 1.43 kg (0.054 %) on `S1_nominal` |
 | 3 | Infrastructure: docker-compose, MQTT publisher with persistent buffer, ingest + DLQ, TimescaleDB | not started |
 | 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | not started |
 | 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | not started |
@@ -63,6 +63,10 @@ wimsim inspect data/synthetic/S1_demo
 
 # Phase 1 checkpoint: a synthetic pass with its truth values
 wimsim plot-pass data/synthetic/S1_demo --index 0
+
+# Phase 2 checkpoint: run the edge pipeline and score it against truth
+wimsim pipelines
+wimsim run data/synthetic/S1_demo --edge default
 
 # prove determinism
 wimsim generate S1_nominal --out .determinism/a -q
@@ -94,13 +98,13 @@ wimsim generate S4_step_fault --out data/synthetic/short \
 ```
 configs/stations/     physical station description (sensor, ADC, thermal constants)
 configs/scenarios/    what happens during a run (duration, traffic, drift, faults)
-configs/estimators/   calibration algorithm configs           (phase 2+)
+configs/estimators/   edge pipeline configs: filter, detector, feature, estimator
 configs/experiments/  sweeps that produce paper tables        (phase 6)
 src/wimsim/core/      domain types, config, provenance, deterministic RNG
 src/wimsim/signal/    generative model + ground-truth log  <- estimators may never import this
 src/wimsim/source/    SourceAdapter implementations
-src/wimsim/edge/      acquisition -> preprocess -> detect -> estimate -> publish   (phase 2+)
-src/wimsim/calibration/  estimators, drift detection, profile store, UQ        (phase 5)
+src/wimsim/edge/      acquisition -> preprocess -> detect -> estimate -> publish
+src/wimsim/calibration/  estimators, drift detection, profile store, UQ  (numpy only)
 data/real/            the real test drives land here (EXAMPLE/ shows the required shape)
 data/synthetic/       generated runs
 data/results/         experiment outputs
@@ -113,4 +117,7 @@ docs/                 signal-model.md, real-data-schema.md
   and the physical argument for it. Read this before trusting any number the simulator produces.
 - [`docs/real-data-schema.md`](docs/real-data-schema.md) -- the drop-in schema the real drives must
   conform to. Fixed now, so the data arrives without negotiation.
+- [`docs/edge-pipeline.md`](docs/edge-pipeline.md) -- what phase 2 measured, including three
+  findings that changed the design: area loses to peak by 650x on a single sensor, the despiker was
+  eating 20 % of a car's peak, and a low-pass cutoff must clear the pulse band by 3x.
 - [`docs/determinism.md`](docs/determinism.md) -- how reproducibility is actually enforced.
