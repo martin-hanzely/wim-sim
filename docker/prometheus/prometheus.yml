@@ -1,0 +1,24 @@
+# Prometheus scrapes the OTel collector, which is where the edge's metrics arrive over OTLP.
+# The edge itself is not scraped: it is meant to run on a station behind a link that goes down,
+# which is the whole point of S5, and a pull-based scrape cannot survive that. Push to the
+# collector, let the collector be scraped.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+  external_labels:
+    stack: wimsim
+
+scrape_configs:
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+    metric_relabel_configs:
+      # The collector re-exports with a job label of its own; keep the station label the edge set.
+      - source_labels: [exported_station_id]
+        target_label: station_id
+        action: replace
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

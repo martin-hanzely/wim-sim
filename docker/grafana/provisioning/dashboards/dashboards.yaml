@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: wimsim
+    orgId: 1
+    folder: wimsim
+    type: file
+    disableDeletion: true
+    # Read-only in the UI on purpose: a dashboard edited in a browser and never committed is a
+    # result nobody else can reproduce.
+    allowUiUpdates: false
+    updateIntervalSeconds: 20
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

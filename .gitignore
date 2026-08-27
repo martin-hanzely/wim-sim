@@ -19,3 +19,6 @@ data/real/*
 !data/real/.gitkeep
 !data/real/EXAMPLE/
 .ruff_cache/
+
+# local compose overrides
+.env
