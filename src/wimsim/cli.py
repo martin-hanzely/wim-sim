@@ -1,11 +1,13 @@
 """``wimsim`` -- the command line.
 
-Phase 1 surface:
+Command surface:
 
-    wimsim scenarios                       list what is available
+    wimsim scenarios                       list scenarios and stations
+    wimsim pipelines                       list edge pipeline configs
     wimsim config-hash SCENARIO            resolve a config and print its hash
     wimsim generate SCENARIO --out DIR     generate a run
     wimsim inspect DIR                     what is in a run directory
+    wimsim run DIR --edge default          run the edge pipeline and score it against truth
     wimsim plot-pass DIR --index 0         the phase-1 checkpoint figure
     wimsim plot-run DIR                    plant ground truth over the whole run
     wimsim verify-determinism DIR_A DIR_B  prove two runs are byte-identical
@@ -406,6 +408,139 @@ def real_data_schema() -> None:
     block("  run.yaml", rs.REQUIRED_RUN_KEYS, rs.OPTIONAL_RUN_KEYS)
     block("  reference.csv", rs.REQUIRED_REFERENCE_COLUMNS, rs.OPTIONAL_REFERENCE_COLUMNS)
     typer.echo("\nSee docs/real-data-schema.md for the reasoning behind each field.")
+
+
+@app.command("pipelines")
+def pipelines() -> None:
+    """List available edge pipeline configurations."""
+    from wimsim.core.config import load_edge_config
+
+    typer.secho("pipelines (configs/estimators)", bold=True)
+    for path in sorted(CONFIG_ROOT.joinpath("estimators").glob("*.y*ml")):
+        if path.stem.startswith("_"):
+            continue
+        try:
+            edge = load_edge_config(path.stem)
+        except Exception as exc:
+            typer.secho(f"  {path.stem:<12} BROKEN: {type(exc).__name__}", fg=typer.colors.RED)
+            continue
+        typer.echo(
+            f"  {path.stem:<12} {edge.estimate.feature:<5} {edge.preprocess.filter:<13}"
+            f" {edge.estimate.estimator:<14} {edge.description[:44]}"
+        )
+
+
+@app.command()
+def run(
+    run_dir: Annotated[Path, typer.Argument(help="A run directory produced by `generate`.")],
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config name.")] = "default",
+    set_: SetOpt = None,
+    calibration_passes: Annotated[
+        int | None,
+        typer.Option("--calibration-passes", help="Passes reserved to fit the profile."),
+    ] = None,
+    write: Annotated[
+        bool, typer.Option("--write/--no-write", help="Write events.parquet and score.json.")
+    ] = True,
+) -> None:
+    """Run the edge pipeline over a run and score it against the truth log.
+
+    The sample stream is regenerated from the run's config rather than read back, so this works even
+    when the run kept no samples -- same seed and config give a byte-identical stream by
+    construction.
+    """
+    from wimsim.core.config import load_edge_config
+    from wimsim.experiments.offline import load_run, run_offline
+
+    try:
+        cfg, truth, _manifest = load_run(run_dir)
+        edge_cfg = load_edge_config(edge, overrides=list(set_ or []))
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    t0 = time.perf_counter()
+    try:
+        result = run_offline(cfg, truth, edge_cfg, calibration_passes=calibration_passes)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+    elapsed = time.perf_counter() - t0
+
+    s = result.score
+    typer.secho(f"{cfg.scenario.name} x {edge_cfg.name}", bold=True)
+    _echo_kv(
+        [
+            ("feature", f"{edge_cfg.estimate.feature} / {edge_cfg.estimate.axle_summation}"),
+            ("preprocessing", edge_cfg.preprocess.filter),
+            ("estimator", result.profile.state.estimator),
+            ("profile", result.profile.profile_id),
+            ("fitted from", f"{result.calibration_passes} reference passes"),
+            ("sensor gain", f"{result.profile.state.sensor_gain:.6g} units/kg"),
+            ("elapsed", f"{elapsed:.1f} s"),
+        ]
+    )
+    typer.secho("detection", bold=True)
+    _echo_kv(
+        [
+            ("matched", f"{s.n_matched}/{s.n_truth}"),
+            ("recall", f"{s.recall:.4f}"),
+            ("false positives", f"{s.n_false_positive} ({100 * s.false_positive_rate:.2f} %)"),
+            ("axle count accuracy", f"{s.axle_count_accuracy:.4f}"),
+        ]
+    )
+    typer.secho("accuracy", bold=True)
+    _echo_kv(
+        [
+            ("MAE", f"{s.mae_kg:,.2f} kg"),
+            ("MAPE", f"{100 * s.mape:.3f} %"),
+            ("RMSE", f"{s.rmse_kg:,.2f} kg"),
+            ("bias", f"{s.bias_kg:+,.2f} kg"),
+            ("vs applied load", f"{s.mae_vs_applied_kg:,.2f} kg"),
+            ("dynamic floor", f"{s.dynamic_floor_kg:,.2f} kg"),
+        ]
+    )
+    typer.secho("uncertainty", bold=True)
+    _echo_kv(
+        [
+            ("empirical coverage", f"{s.coverage:.4f}"),
+            ("nominal", f"{edge_cfg.estimate.coverage_target:.2f}"),
+            ("mean interval width", f"{s.mean_interval_width_kg:,.1f} kg"),
+        ]
+    )
+    if s.per_class:
+        typer.secho("by vehicle class", bold=True)
+        for name, stats in sorted(s.per_class.items()):
+            typer.echo(
+                f"  {name:<16} n={stats['n']:<5} MAE {stats['mae_kg']:>9,.2f} kg"
+                f"   MAPE {100 * stats['mape']:>6.3f} %   bias {stats['bias_kg']:+9,.2f} kg"
+            )
+
+    if write:
+        out = Path(run_dir)
+        (out / f"score.{edge_cfg.name}.json").write_text(
+            json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        _write_events(out / f"events.{edge_cfg.name}.parquet", result.events)
+        typer.secho(
+            f"wrote score.{edge_cfg.name}.json and events.{edge_cfg.name}.parquet",
+            fg=typer.colors.GREEN,
+        )
+
+
+def _write_events(path: Path, events: list) -> None:
+    """Flatten measurement events to a table. Nested blocks become dotted columns."""
+    import pandas as pd
+
+    rows = []
+    for ev in events:
+        payload = ev.model_dump(mode="json")
+        flat = {k: v for k, v in payload.items() if not isinstance(v, dict)}
+        for block in ("calibration", "preprocessing", "provenance"):
+            for key, value in payload[block].items():
+                flat[f"{block}.{key}"] = value
+        rows.append(flat)
+    pd.DataFrame(rows).to_parquet(path, compression="zstd", index=False)
 
 
 def main() -> None:  # pragma: no cover

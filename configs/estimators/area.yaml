@@ -1,0 +1,13 @@
+# Same pipeline, area feature instead of peak.
+#
+# Exists to make the peak-versus-area comparison a config sweep rather than a code change. Area
+# averages noise down over the whole pulse but is proportional to load/speed, and a single sensor
+# cannot measure speed -- so this configuration is expected to lose whenever speed varies, and the
+# experiment is worth running precisely to measure by how much.
+
+extends: default
+name: area
+description: Area feature. Averages noise, but scales with 1/speed and speed is unobservable here.
+
+estimate:
+  feature: area
