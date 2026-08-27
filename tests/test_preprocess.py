@@ -350,6 +350,83 @@ def test_despike_does_not_fire_on_clean_gaussian_noise() -> None:
     assert out.despiked.sum() == 0
 
 
+@pytest.mark.parametrize("width_samples", [8, 11, 14, 21, 42])
+def test_despike_does_not_clip_a_pulse_comparable_to_its_own_window(width_samples: int) -> None:
+    """Regression: the run-length guard has to be tight, not merely present.
+
+    A centred median only tracks a pulse while the pulse is much wider than the window. At
+    comparable widths the median sits near half maximum, the peak trips the outlier test, and the
+    despiker replaces the top of the vehicle with the middle of it. With the guard set to half the
+    window this went unnoticed -- exactly five samples were flagged and exactly five were allowed --
+    and cost 19.8 % of a car's peak while costing a truck 0.6 %, which turns the speed-invariant
+    peak feature into a speed-dependent one. It showed up as a 114 kg MAE on S1_nominal against
+    1.4 kg without despiking.
+    """
+    cfg = PreprocessConfig(despike=True, despike_window=11, despike_threshold=6.0, filter="none")
+    pre = Preprocessor(cfg, sample_rate_hz=FS, profile=_profile())
+    rng = np.random.default_rng(width_samples)
+    # noise is not decoration here: with a perfectly noiseless signal the scale estimate is zero and
+    # despiking switches itself off, so the assertion below would hold vacuously
+    values = _with_pulse(8000, at=4000, width=width_samples, amplitude=1.5, level=0.05)
+    values += 2e-4 * rng.standard_normal(8000)
+    out = pre.process(_block(values))
+
+    clean = _with_pulse(8000, at=4000, width=width_samples, amplitude=1.5, level=0.05)
+    lost = 1.0 - (out.filtered_value.max() - 0.05) / (clean.max() - 0.05)
+    assert lost < 0.01, f"{100 * lost:.1f} % of the peak was eaten at width {width_samples}"
+
+
+def test_despike_removes_a_spike_between_vehicles() -> None:
+    """The case the despiker exists for: an EMI hit on an otherwise quiet baseline."""
+    cfg = PreprocessConfig(despike=True, despike_window=11, despike_threshold=6.0, filter="none")
+    pre = Preprocessor(cfg, sample_rate_hz=FS, profile=_profile())
+    rng = np.random.default_rng(21)
+    values = _with_pulse(8000, at=4000, width=21, amplitude=1.5, level=0.05)
+    values += 1e-4 * rng.standard_normal(8000)
+    values[6000] += 3.0
+    out = pre.process(_block(values))
+    assert out.despiked[6000]
+    assert out.despiked.sum() == 1
+    assert out.filtered_value[6000] < 0.06
+    assert out.filtered_value.max() == pytest.approx(values[3995:4005].max(), rel=1e-6)
+
+
+def test_a_spike_on_a_steep_flank_is_deliberately_left_alone() -> None:
+    """A documented limitation, pinned so it stays a decision rather than becoming a surprise.
+
+    A Hampel filter cannot separate "outlier" from "curvature": over an 11-sample window the flank
+    of a real pulse already departs from its own median by far more than six noise deviations, so
+    the flank is flagged too, and the run-length guard then releases the whole run -- spike
+    included. The alternative is to trust the flags and eat the pulse. For a weighing instrument
+    that trade is not close: a missed spike degrades one event, an eaten peak biases every event and
+    does so more for fast vehicles than slow ones.
+    """
+    cfg = PreprocessConfig(despike=True, despike_window=11, despike_threshold=6.0, filter="none")
+    pre = Preprocessor(cfg, sample_rate_hz=FS, profile=_profile())
+    rng = np.random.default_rng(21)
+    values = _with_pulse(8000, at=4000, width=21, amplitude=1.5, level=0.05)
+    values += 1e-4 * rng.standard_normal(8000)
+    values[4010] += 3.0  # on the falling flank
+    out = pre.process(_block(values))
+    assert not out.despiked[4010], "if this starts passing, check the peak is still intact"
+    assert out.filtered_value[3995:4005].max() == pytest.approx(
+        values[3995:4005].max(), rel=1e-6
+    ), "whatever else happens, the peak must survive"
+
+
+def test_a_noiseless_channel_disables_despiking_rather_than_flagging_everything() -> None:
+    """With no measurable noise there is no scale to threshold against.
+
+    Every deviation would then be infinitely many sigmas and every pulse would be "a spike". Doing
+    nothing is the only safe answer, and it is reachable in practice: a stuck ADC reports a constant.
+    """
+    cfg = PreprocessConfig(despike=True, filter="none")
+    pre = Preprocessor(cfg, sample_rate_hz=FS, profile=_profile())
+    out = pre.process(_block(_with_pulse(8000, at=4000, width=21, amplitude=1.5, level=0.05)))
+    assert out.despiked.sum() == 0
+    assert out.filtered_value.max() == pytest.approx(1.55, rel=1e-6)
+
+
 def test_despike_does_not_clip_a_real_pulse() -> None:
     """A median filter wide enough to despike would flatten a 5 ms axle pulse. Only outliers are
     replaced, which is why this is despiking and not median filtering."""

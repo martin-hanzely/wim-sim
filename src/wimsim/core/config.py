@@ -673,6 +673,15 @@ class PreprocessConfig(_Base):
     despike_threshold: float = Field(
         6.0, gt=0, description="Noise scales beyond which a sample is an outlier."
     )
+    despike_max_run: int = Field(
+        2,
+        ge=1,
+        description="Longest run of flagged samples still treated as a spike. A spike is one or "
+        "two samples by definition; anything longer is signal. Keep this small -- a permissive "
+        "value lets the despiker eat the peak of any pulse narrower than a few times the median "
+        "window, and it eats narrow pulses harder than wide ones, which turns a speed-invariant "
+        "peak feature into a speed-dependent one.",
+    )
 
     filter: Literal["none", "moving_average", "butterworth"] = "none"
     window: int = Field(1, ge=1, description="Moving-average width in samples.")

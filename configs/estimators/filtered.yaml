@@ -1,0 +1,33 @@
+# Reference pipeline with a causal low-pass and a despiker.
+#
+# THE CUTOFF IS MEASURED, NOT GUESSED. A 5.3 ms car pulse has a -3 dB bandwidth of roughly 83 Hz,
+# so 120 Hz looks generous. It is not: the peak depends on spectral content well past the -3 dB
+# point, and a 4th-order Butterworth at 120 Hz attenuates a narrow pulse noticeably more than a wide
+# one. That does not merely add error -- it makes the attenuation speed-dependent, destroying the one
+# property that made the peak feature worth using. Measured on S1_nominal, MAE against the
+# unfiltered baseline of 1.43 kg:
+#
+#     60 Hz  ->  264.27 kg      250 Hz  ->  2.47 kg
+#    120 Hz  ->   32.96 kg      500 Hz  ->  1.27 kg
+#                               800 Hz  ->  1.22 kg
+#
+# 500 Hz is the setting: it removes white noise above the signal band (marginally beating no filter
+# at all) while leaving the narrowest pulse in the fleet intact. As a rule of thumb, keep the cutoff
+# at least three times the bandwidth of the fastest vehicle's pulse.
+#
+# At the 500 Hz endurance station this config is invalid -- 500 Hz is the Nyquist frequency there --
+# which is the constructor's business to reject rather than silently clamp.
+
+extends: default
+name: filtered
+description: Butterworth low-pass at 500 Hz plus despiking, otherwise identical to default.
+
+preprocess:
+  despike: true
+  despike_window: 11
+  despike_scale_window_s: 1.0
+  despike_threshold: 6.0
+  despike_max_run: 2
+  filter: butterworth
+  cutoff_hz: 500.0
+  order: 4

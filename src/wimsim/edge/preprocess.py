@@ -224,8 +224,14 @@ class Preprocessor:
         "despiked" thousands of times an hour. The scale therefore comes from a one-second trailing
         window via low quantiles, which is stable to a couple of per cent and immune to vehicles.
 
-        A run-length guard makes the "isolated" part explicit: a flagged run longer than half the
-        window is an excursion, not a spike, and is released.
+        A run-length guard makes the "isolated" part explicit: a flagged run longer than
+        ``despike_max_run`` is an excursion, not a spike, and is released. That bound has to be
+        *small*. A centred median only tracks a pulse while the pulse is much wider than the window;
+        at comparable widths the median sits near half-maximum, the peak trips the outlier test, and
+        the despiker replaces the top of the vehicle with the middle of it. Measured, an 11-sample
+        window took 19.8 % off a 10.6-sample car pulse and 0.6 % off a 42-sample truck pulse -- which
+        does not merely add error, it makes the peak feature speed-dependent, destroying the one
+        property that made it worth using.
         """
         cfg = self.cfg
         if not cfg.despike:
@@ -245,7 +251,8 @@ class Preprocessor:
             if scale > 0.0
             else np.zeros(x.size, dtype=bool)
         )
-        return np.where(outlier, med, x), _release_long_runs(outlier, max(half, 1))
+        kept = _release_long_runs(outlier, cfg.despike_max_run)
+        return np.where(kept, med, x), kept
 
     def _update_noise_scale(self, x: np.ndarray) -> float:
         """Running robust noise scale over a trailing window, carried across blocks.
