@@ -391,6 +391,104 @@ def validate_real_data(
     typer.secho(f"{run_dir} satisfies the real-data schema", fg=typer.colors.GREEN)
 
 
+@app.command("import-csv")
+def import_csv_cmd(
+    src: Annotated[Path, typer.Argument(help="A multichannel CSV export from the logger.")],
+    out: Annotated[
+        Path, typer.Option("--out", "-o", help="Run directory to write under data/real/.")
+    ],
+    station_id: Annotated[str, typer.Option("--station-id", help="Station this was recorded at.")],
+    gauge_factor: Annotated[
+        float | None, typer.Option("--gauge-factor", help="Strain gauge factor, e.g. 2.0.")
+    ] = None,
+    excitation_v: Annotated[
+        float | None, typer.Option("--excitation-v", help="Bridge excitation voltage.")
+    ] = None,
+    bridge: Annotated[str | None, typer.Option("--bridge", help="quarter | half | full.")] = None,
+    timezone: Annotated[
+        str, typer.Option("--timezone", help="Zone the source's naive timestamp is in.")
+    ] = "Europe/Bratislava",
+    notes: Annotated[
+        str, typer.Option("--notes", help="Anything unusual about this recording.")
+    ] = "",
+    inspect_only: Annotated[
+        bool, typer.Option("--inspect-only", help="Parse the header and stop.")
+    ] = False,
+) -> None:
+    """Convert a logger CSV export into the drop-in schema, then validate it.
+
+    Prints the timezone it assumed, because the source timestamp carries none and a wrong guess
+    shifts every timestamp in the recording by the offset with nothing downstream able to notice.
+    """
+    from wimsim.source.import_csv import import_csv, parse_header
+
+    try:
+        header = parse_header(src)
+    except (OSError, ValueError) as exc:
+        typer.secho(f"cannot read {src}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    typer.secho(f"{src.name}", bold=True)
+    _echo_kv(
+        [
+            ("source timestamp", f"{header.start_time_local:%Y-%m-%d %H:%M:%S} (naive, local)"),
+            ("assumed timezone", timezone),
+            ("interval", f"{header.interval_s * 1e6:.1f} us -> {header.sample_rate_hz:,.0f} Hz"),
+            ("channels", ", ".join(f"{c.name}[{c.unit}]={c.role}" for c in header.channels)),
+        ]
+    )
+    unknown = [c.name for c in header.channels if c.role == "auxiliary"]
+    if unknown:
+        typer.secho(
+            f"  note: {', '.join(unknown)} have unrecognised units and will be ignored",
+            fg=typer.colors.YELLOW,
+        )
+    if inspect_only:
+        return
+
+    t0 = time.perf_counter()
+    try:
+        result = import_csv(
+            src,
+            out,
+            station_id=station_id,
+            gauge_factor=gauge_factor,
+            excitation_v=excitation_v,
+            bridge=bridge,
+            timezone=timezone,
+            notes=notes,
+        )
+    except (OSError, ValueError) as exc:
+        typer.secho(f"import failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    _echo_kv(
+        [
+            ("start (UTC)", result.start_time_utc.isoformat()),
+            ("duration", f"{result.duration_s:,.3f} s"),
+            ("strain channels", ", ".join(result.strain_channels)),
+            ("temperature pairing", ", ".join(f"{k}<-{v}" for k, v in result.pairing.items())),
+            ("sample rows", f"{result.sample_rows:,}"),
+            ("elapsed", f"{time.perf_counter() - t0:.1f} s"),
+        ]
+    )
+    typer.secho(f"wrote {out}", fg=typer.colors.GREEN)
+
+    from wimsim.source.real_schema import validate_run
+
+    report = validate_run(out)
+    if report.warnings:
+        typer.secho("warnings", bold=True, fg=typer.colors.YELLOW)
+        for w in report.warnings:
+            typer.echo(f"  - {w}")
+    if report.errors:
+        typer.secho("errors", bold=True, fg=typer.colors.RED)
+        for e in report.errors:
+            typer.echo(f"  - {e}")
+        raise typer.Exit(1)
+    typer.secho("satisfies the real-data schema", fg=typer.colors.GREEN)
+
+
 @app.command("real-data-schema")
 def real_data_schema() -> None:
     """Print the schema a real recording must satisfy. Fixed before the data exists, on purpose."""
@@ -543,7 +641,26 @@ def _write_events(path: Path, events: list) -> None:
     pd.DataFrame(rows).to_parquet(path, compression="zstd", index=False)
 
 
+def _configure_console() -> None:  # pragma: no cover
+    """Force UTF-8 output.
+
+    Real recordings carry non-ASCII in places the pipeline has to echo back -- channel units are
+    ``degC`` and ``epsilon`` as actual Unicode, and station names may be accented. A Windows console
+    defaults to cp1252 and raises ``UnicodeEncodeError`` rather than mangling, which turns printing a
+    channel list into a crash. ``errors="replace"`` is the right fallback here: a substituted glyph
+    in a human-readable summary is harmless, and the data files themselves are always UTF-8.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
 def main() -> None:  # pragma: no cover
+    _configure_console()
     app()
 
 
