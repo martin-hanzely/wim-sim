@@ -5,7 +5,7 @@ adc_range:
 channel_map:
   S1:
     lane: 1
-    role: primary
+    role: strain
     sensor_id: S1
 excitation_v: 5.0
 gauge_factor: 2.05

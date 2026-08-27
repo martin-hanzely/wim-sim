@@ -44,26 +44,54 @@ __all__ = [
 REQUIRED_SAMPLE_COLUMNS: dict[str, str] = {
     "ts": "int64 -- UTC microseconds since the Unix epoch",
     "channel_id": "string -- must appear in run.yaml channel_map",
-    "raw_value": "int64 (ADC counts) or float64 (mV/V) -- declare which in run.yaml raw_value_kind",
+    "raw_value": "int64 or float64 -- declare what it is in run.yaml raw_value_kind",
 }
 
 OPTIONAL_SAMPLE_COLUMNS: dict[str, str] = {
     "temperature_c": "float64 -- co-located probe reading, degC",
 }
 
+#: What ``raw_value`` can be. ``strain`` was added after the first real recording arrived in it:
+#: the logger exported a physical quantity, not converter output, and forcing it through 'counts'
+#: would have meant inventing an ADC that never existed.
+RAW_VALUE_KINDS: dict[str, str] = {
+    "counts": "raw ADC codes; requires adc_bits and adc_range",
+    "mv_per_v": "bridge output in mV/V",
+    "strain": "dimensionless strain (epsilon); gauge_factor makes it a bridge output",
+}
+
+#: What a channel is for. Real exports interleave strain and temperature channels, and a consumer
+#: must not have to infer which is which from the channel's name.
+CHANNEL_ROLES: dict[str, str] = {
+    "strain": "the measurement channel",
+    "temperature": "a temperature probe",
+    "reference": "a redundant or reference sensor",
+    "auxiliary": "anything else, ignored by the pipeline",
+}
+
 REQUIRED_RUN_KEYS: dict[str, str] = {
     "station_id": "str",
     "sample_rate_hz": "float",
-    "raw_value_kind": "'counts' or 'mv_per_v' -- which of the two raw_value is",
-    "adc_bits": "int",
-    "adc_range": "[min, max] in the unit implied by raw_value_kind",
+    "raw_value_kind": f"one of {sorted(RAW_VALUE_KINDS)}",
     "channel_map": "mapping channel_id -> {sensor_id, lane, role}",
 }
 
+#: Required only for ``raw_value_kind: counts``. Counts without a bit depth and a range are not a
+#: measurement; a strain or mV/V export has no converter to describe and must not be made to
+#: pretend otherwise.
+COUNTS_ONLY_RUN_KEYS: dict[str, str] = {
+    "adc_bits": "int",
+    "adc_range": "[min, max] in ADC counts",
+}
+
 OPTIONAL_RUN_KEYS: dict[str, str] = {
+    "adc_bits": "int -- required for raw_value_kind: counts",
+    "adc_range": "[min, max] -- required for counts; enables saturation checking for any kind",
     "excitation_v": "float -- bridge excitation voltage",
-    "gauge_factor": "float",
+    "gauge_factor": "float -- required to interpret raw_value_kind: strain",
+    "bridge": "str -- quarter, half or full; affects the strain-to-mV/V conversion",
     "start_time": "ISO 8601 UTC -- informational; ts is authoritative",
+    "timezone_assumed": "str -- the zone a naive source timestamp was interpreted in",
     "notes": "str",
 }
 
@@ -109,19 +137,94 @@ def _validate_run_yaml(path: Path, report: ValidationReport) -> dict[str, Any]:
     for key in REQUIRED_RUN_KEYS:
         if key not in data:
             report.add_error(f"{path.name}: missing required key {key!r}")
+
     kind = data.get("raw_value_kind")
-    if kind is not None and kind not in {"counts", "mv_per_v"}:
-        report.add_error(
-            f"{path.name}: raw_value_kind must be 'counts' or 'mv_per_v', got {kind!r}"
-        )
+    if kind is not None:
+        if kind not in RAW_VALUE_KINDS:
+            report.add_error(
+                f"{path.name}: raw_value_kind must be one of {sorted(RAW_VALUE_KINDS)}, "
+                f"got {kind!r}"
+            )
+        else:
+            report.stats["raw_value_kind"] = kind
+        if kind == "counts":
+            for key in COUNTS_ONLY_RUN_KEYS:
+                if key not in data:
+                    report.add_error(
+                        f"{path.name}: missing key {key!r}, which raw_value_kind: counts requires "
+                        "-- counts without a bit depth and a range are not a measurement"
+                    )
+        if kind == "strain" and not data.get("gauge_factor"):
+            report.add_warning(
+                "no gauge_factor: the run can be replayed and characterised, but strain cannot be "
+                "converted to a bridge output, so it cannot be expressed in the simulator's units"
+            )
+
     rng = data.get("adc_range")
     if rng is not None and (
         not isinstance(rng, (list, tuple)) or len(rng) != 2 or rng[1] <= rng[0]
     ):
         report.add_error(f"{path.name}: adc_range must be [min, max] with max > min")
-    if not isinstance(data.get("channel_map", {}), dict):
+
+    cmap = data.get("channel_map", {})
+    if not isinstance(cmap, dict):
         report.add_error(f"{path.name}: channel_map must be a mapping")
+    else:
+        roles: dict[str, str] = {}
+        for name, entry in cmap.items():
+            if not isinstance(entry, dict):
+                report.add_error(f"{path.name}: channel_map[{name!r}] must be a mapping")
+                continue
+            role = entry.get("role")
+            if role is None:
+                report.add_warning(
+                    f"channel {name}: no role declared; a consumer then has to guess from the name "
+                    f"which channels are measurements. Expected one of {sorted(CHANNEL_ROLES)}"
+                )
+                continue
+            if role not in CHANNEL_ROLES:
+                report.add_error(
+                    f"{path.name}: channel_map[{name!r}] role must be one of "
+                    f"{sorted(CHANNEL_ROLES)}, got {role!r}"
+                )
+                continue
+            roles[str(name)] = role
+        if roles:
+            report.stats["roles"] = roles
     return data
+
+
+def _report_excursions(channel: str, v: np.ndarray, report: ValidationReport) -> None:
+    """Say whether anything actually drove over the sensor.
+
+    The first real recording contained no vehicles at all -- 60 s of baseline. That is a perfectly
+    good noise-characterisation run and a useless calibration run, and the difference is worth
+    stating at the door rather than discovering it after fitting a gain to nothing.
+
+    Measured as the largest deviation from a running median, in units of the channel's own robust
+    noise scale. A vehicle is hundreds of deviations; noise is a handful.
+    """
+    if v.size < 256:
+        return
+    # median of a coarse decimation stands in for the baseline: cheap, and drift over a recording is
+    # slow compared with a pass
+    coarse = v[:: max(v.size // 4096, 1)]
+    baseline = float(np.median(coarse))
+    q05, q25 = np.quantile(coarse, [0.05, 0.25])
+    sigma = float(q25 - q05) / 0.9704
+    if sigma <= 0:
+        return
+    excursion = float(np.max(np.abs(v - baseline)) / sigma)
+    report.stats[f"max_excursion_sigma[{channel}]"] = round(excursion, 1)
+    report.stats["max_excursion_sigma"] = max(
+        report.stats.get("max_excursion_sigma", 0.0), round(excursion, 1)
+    )
+    if excursion < 10.0:
+        report.add_warning(
+            f"channel {channel}: no excursion larger than {excursion:.1f} noise deviations, so this "
+            "recording contains no vehicle passes. Useful for characterising noise and drift; it "
+            "cannot calibrate or score anything"
+        )
 
 
 def _validate_samples(
@@ -220,6 +323,14 @@ def _validate_samples(
                     f"ADC rail; peaks in those windows are unrecoverable"
                 )
                 report.stats[f"saturated[{ch}]"] = pinned
+        else:
+            report.add_warning(
+                f"channel {ch}: no adc_range declared, so saturation was NOT checked. A clipped "
+                "peak is unrecoverable and looks like a merely heavy vehicle, so declare the range "
+                "if the instrument has one"
+            )
+
+        _report_excursions(ch, v, report)
 
         # a run of identical values longer than ~10 ms is a stuck channel, not real signal
         if v.size > 1:
