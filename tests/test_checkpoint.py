@@ -110,6 +110,33 @@ def test_the_analytic_interval_is_optimistic_when_residuals_are_not_gaussian(s1_
     assert area.score.mean_interval_width_kg > peak.score.mean_interval_width_kg
 
 
+def test_mains_interference_hurts_more_than_its_power_and_breaks_coverage(s1_run) -> None:
+    """Measured from the first real recording: mains dominates the in-band noise (+54 dB).
+
+    It is *coherent*, so unlike white noise it does not average down over a 5 ms pulse -- the window
+    sees a near-constant offset whose value depends on where in the mains cycle the axle arrived.
+    Two consequences, both pinned here: accuracy falls several-fold, and empirical coverage falls
+    well below nominal because the error is structured rather than Gaussian and the analytic
+    interval misprices it.
+
+    S1_nominal is the one scenario that keeps mains switched off, so that a non-zero error there can
+    only mean a bug in the pipeline.
+    """
+    cfg, truth = s1_run
+    edge = load_edge_config("default")
+    clean = run_offline(cfg, truth, edge, calibration_passes=15)
+
+    noisy_cfg = load_run_config(
+        "S1_nominal",
+        overrides=["scenario.output.samples=none", "scenario.noise.mains.enabled=true"],
+    )
+    noisy = run_offline(noisy_cfg, truth, edge, calibration_passes=15)
+
+    assert noisy.score.mae_kg > 3.0 * clean.score.mae_kg
+    assert noisy.score.coverage < clean.score.coverage
+    assert noisy.score.recall == 1.0, "mains must not cost detections, only accuracy"
+
+
 def test_no_pass_is_both_training_and_test_data(s1_run) -> None:
     cfg, truth = s1_run
     result = run_offline(cfg, truth, load_edge_config("default"), calibration_passes=15)

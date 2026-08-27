@@ -44,11 +44,13 @@ zero_drift:
   temp_coupling_per_c: 1.2e-4   # the zero line also breathes with temperature
 
 noise:
-  white_sigma: 2.0e-4
+  # Measured on the first real recording (docs/sim-to-real.md): mains dominates the in-band
+  # noise at +54 dB above the local floor, and white noise is 1.2e-4 mV/V per sample at 2 kHz.
+  white_sigma: 1.2e-4
   pink_sigma: 1.5e-4
   pink_f_min_hz: 0.0005
   pink_f_max_hz: 20.0
-  mains: {enabled: true, freq_hz: 50.0, amplitude: 8.0e-5, harmonics: [0.3, 0.12]}
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 8.7e-4, harmonics: [0.30, 0.12]}
 
 pulse:
   shape: emg

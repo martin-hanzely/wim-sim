@@ -31,11 +31,17 @@ zero_drift:
   temp_coupling_per_c: 0.0
 
 noise:
-  white_sigma: 2.0e-4
+  # Measured on the first real recording (docs/sim-to-real.md): mains dominates the in-band
+  # noise at +54 dB above the local floor, and white noise is 1.2e-4 mV/V per sample at 2 kHz.
+  white_sigma: 1.2e-4
   pink_sigma: 1.0e-4
   pink_f_min_hz: 0.001
   pink_f_max_hz: 20.0
-  mains: {enabled: false, freq_hz: 50.0, amplitude: 1.0e-4, harmonics: [0.3, 0.1]}
+  # Mains stays OFF here and only here. Every other scenario now carries the measured 8.7e-4
+  # amplitude, but S1's job is to be the floor where a non-zero error can only mean a bug in the
+  # pipeline. Mains is coherent -- it does not average down over a pulse -- so switching it on would
+  # put an irreducible few kilograms into the one scenario whose value is having none.
+  mains: {enabled: false, freq_hz: 50.0, amplitude: 8.7e-4, harmonics: [0.30, 0.12]}
 
 pulse:
   shape: gaussian
