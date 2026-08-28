@@ -41,7 +41,7 @@ These constrain every decision in this repository.
 |---|---|---|
 | 1 | Skeleton and truth: config, domain types, generative signal model, truth log, `SyntheticSource`, CLI, determinism test | **done** |
 | 2 | Edge pipeline offline: preprocessor, event detector, `StaticAffine`, scoring vs. truth | **done** -- MAE 1.43 kg (0.054 %) on `S1_nominal` |
-| 3 | Infrastructure: docker-compose, MQTT publisher with persistent buffer, ingest + DLQ, TimescaleDB | not started |
+| 3 | Infrastructure: docker-compose, MQTT publisher with persistent buffer, ingest + DLQ, TimescaleDB | **done** -- synthetic passes visible in Grafana end to end |
 | 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | not started |
 | 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | not started |
 | 6 | Experiments and real data: runner, scenario suite, `ReplaySource`, sim-to-real gap report | not started |
@@ -67,6 +67,11 @@ wimsim plot-pass data/synthetic/S1_demo --index 0
 # Phase 2 checkpoint: run the edge pipeline and score it against truth
 wimsim pipelines
 wimsim run data/synthetic/S1_demo --edge default
+
+# phase 3: bring up the stack and take a run all the way to Grafana
+docker compose --profile full up -d
+alembic upgrade head
+# ... then publish a run and watch it land: see docs/infrastructure.md
 
 # prove determinism
 wimsim generate S1_nominal --out .determinism/a -q
@@ -103,7 +108,12 @@ configs/experiments/  sweeps that produce paper tables        (phase 6)
 src/wimsim/core/      domain types, config, provenance, deterministic RNG
 src/wimsim/signal/    generative model + ground-truth log  <- estimators may never import this
 src/wimsim/source/    SourceAdapter implementations
-src/wimsim/edge/      acquisition -> preprocess -> detect -> estimate -> publish
+src/wimsim/edge/      acquisition -> preprocess -> detect -> estimate
+src/wimsim/transport/ persistent spool + MQTT publisher
+src/wimsim/ingest/    validation, dead-letter queue
+src/wimsim/storage/   TimescaleDB schema, Alembic migrations, idempotent writer
+docker/               service configs for the compose stack
+dashboards/           Grafana dashboards, provisioned read-only from the repo
 src/wimsim/calibration/  estimators, drift detection, profile store, UQ  (numpy only)
 data/real/            the real test drives land here (EXAMPLE/ shows the required shape)
 data/synthetic/       generated runs
@@ -120,4 +130,9 @@ docs/                 signal-model.md, real-data-schema.md
 - [`docs/edge-pipeline.md`](docs/edge-pipeline.md) -- what phase 2 measured, including three
   findings that changed the design: area loses to peak by 650x on a single sensor, the despiker was
   eating 20 % of a car's peak, and a low-pass cutoff must clear the pulse band by 3x.
+- [`docs/infrastructure.md`](docs/infrastructure.md) -- the phase-3 stack: what each service is
+  for, how an event travels from the generator to a dashboard, and the failure modes the
+  publisher and ingest are built around.
+- [`docs/sim-to-real.md`](docs/sim-to-real.md) -- what the first real recording says about the
+  model, what it corrected, and what it cannot answer yet.
 - [`docs/determinism.md`](docs/determinism.md) -- how reproducibility is actually enforced.
