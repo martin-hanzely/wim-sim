@@ -1,0 +1,277 @@
+{
+  "uid": "wimsim-station-ops",
+  "title": "WiM / Station operations",
+  "description": "Phase 3 checkpoint: synthetic passes visible end to end. Throughput, mass distribution, quality flags and data integrity, read from TimescaleDB. The calibration loop, tracing and the remaining dashboards arrive in phase 4.",
+  "tags": ["wimsim", "phase3"],
+  "timezone": "utc",
+  "editable": false,
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Station",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "query": "SELECT DISTINCT station_id FROM wim.measurement_event ORDER BY 1"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Throughput",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Events stored",
+      "description": "Total measurement events in the database for the selected stations and window.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } } },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS \"events\" FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station)",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Axles",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(axle_count), 0) AS \"axles\" FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station)",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Not OK",
+      "description": "Events whose quality flag is degraded or suspect. A non-zero value here means some masses in the window came from saturated, invalid or truncated windows.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS \"not ok\" FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station) AND quality_flag <> 'ok'",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Dead letters",
+      "description": "Payloads ingest refused. Any non-zero value is a producer/consumer contract problem, not noise -- open the Data integrity row.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS \"dlq\" FROM wim.dlq WHERE $__timeFilter(received_at)",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Mean mass",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "kg", "decimals": 0 } },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT avg(mass_kg) AS \"mean mass\" FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station)",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Heaviest",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "kg", "decimals": 0 } },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT max(mass_kg) AS \"heaviest\" FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station)",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Events per minute",
+      "description": "Reads the continuous aggregate rather than the raw hypertable, so a week-long window does not scan a week of events.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 0 }
+        }
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT bucket AS time, station_id AS metric, events FROM wim.event_rate_1m WHERE $__timeFilter(bucket) AND station_id IN ($station) ORDER BY 1",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Mass per pass",
+      "description": "One point per vehicle, with the emitted confidence interval. The band is the estimator's own uncertainty, not a rolling statistic.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kg",
+          "custom": { "drawStyle": "points", "pointSize": 4, "lineWidth": 0, "fillOpacity": 10 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "ci_low" },
+            "properties": [{ "id": "custom.drawStyle", "value": "line" }, { "id": "custom.lineWidth", "value": 1 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "ci_high" },
+            "properties": [{ "id": "custom.drawStyle", "value": "line" }, { "id": "custom.lineWidth", "value": 1 }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT ts_start AS time, mass_kg AS mass, mass_ci_low AS ci_low, mass_ci_high AS ci_high FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station) ORDER BY 1",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Quality and integrity",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }
+    },
+    {
+      "type": "piechart",
+      "title": "Quality flags",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT quality_flag, count(*) AS n FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station) GROUP BY 1 ORDER BY 2 DESC",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Axle count distribution",
+      "description": "A vehicle-class fingerprint. A sudden shift usually means the detector is merging or splitting axles, not that the traffic changed.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 15 },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT axle_count::text AS axles, count(*) AS n FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station) GROUP BY 1 ORDER BY 1",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Dead-letter queue by reason",
+      "description": "Grouped by reason code, which is the difference between 'the DLQ is filling up' and 'the DLQ is filling up with invalid_json since 14:20'.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 15 },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT reason_code, count(*) AS n, max(received_at) AS latest, min(left(detail, 120)) AS example FROM wim.dlq WHERE $__timeFilter(received_at) GROUP BY 1 ORDER BY 2 DESC",
+          "rawQuery": true
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Provenance",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "type": "table",
+      "title": "What produced these events",
+      "description": "Principle 3 on a screen. Every distinct combination of config hash, seed, estimator profile and code commit that contributed to the window. More than one row means the window mixes runs, and any aggregate over it is a mixture.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT left(provenance->>'config_hash', 12) AS config, provenance->>'seed' AS seed, provenance->>'mode' AS mode, coalesce(left(provenance->>'git_commit', 12), 'no commit') AS commit, (provenance->>'git_dirty')::bool AS dirty, profile_id, estimator, cal_state_hash AS state, count(*) AS events, min(ts_start) AS first, max(ts_start) AS last FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station) GROUP BY 1,2,3,4,5,6,7,8 ORDER BY events DESC",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "dirty" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "type": "color-background", "mode": "basic" }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "true": { "text": "DIRTY - not citable", "color": "red", "index": 0 } } },
+                  { "type": "value", "options": { "false": { "text": "clean", "color": "green", "index": 1 } } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -2,9 +2,10 @@
 # PY is overridable: make PY=python3.12 test
 PY ?= .venv/Scripts/python
 SCENARIO ?= S1_nominal
+EDGE ?= default
 OUT ?= data/synthetic/$(SCENARIO)
 
-.PHONY: install sim inspect checkpoint determinism test lint clean up dashboards experiment
+.PHONY: install sim inspect checkpoint determinism test clean up up-core down logs migrate score experiment
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -34,10 +35,27 @@ clean:
 	rm -rf .determinism .pytest_cache
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
 
-# --- placeholders for later phases, declared so the interface is stable ---
-up:            ## phase 3
-	@echo "phase 3: docker compose up -d"
-dashboards:    ## phase 4
-	@echo "phase 4: provision Grafana dashboards"
+## bring up the whole stack (broker, database, observability plane)
+up:
+	docker compose --profile full up -d
+
+## just the broker and the database -- enough for the pipeline and its tests
+up-core:
+	docker compose --profile core up -d
+
+down:
+	docker compose --profile full down
+
+logs:
+	docker compose --profile full logs -f --tail=100
+
+## create or update the database schema. Alembic owns it; nothing else creates a table.
+migrate:
+	$(PY) -m alembic upgrade head
+
+## run the edge pipeline over a run and score it against truth
+score: sim
+	$(PY) -m wimsim.cli run $(OUT) --edge $(EDGE)
+
 experiment:    ## phase 6
 	@echo "phase 6: wimsim experiment run <id>"
