@@ -42,7 +42,7 @@ These constrain every decision in this repository.
 | 1 | Skeleton and truth: config, domain types, generative signal model, truth log, `SyntheticSource`, CLI, determinism test | **done** |
 | 2 | Edge pipeline offline: preprocessor, event detector, `StaticAffine`, scoring vs. truth | **done** -- MAE 1.43 kg (0.054 %) on `S1_nominal` |
 | 3 | Infrastructure: docker-compose, MQTT publisher with persistent buffer, ingest + DLQ, TimescaleDB | **done** -- synthetic passes visible in Grafana end to end |
-| 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | not started |
+| 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | **done** -- one pass traceable acquire-to-persist in Tempo; all five dashboards live |
 | 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | not started |
 | 6 | Experiments and real data: runner, scenario suite, `ReplaySource`, sim-to-real gap report | not started |
 
@@ -72,6 +72,13 @@ wimsim run data/synthetic/S1_demo --edge default
 docker compose --profile full up -d
 alembic upgrade head
 # ... then publish a run and watch it land: see docs/infrastructure.md
+
+# Phase 4 checkpoint: one pass, one trace, acquire -> persist, with the dashboards live.
+# --speed matters: unpaced, a 15-minute run finishes in seconds and every panel is unreadable.
+wimsim load-truth data/synthetic/S1_demo
+wimsim ingest --otlp http://localhost:4317 &
+wimsim edge-run data/synthetic/S1_demo --otlp http://localhost:4317 --speed 12
+python scripts/check_dashboards.py    # ask Grafana to run all 47 panels
 
 # prove determinism
 wimsim generate S1_nominal --out .determinism/a -q
@@ -112,13 +119,15 @@ src/wimsim/edge/      acquisition -> preprocess -> detect -> estimate
 src/wimsim/transport/ persistent spool + MQTT publisher
 src/wimsim/ingest/    validation, dead-letter queue
 src/wimsim/storage/   TimescaleDB schema, Alembic migrations, idempotent writer
+src/wimsim/observability/  metric registry, tracing, structured logging
 docker/               service configs for the compose stack
 dashboards/           Grafana dashboards, provisioned read-only from the repo
 src/wimsim/calibration/  estimators, drift detection, profile store, UQ  (numpy only)
 data/real/            the real test drives land here (EXAMPLE/ shows the required shape)
 data/synthetic/       generated runs
 data/results/         experiment outputs
-docs/                 signal-model.md, real-data-schema.md
+scripts/              operational checks that need the stack up
+docs/                 signal-model.md, observability.md, real-data-schema.md
 ```
 
 ## Documentation
@@ -133,6 +142,10 @@ docs/                 signal-model.md, real-data-schema.md
 - [`docs/infrastructure.md`](docs/infrastructure.md) -- the phase-3 stack: what each service is
   for, how an event travels from the generator to a dashboard, and the failure modes the
   publisher and ingest are built around.
+- [`docs/observability.md`](docs/observability.md) -- the phase-4 layers: the metric registry and
+  why it refuses things, how one trace crosses a broker with no headers, and the three faults that
+  only turned up when the data was plotted (a column that was always null, a dashboard querying a
+  column that does not exist, and every Prometheus metric silently renamed by the exporter).
 - [`docs/sim-to-real.md`](docs/sim-to-real.md) -- what the eight real recordings say about the
   model. The headline: the hardware is a structural strain sensor, not the contact-force sensor
   the buildspec assumes, and speed *is* observable from its two gauges.
