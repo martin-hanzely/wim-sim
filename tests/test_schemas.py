@@ -345,3 +345,38 @@ def test_blocks_are_reusable_across_topics() -> None:
     )
     assert CalibrationBlock.model_validate(_event()["calibration"]).profile_id == "p-0001"
     assert PreprocessingBlock.model_validate(_event()["preprocessing"]).order == 4
+
+
+# -- trace context -------------------------------------------------------------------------
+
+
+def test_a_payload_can_carry_a_traceparent() -> None:
+    """MQTT has no headers, so the W3C context rides in the body (buildspec section 9).
+
+    `trace_id` alone is not enough to re-parent a span at ingest -- a child needs its parent's
+    span id too -- so both fields exist and `wimsim.observability.tracing` stamps them together.
+    """
+    tp = "00-" + "a" * 32 + "-" + "1" * 16 + "-01"
+    ev = MeasurementEvent.model_validate(_event(trace_id="a" * 32, traceparent=tp))
+    assert ev.traceparent == tp
+    assert ev.trace_id == "a" * 32
+
+
+def test_traceparent_is_optional_everywhere() -> None:
+    """Replayed recordings and offline runs carry no trace, and must still validate."""
+    for topic, model in TOPIC_MODELS.items():
+        assert "traceparent" in model.model_fields, topic
+    assert MeasurementEvent.model_validate(_event()).traceparent is None
+
+
+def test_a_malformed_traceparent_is_rejected_at_the_boundary() -> None:
+    """Garbage in the field would be dropped later by the tracer anyway, but a payload that
+    cannot be trusted about its own context should not be stored as if it could."""
+    with pytest.raises(ValidationError):
+        MeasurementEvent.model_validate(_event(traceparent="not-a-traceparent"))
+
+
+def test_adding_traceparent_was_a_minor_version_bump() -> None:
+    """An optional additive field. Consumers on 1.0.0 keep working, which is the whole contract."""
+    major, minor, _ = SCHEMA_VERSION.split(".")
+    assert (major, minor) == ("1", "1")

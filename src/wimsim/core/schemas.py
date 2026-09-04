@@ -29,7 +29,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from wimsim import SCHEMA_VERSION
 
@@ -56,6 +56,11 @@ __all__ = [
 EVENT_NAMESPACE = uuid.UUID("1c9d8e7f-3a2b-5c4d-8e6f-0a1b2c3d4e5f")
 
 SEMVER = r"^\d+\.\d+\.\d+$"
+
+#: W3C Trace Context, version 00: ``00-<32 hex trace id>-<16 hex span id>-<2 hex flags>``.
+#: The specification also declares all-zero ids invalid, which is checked in a validator rather
+#: than here: pydantic-core's regex engine has no look-ahead.
+TRACEPARENT = r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
 
 QualityFlag = Literal["ok", "degraded", "suspect"]
 
@@ -89,8 +94,28 @@ class _Payload(BaseModel):
     trace_id: str | None = Field(
         None,
         description="OpenTelemetry trace id, propagated inside the payload because MQTT has no "
-        "header mechanism to rely on (buildspec section 9).",
+        "header mechanism to rely on (buildspec section 9). This is the queryable form: a database "
+        "column, a Grafana data link, a field on every log line.",
     )
+    traceparent: str | None = Field(
+        None,
+        pattern=TRACEPARENT,
+        description="The full W3C trace context. Redundant with trace_id and stamped alongside it, "
+        "because a trace id alone cannot re-parent a span -- a child needs its parent's span id "
+        "too, and without it the ingest span floats as a second root in the same trace.",
+    )
+
+    @field_validator("traceparent")
+    @classmethod
+    def _reject_all_zero_ids(cls, value: str | None) -> str | None:
+        """W3C declares an all-zero trace or span id invalid. Refuse it here rather than store a
+        payload claiming a context that cannot be followed."""
+        if value is None:
+            return None
+        _, trace_id, span_id, _ = value.split("-")
+        if trace_id == "0" * 32 or span_id == "0" * 16:
+            raise ValueError(f"traceparent carries an all-zero id, which W3C forbids: {value}")
+        return value
 
 
 # --------------------------------------------------------------------------------------------
