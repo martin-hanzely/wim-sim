@@ -39,6 +39,20 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
     enable_open_metrics: true
+    # Export the names the code declares, not the names the exporter would invent.
+    #
+    # By default this exporter appends the OTel unit to every metric name, so `wim_buffer_depth`
+    # (unit "1") is scraped as `wim_buffer_depth_ratio`, `wim_cal_gain_estimate` (unit
+    # "{sensor}/kg") as `wim_cal_gain_estimate_per_kg`, and `wim_publish_latency_ms` (unit "ms") as
+    # `wim_publish_latency_ms_milliseconds`. Buildspec section 9 names these metrics, the registry
+    # in observability/metrics.py declares exactly those names, and every dashboard panel queries
+    # them literally -- so a rename here means every panel renders empty and says nothing about
+    # why. Turning the suffixes off is what makes those three agree.
+    #
+    # It also disables the automatic `_total` on counters, which costs nothing: the registry
+    # already names counters `..._total` itself, and tests/test_metrics.py enforces that they are
+    # the only metrics that do.
+    add_metric_suffixes: false
 
 extensions:
   health_check:

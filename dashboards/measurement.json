@@ -1,0 +1,177 @@
+{
+  "uid": "wimsim-measurement",
+  "title": "WiM / Measurement",
+  "description": "One pass at a time: what the sensor saw, what the preprocessor made of it, and what mass came out with what interval. The signal panels need sample streaming enabled on the station (edge.publish.samples), which is off by default because a 2 kHz channel is a hundred million rows a day -- the event-level panels work regardless. Click a mass point to open its trace in Tempo.",
+  "tags": ["wimsim", "measurement", "phase-4"],
+  "timezone": "utc",
+  "editable": false,
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Station",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "query": "SELECT DISTINCT station_id FROM wim.measurement_event ORDER BY 1"
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Mass, with its interval", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "type": "timeseries",
+      "title": "Mass with confidence band",
+      "description": "Every pass, with the interval the estimator reported. The band is part of the answer, not decoration: a narrow band around a wrong number is a worse failure than a wide band around a right one, and only this panel shows the difference. Where truth is loaded, the reference mass is drawn on top.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kgm",
+          "decimals": 0,
+          "custom": { "drawStyle": "points", "pointSize": 7, "fillOpacity": 0, "spanNulls": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "interval low" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-blue" } },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.fillBelowTo", "value": "interval high" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "interval high" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-blue" } },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "true mass" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts_peak AS time, mass_kg AS \"estimated mass\", mass_ci_low AS \"interval low\", mass_ci_high AS \"interval high\" FROM wim.measurement_event WHERE $__timeFilter(ts_peak) AND station_id IN ($station) ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts_peak AS time, true_mass_kg AS \"true mass\" FROM truth.truth_pass WHERE $__timeFilter(ts_peak) AND station_id IN ($station) ORDER BY 1"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "What each pass looked like", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 } },
+    {
+      "type": "table",
+      "title": "Recent passes",
+      "description": "The event record, with its trace. The trace_id column links into Tempo: one click from a suspicious mass to the acquire-to-persist waterfall that produced it.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 11, "w": 14, "x": 0, "y": 12 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "mass_kg" },
+            "properties": [{ "id": "unit", "value": "kgm" }, { "id": "decimals", "value": 0 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "trace" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open the trace",
+                    "url": "/explore?left=%7B%22datasource%22:%22wimsim-tempo%22,%22queries%22:%5B%7B%22query%22:%22${__value.raw}%22,%22queryType%22:%22traceql%22%7D%5D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ts_peak, mass_kg, mass_ci_high - mass_ci_low AS \"interval width\", axle_count, round(temperature_c::numeric, 2) AS \"temp C\", quality_flag, profile_id, trace_id AS \"trace\" FROM wim.measurement_event WHERE $__timeFilter(ts_peak) AND station_id IN ($station) ORDER BY ts_peak DESC LIMIT 100"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Raw vs compensated peak",
+      "description": "The preprocessor's contribution, per pass. raw_peak has the zero line removed but no thermal correction; compensated_peak has both. A widening gap between them is the temperature working, and a gap that appears suddenly is a fault.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 11, "w": 10, "x": 14, "y": 12 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "sci",
+          "decimals": 5,
+          "custom": { "drawStyle": "points", "pointSize": 6, "fillOpacity": 0 }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts_peak AS time, raw_peak AS \"raw peak\", compensated_peak AS \"compensated peak\" FROM wim.measurement_event WHERE $__timeFilter(ts_peak) AND station_id IN ($station) ORDER BY 1"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "The signal itself", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 } },
+    {
+      "type": "timeseries",
+      "title": "Sensor stream",
+      "description": "Raw readings, when sample streaming is enabled. Off by default: a 2 kHz channel is 173 million rows a day, and the events are what the system exists to produce. Turn it on for one station while debugging a detection, not as a matter of course.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "sci", "decimals": 5, "custom": { "lineWidth": 1, "fillOpacity": 0, "pointSize": 3 } } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts AS time, raw_value AS \"raw\" FROM wim.sensor_sample WHERE $__timeFilter(ts) AND station_id IN ($station) ORDER BY 1 LIMIT 20000"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Detection windows in view",
+      "description": "How many passes the window contains, and how long they were. A duration distribution that has drifted is a speed change or a detector that has started merging vehicles.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 3 } },
+      "options": { "textMode": "value_and_name" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"passes\", round(avg(extract(epoch FROM ts_end - ts_start))::numeric, 3) AS \"mean duration s\", round(max(extract(epoch FROM ts_end - ts_start))::numeric, 3) AS \"longest s\" FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station)"
+        }
+      ]
+    }
+  ]
+}

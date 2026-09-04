@@ -1,0 +1,255 @@
+{
+  "uid": "wimsim-accuracy",
+  "title": "WiM / Accuracy and uncertainty",
+  "description": "How wrong the masses are, and whether the intervals admit it. Every panel here joins measured events to the truth log, so all of it is empty in replay mode until a reference mass exists -- which is the honest state of a real deployment with no weighbridge, not a broken dashboard. Nothing on this page is ever read by the estimator; the join happens in Grafana, downstream of everything (principle 1).",
+  "tags": ["wimsim", "accuracy", "phase-4"],
+  "timezone": "utc",
+  "editable": false,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Station",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "query": "SELECT DISTINCT station_id FROM wim.measurement_event ORDER BY 1"
+      },
+      {
+        "name": "tolerance",
+        "label": "Match tolerance (s)",
+        "type": "custom",
+        "query": "0.10,0.25,0.50,1.00",
+        "current": { "text": "0.25", "value": "0.25" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "The headline numbers", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "type": "stat",
+      "title": "MAE",
+      "description": "Mean absolute error against the reference mass, over matched passes in the window.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "kgm", "decimals": 2 } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT round(avg(abs(e.mass_kg - t.true_mass_kg))::numeric, 2) AS \"MAE\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "MAPE",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 4 } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT avg(abs(e.mass_kg - t.true_mass_kg) / nullif(t.true_mass_kg, 0)) AS \"MAPE\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Bias",
+      "description": "Signed mean error. MAE alone cannot tell a miscalibrated scale from a noisy one; a bias that is a large fraction of the MAE is a calibration problem, and one near zero is noise.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "kgm", "decimals": 2, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] } } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT round(avg(e.mass_kg - t.true_mass_kg)::numeric, 2) AS \"bias\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Empirical coverage vs nominal",
+      "description": "The fraction of intervals that actually contained the reference mass, next to the coverage the estimator claimed. Buildspec section 6 calls this the single most persuasive number for a small-real-data paper. Below nominal means the intervals are too narrow and the stated uncertainty is a fiction; well above means they are too wide to be useful.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 8, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.85 },
+              { "color": "green", "value": 0.93 }
+            ]
+          }
+        }
+      },
+      "options": { "textMode": "value_and_name" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT avg(CASE WHEN t.true_mass_kg BETWEEN e.mass_ci_low AND e.mass_ci_high THEN 1.0 ELSE 0.0 END) AS \"empirical\", avg(e.coverage_target) AS \"nominal\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Matched",
+      "description": "Matched passes over truth passes. A shortfall is missed detections, and no accuracy number on this page describes the vehicles that were never seen.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "textMode": "value_and_name" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT (SELECT count(*) FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station)) AS \"matched\", (SELECT count(*) FROM truth.truth_pass WHERE $__timeFilter(ts_peak) AND station_id IN ($station)) AS \"truth passes\""
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Where the error lives", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 } },
+    {
+      "type": "histogram",
+      "title": "Error distribution",
+      "description": "Signed error in kilograms. A symmetric bell is noise; a shifted one is calibration; two humps are two vehicle populations the estimator is treating as one.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "kgm", "custom": { "fillOpacity": 60 } } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT e.mass_kg - t.true_mass_kg AS \"error kg\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rolling MAE",
+      "description": "A minute-bucketed mean absolute error. What a single end-of-run MAE cannot show is an estimator that was accurate for the first half of the window and is not any more, which is the entire subject of phase 5.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "kgm", "decimals": 2, "custom": { "fillOpacity": 10, "spanNulls": true } } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('1 minute', e.ts_peak) AS time, avg(abs(e.mass_kg - t.true_mass_kg)) AS \"MAE\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error against mass",
+      "description": "Relative error by true mass. A trend here is a scale that is linear over cars and not over trucks, which is a modelling failure rather than a calibration one and no amount of self-calibration will fix it.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "custom": { "drawStyle": "points", "pointSize": 6, "fillOpacity": 0 }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT e.ts_peak AS time, (e.mass_kg - t.true_mass_kg) / nullif(t.true_mass_kg, 0) AS \"relative error\", t.vehicle_class FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station) ORDER BY 1"
+        }
+      ]
+    },
+
+    { "type": "row", "title": "Uncertainty, and by class", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 } },
+    {
+      "type": "timeseries",
+      "title": "Interval width and rolling coverage",
+      "description": "The trade-off, on one axis pair. Narrowing intervals with coverage holding is a genuinely improving estimator; narrowing intervals with coverage falling is one that has started lying. The nominal line is what the estimator claims.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 17 },
+      "fieldConfig": {
+        "defaults": { "unit": "kgm", "custom": { "fillOpacity": 10, "spanNulls": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*coverage.*|nominal" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "max", "value": 1 },
+              { "id": "min", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('1 minute', e.ts_peak) AS time, avg(e.mass_ci_high - e.mass_ci_low) AS \"mean interval width\", avg(CASE WHEN t.true_mass_kg BETWEEN e.mass_ci_low AND e.mass_ci_high THEN 1.0 ELSE 0.0 END) AS \"rolling coverage\", avg(e.coverage_target) AS \"nominal\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By vehicle class",
+      "description": "Per-class accuracy, which an aggregate MAE hides: a fleet that is 80 % cars can report an excellent MAE while being useless on the trucks that are the point of weighing.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 17 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "MAE kg" }, "properties": [{ "id": "unit", "value": "kgm" }] },
+          { "matcher": { "id": "byName", "options": "MAPE" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 4 }] },
+          { "matcher": { "id": "byName", "options": "coverage" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 }] }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT t.vehicle_class AS class, count(*) AS n, round(avg(abs(e.mass_kg - t.true_mass_kg))::numeric, 2) AS \"MAE kg\", avg(abs(e.mass_kg - t.true_mass_kg) / nullif(t.true_mass_kg, 0)) AS \"MAPE\", round(avg(e.mass_kg - t.true_mass_kg)::numeric, 2) AS \"bias kg\", avg(CASE WHEN t.true_mass_kg BETWEEN e.mass_ci_low AND e.mass_ci_high THEN 1.0 ELSE 0.0 END) AS \"coverage\" FROM wim.measurement_event e JOIN truth.truth_pass t ON t.station_id = e.station_id AND abs(extract(epoch FROM t.ts_peak - e.ts_peak)) < $tolerance WHERE $__timeFilter(e.ts_peak) AND e.station_id IN ($station) GROUP BY 1 ORDER BY 3 DESC"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "The floor no calibration can remove",
+      "description": "Applied load minus static mass: the dynamic error the vehicle brought with it, from bounce and pitch. An MAE below this line is not a better estimator, it is a coincidence -- so it is drawn against the rolling MAE above rather than left implicit.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 26 },
+      "fieldConfig": { "defaults": { "unit": "kgm", "decimals": 2, "custom": { "fillOpacity": 10, "spanNulls": true } } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('1 minute', ts_peak) AS time, avg(abs(applied_mass_kg - true_mass_kg)) AS \"dynamic floor\" FROM truth.truth_pass WHERE $__timeFilter(ts_peak) AND station_id IN ($station) GROUP BY 1 ORDER BY 1"
+        }
+      ]
+    }
+  ]
+}

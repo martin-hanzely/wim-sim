@@ -1,0 +1,210 @@
+{
+  "uid": "wimsim-data-integrity",
+  "title": "WiM / Data integrity",
+  "description": "Whether what arrived is what was measured. Dead letters by reason, ingest lag with clock skew left in, buffer depth during outages, and the provenance of every stored event. The rule this dashboard exists to enforce: nothing reaches the database unvalidated, and nothing is silently discarded -- a pipeline that quietly drops what it cannot parse is indistinguishable from the outside from one that is working.",
+  "tags": ["wimsim", "integrity", "phase-4"],
+  "timezone": "utc",
+  "editable": false,
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "station",
+        "label": "Station",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "query": "SELECT DISTINCT station_id FROM wim.measurement_event ORDER BY 1"
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "What was refused", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "type": "stat",
+      "title": "Dead letters",
+      "description": "Payloads the router refused, with their original bytes kept. Non-zero is not automatically bad -- it means the boundary is doing its job -- but non-zero and rising is a producer that has drifted from the contract.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"dead letters\" FROM wim.dlq WHERE $__timeFilter(received_at)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Acceptance rate",
+      "description": "Stored events as a fraction of everything the ingest was handed. Reads 1 when nothing has been refused.",
+      "datasource": { "type": "prometheus", "uid": "wimsim-prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.99 },
+              { "color": "green", "value": 0.9999 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - (sum(increase(wim_dlq_total[$__range])) or vector(0)) / clamp_min(sum(increase(wim_events_detected_total[$__range])), 1)",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Dead letters by reason",
+      "description": "The reason code is what makes this actionable: `invalid_json` is a broken producer, `schema_validation_failed` is a version skew, `topic_mismatch` is a station publishing under someone else's name. 'Twelve rejections' is an alert; 'twelve, all schema_validation_failed' is a diagnosis.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 1 },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT reason_code AS metric, count(*) AS value FROM wim.dlq WHERE $__timeFilter(received_at) GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Most recent dead letters",
+      "description": "The original bytes, truncated. Kept so a rejection can be diagnosed rather than only counted.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT received_at, reason_code, topic, left(detail, 120) AS detail FROM wim.dlq WHERE $__timeFilter(received_at) ORDER BY received_at DESC LIMIT 50"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Rejections per second",
+      "description": "By reason, from the ingest's own counter. A step here and a flat line on the events panel is a producer that has started emitting something new.",
+      "datasource": { "type": "prometheus", "uid": "wimsim-prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } } },
+      "targets": [{ "refId": "A", "expr": "sum by (reason) (rate(wim_dlq_total[$__rate_interval]))", "legendFormat": "{{reason}}" }]
+    },
+
+    { "type": "row", "title": "Getting there and getting in", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 } },
+    {
+      "type": "timeseries",
+      "title": "Ingest lag",
+      "description": "Station timestamp to ingest wall clock. Clock skew is deliberately inside this number: a station whose clock is wrong lands its data in the wrong bucket on every other dashboard, and that has to be visible somewhere rather than quietly corrected. A negative-looking lag means a station clock running ahead.",
+      "datasource": { "type": "prometheus", "uid": "wimsim-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 5 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(wim_ingest_lag_ms_bucket[$__rate_interval])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(wim_ingest_lag_ms_bucket[$__rate_interval])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Publish latency and buffer depth",
+      "description": "Enqueue to broker acknowledgement, over a depth gauge. Depth is what an operator watches during an outage; latency is what they watch afterwards, while the backlog drains. Rows spooled by a previous process report no latency at all -- a wall-clock difference across a restart is a six-hour outage, not a publish latency.",
+      "datasource": { "type": "prometheus", "uid": "wimsim-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 5 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(wim_publish_latency_ms_bucket[$__rate_interval])))", "legendFormat": "publish p95" },
+        { "refId": "B", "expr": "wim_buffer_depth", "legendFormat": "buffer depth ({{station_id}})" },
+        { "refId": "C", "expr": "sum(rate(wim_publish_failures_total[$__rate_interval]))", "legendFormat": "publish failures/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Database write latency",
+      "description": "One upsert batch, by table. A rising p95 with a flat event rate is an index that has stopped fitting in memory or a hypertable that wants a smaller chunk interval.",
+      "datasource": { "type": "prometheus", "uid": "wimsim-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 5 } } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, table) (rate(wim_db_write_latency_ms_bucket[$__rate_interval])))", "legendFormat": "{{table}} p95" }
+      ]
+    },
+
+    { "type": "row", "title": "Holes in the stream", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 } },
+    {
+      "type": "timeseries",
+      "title": "Samples acquired and samples missing",
+      "description": "A dropped acquisition block does not announce itself; it looks like a slightly shorter recording. But every window spanning a gap has a truncated integral and a displaced peak, so an event computed across one is wrong in a way nothing downstream can detect. Any non-zero gap rate means the events in that interval should be treated as suspect.",
+      "datasource": { "type": "prometheus", "uid": "wimsim-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } } },
+      "targets": [
+        { "refId": "A", "expr": "sum by (station_id) (rate(wim_samples_acquired_total[$__rate_interval]))", "legendFormat": "{{station_id}} samples/s" },
+        { "refId": "B", "expr": "sum by (station_id) (rate(wim_sample_gaps_total[$__rate_interval]))", "legendFormat": "{{station_id}} MISSING/s" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Provenance of what is stored",
+      "description": "Every event names the config, the seed and the commit that produced it. A dirty working tree means the commit does not identify the code that ran, so those events are not citable -- which is a statement about a paper, not about the data.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "wimsim-timescale" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "citable" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "type": "color-background" }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "no": { "color": "red", "index": 0 }, "yes": { "color": "green", "index": 1 } } }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT left(provenance->>'config_hash', 12) AS config, provenance->>'seed' AS seed, coalesce(left(provenance->>'git_commit', 8), '(none)') AS commit, CASE WHEN (provenance->>'git_dirty')::boolean THEN 'no' ELSE 'yes' END AS citable, schema_version, count(*) AS events FROM wim.measurement_event WHERE $__timeFilter(ts_start) AND station_id IN ($station) GROUP BY 1, 2, 3, 4, 5 ORDER BY 6 DESC"
+        }
+      ]
+    }
+  ]
+}
