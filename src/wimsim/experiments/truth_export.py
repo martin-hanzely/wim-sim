@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-from wimsim.calibration import EstimatorState
 from wimsim.experiments.scoring import match_events
+from wimsim.observability.estimator import estimate_metrics
 from wimsim.observability.metrics import Metrics, build_metrics
 
+#: Re-exported. The estimate side lives in ``observability/estimator.py`` because the *edge* emits
+#: it whenever a profile is activated, and the edge must not import ``experiments`` -- but the two
+#: conventions still have to agree, so the test that checks they do imports both from here.
 __all__ = ["TruthExporter", "build_truth_metrics", "estimate_metrics"]
 
 
@@ -45,22 +48,6 @@ def build_truth_metrics(
     return build_metrics(
         station_id=station_id, run_id=run_id, truth_allowed=True, endpoint=endpoint
     )
-
-
-def estimate_metrics(metrics: Metrics, state: EstimatorState, **attributes: str) -> None:
-    """The estimator's own state as metrics, on the same axes as the truth overlay.
-
-    Lives beside the exporter so the two conventions are written in one file and cannot drift
-    apart. It needs no truth permission: it is emitted by the edge, every time a profile is
-    activated, and reads nothing but the estimator's own parameters.
-    """
-    metrics.set("wim_cal_gain_estimate", state.sensor_gain, **attributes)
-    metrics.set("wim_cal_bias_estimate", state.sensor_bias, **attributes)
-    metrics.set("wim_cal_temp_coeff_estimate", state.temp_coeff, **attributes)
-    metrics.set("wim_cal_update_count", state.update_count, **attributes)
-    trace = state.covariance_trace
-    if trace is not None:
-        metrics.set("wim_cal_covariance_trace", trace, **attributes)
 
 
 class TruthExporter:

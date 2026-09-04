@@ -8,6 +8,8 @@ Command surface:
     wimsim generate SCENARIO --out DIR     generate a run
     wimsim inspect DIR                     what is in a run directory
     wimsim run DIR --edge default          run the edge pipeline and score it against truth
+    wimsim edge-run DIR                    stream a run to the broker, traced and measured
+    wimsim load-truth DIR                  load a run's truth log into the truth.* schema
     wimsim plot-pass DIR --index 0         the phase-1 checkpoint figure
     wimsim plot-run DIR                    plant ground truth over the whole run
     wimsim verify-determinism DIR_A DIR_B  prove two runs are byte-identical
@@ -21,6 +23,7 @@ never needs a generated YAML file.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -624,6 +627,171 @@ def run(
             f"wrote score.{edge_cfg.name}.json and events.{edge_cfg.name}.parquet",
             fg=typer.colors.GREEN,
         )
+
+
+@app.command("edge-run")
+def edge_run(
+    run_dir: Annotated[Path, typer.Argument(help="A run directory produced by `generate`.")],
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config name.")] = "default",
+    broker: Annotated[str, typer.Option("--broker", help="MQTT broker host:port.")] = (
+        "localhost:1883"
+    ),
+    otlp: Annotated[
+        str | None,
+        typer.Option(
+            "--otlp",
+            help="OTLP collector endpoint. Defaults to $OTEL_EXPORTER_OTLP_ENDPOINT; "
+            "without either, the run is unobserved but still correct.",
+        ),
+    ] = None,
+    spool: Annotated[
+        Path | None, typer.Option("--spool", help="Persistent queue file. Default: DIR/spool.db")
+    ] = None,
+    speed: Annotated[
+        float | None,
+        typer.Option(
+            "--speed",
+            help="Replay speed multiplier. 1.0 is real time. Omit to run flat out, which is "
+            "right for a smoke test and wrong for looking at a dashboard.",
+        ),
+    ] = None,
+    calibration_passes: Annotated[
+        int | None, typer.Option("--calibration-passes", help="Passes reserved to fit the profile.")
+    ] = None,
+    set_: SetOpt = None,
+) -> None:
+    """Stream a run through the edge pipeline and out to the broker, with spans and metrics.
+
+    This is the phase-4 checkpoint made runnable: a pass published this way can be selected in Tempo
+    and followed from `acquire` through to `persist`. It is not a scoring command -- use `run` for
+    that -- and it deliberately leaves the truth log alone. `load-truth` puts truth in the database,
+    where the dashboards join it.
+    """
+    from wimsim.core.config import load_edge_config
+    from wimsim.experiments.live import run_live
+    from wimsim.experiments.offline import load_run
+    from wimsim.observability.logging import configure_logging
+    from wimsim.observability.metrics import build_metrics
+    from wimsim.observability.tracing import build_tracing
+    from wimsim.transport import PersistentQueue, Publisher
+    from wimsim.transport.mqtt import MqttTransport
+
+    try:
+        cfg, truth, _manifest = load_run(run_dir)
+        edge_cfg = load_edge_config(edge, overrides=list(set_ or []))
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    station_id = cfg.station.station_id
+    run_id = f"{cfg.scenario.name}-{cfg.config_hash()[:12]}"
+    host, _, port = broker.partition(":")
+
+    configure_logging(station_id=station_id, run_id=run_id, endpoint=otlp)
+    metrics = build_metrics(station_id=station_id, run_id=run_id, endpoint=otlp)
+    tracing = build_tracing(station_id=station_id, run_id=run_id, endpoint=otlp)
+
+    transport = MqttTransport(host=host, port=int(port or 1883), client_id=f"wimsim-{station_id}")
+    queue = PersistentQueue(spool or Path(run_dir) / "spool.db")
+    publisher = Publisher(
+        transport, queue=queue, station_id=station_id, metrics=metrics, tracing=tracing
+    )
+
+    typer.secho(f"{cfg.scenario.name} -> {broker}", bold=True)
+    _echo_kv(
+        [
+            ("station", station_id),
+            ("run id", run_id),
+            ("collector", otlp or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "(none)"),
+            ("traced", "yes" if tracing.enabled else "no"),
+            ("metrics", "yes" if metrics.enabled else "no"),
+            ("speed", f"{speed}x" if speed else "unpaced"),
+        ]
+    )
+
+    try:
+        transport.connect()
+    except Exception as exc:
+        typer.secho(f"cannot reach the broker at {broker}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(3) from exc
+
+    t0 = time.perf_counter()
+    try:
+        result = run_live(
+            cfg,
+            truth,
+            edge_cfg,
+            publisher=publisher,
+            metrics=metrics,
+            tracing=tracing,
+            calibration_passes=calibration_passes,
+            speed=speed,
+        )
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+    finally:
+        publisher.close()
+        transport.disconnect()
+    elapsed = time.perf_counter() - t0
+
+    typer.secho("published", bold=True)
+    _echo_kv(
+        [
+            ("profile", result.profile_id),
+            ("events", result.published),
+            ("still buffered", result.buffered),
+            ("elapsed", f"{elapsed:.1f} s"),
+            ("worst pacing lag", f"{result.max_lag_s:.3f} s" if speed else "n/a"),
+        ]
+    )
+    if result.buffered:
+        typer.secho(
+            f"{result.buffered} events are still spooled in {queue.path}; they will be replayed "
+            "the next time this station publishes.",
+            fg=typer.colors.YELLOW,
+        )
+
+
+@app.command("load-truth")
+def load_truth_cmd(
+    run_dir: Annotated[Path, typer.Argument(help="A run directory produced by `generate`.")],
+    database: Annotated[
+        str | None, typer.Option("--database", help="SQLAlchemy URL. Default: the local stack.")
+    ] = None,
+) -> None:
+    """Load a run's truth log into the ``truth.*`` schema, where the dashboards join it.
+
+    Kept as its own command rather than folded into `edge-run`, because the separation is the point:
+    a station never writes truth, and in replay mode there is none to write. The dashboards degrade
+    to showing only what was measured, which is the correct behaviour for real data.
+    """
+    from wimsim.experiments.live import load_truth
+    from wimsim.experiments.offline import load_run
+    from wimsim.storage import EventWriter
+
+    try:
+        cfg, _truth, _manifest = load_run(run_dir)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    run_id = f"{cfg.scenario.name}-{cfg.config_hash()[:12]}"
+    writer = EventWriter(database)
+    try:
+        passes, series = load_truth(
+            writer, run_dir, run_id=run_id, station_id=cfg.station.station_id
+        )
+    except Exception as exc:
+        typer.secho(f"database error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(3) from exc
+    finally:
+        writer.dispose()
+
+    typer.secho(
+        f"loaded {passes} truth passes and {series} plant states as run {run_id}",
+        fg=typer.colors.GREEN,
+    )
 
 
 def _write_events(path: Path, events: list) -> None:

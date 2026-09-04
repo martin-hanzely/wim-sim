@@ -5,6 +5,7 @@ is the hardware-in-the-loop stub. Everything downstream of this package is writt
 """
 
 from wimsim.source.base import BaseSource, SourceAdapter
+from wimsim.source.paced import PacedSource
 from wimsim.source.real_schema import ValidationReport, validate_run
 from wimsim.source.replay import ReplaySource
 from wimsim.source.serial import SerialSource
@@ -12,6 +13,7 @@ from wimsim.source.synthetic import SyntheticSource
 
 __all__ = [
     "BaseSource",
+    "PacedSource",
     "ReplaySource",
     "SerialSource",
     "SourceAdapter",

@@ -43,6 +43,7 @@ from wimsim.edge.acquisition import AcquisitionAgent
 from wimsim.edge.detect import EventDetector
 from wimsim.edge.estimate import MassEstimator
 from wimsim.edge.preprocess import Preprocessor
+from wimsim.observability.estimator import estimate_metrics
 from wimsim.observability.metrics import Metrics, NullSink
 from wimsim.observability.tracing import Tracing
 
@@ -113,6 +114,9 @@ class OfflinePipeline:
 
         self.events_emitted = 0
         self.axles_detected = 0
+        self.profile_version = 0
+        if profile is not None:
+            self._report_profile(profile)
 
     def _build_estimator(self, profile: CalibrationProfile) -> MassEstimator:
         name = profile.state.estimator
@@ -135,6 +139,19 @@ class OfflinePipeline:
         self.profile = profile
         self.preprocessor.set_profile(profile)
         self.estimator = self._build_estimator(profile)
+        self._report_profile(profile)
+
+    def _report_profile(self, profile: CalibrationProfile) -> None:
+        """Publish the active calibration to the metric stream.
+
+        The version is an activation ordinal rather than anything read off the profile: what the
+        dashboard needs is a step function it can annotate against, and the profile's identity is
+        already carried by the ``calibration.profile_activated`` event. A ``profile_id`` label here
+        would open a new series on every recalibration and make the step invisible.
+        """
+        self.profile_version += 1
+        self.metrics.set("wim_cal_profile_version", self.profile_version)
+        estimate_metrics(self.metrics, profile.state)
 
     def run(self, *, on_event: Callable[[MeasurementEvent], None] | None = None) -> list:
         """Acquire, preprocess, detect and estimate over the whole stream.

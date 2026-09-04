@@ -399,3 +399,41 @@ def test_an_untraced_ingest_still_works() -> None:
     consumer = _consumer(_FakeWriter())
     consumer.handle("edge/ST-1/sample", json.dumps(_sample_payload()).encode())
     assert consumer.flush() == 1
+
+
+def test_activating_a_profile_reports_the_calibration_it_activated(instrumented_pipeline) -> None:
+    """The calibration dashboard's centrepiece is the estimate drawn on the truth; that needs the
+    estimate to be in the metric stream at all, from the moment a profile becomes active."""
+    from wimsim.calibration import CalibrationProfile, EstimatorState
+
+    pipeline, sink = instrumented_pipeline
+    sink.records.clear()
+    state = EstimatorState(estimator="static_affine", gain=1.0 / 2.0e-4, bias=0.0, fitted=True)
+    pipeline.set_profile(
+        CalibrationProfile.from_state(state, profile_id="p-1", activated_ts_us=0, reason="test")
+    )
+
+    assert sink.values("wim_cal_gain_estimate") == pytest.approx([2.0e-4])
+    assert sink.values("wim_cal_bias_estimate") == pytest.approx([0.0])
+
+
+def test_the_profile_version_steps_on_each_activation(instrumented_pipeline) -> None:
+    """A step function is what an annotation can be drawn against. A profile_id label would open a
+    new series per recalibration and hide the step it exists to show."""
+    from wimsim.calibration import CalibrationProfile, EstimatorState
+
+    pipeline, sink = instrumented_pipeline
+    state = EstimatorState(estimator="static_affine", gain=1.0, bias=0.0, fitted=True)
+    for i in range(2):
+        pipeline.set_profile(
+            CalibrationProfile.from_state(
+                state, profile_id=f"p-{i}", activated_ts_us=0, reason="test"
+            )
+        )
+    # One for the bootstrap profile the fixture constructs with, then two more.
+    assert sink.values("wim_cal_profile_version") == [1.0, 2.0, 3.0]
+    assert all(
+        "profile_id" not in r.attributes
+        for r in sink.records
+        if r.name == "wim_cal_profile_version"
+    )
