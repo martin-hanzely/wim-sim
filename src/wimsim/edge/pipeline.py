@@ -283,7 +283,10 @@ class OfflinePipeline:
             self.events_emitted += 1
             self.axles_detected += detected.axle_count
             event = self.estimator.to_measurement_event(
-                detected, provenance=self.provenance, preprocessing=preprocessing
+                detected,
+                provenance=self.provenance,
+                preprocessing=preprocessing,
+                temp_c=detected.temp_c,
             )
             span.set_attribute("event_id", event.event_id)
             span.set_attribute("mass_kg", event.mass_kg)

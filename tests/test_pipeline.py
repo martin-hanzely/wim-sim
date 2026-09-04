@@ -374,3 +374,24 @@ def test_reference_observation_round_trip_through_the_estimator() -> None:
     est.fit(obs)
     profile = CalibrationProfile.from_state(est.state(), profile_id="p", activated_ts_us=0)
     assert profile.state.sensor_gain == pytest.approx(2e-4, rel=1e-6)
+
+
+def test_the_probe_temperature_reaches_the_emitted_event(short_run) -> None:
+    """It was being dropped between the detector and the estimator, so every event carried a null
+    temperature and `wim.measurement_event.temperature_c` was empty in the database.
+
+    ``StaticAffine`` does not use it -- the preprocessor already applied the thermal correction and
+    applying it twice would be a small, systematic, very hard to find error -- so nothing was
+    numerically wrong. What was missing is the *record*: an event that cannot say what temperature
+    it was measured at cannot be re-examined later, and phase 5's estimators fit a coefficient
+    against exactly this reading.
+    """
+    from wimsim.core.config import load_edge_config
+    from wimsim.experiments.offline import load_run, run_offline
+
+    cfg, truth, _ = load_run(short_run.out_dir)
+    result = run_offline(cfg, truth, load_edge_config("default"), calibration_passes=2)
+
+    temperatures = [e.temperature_c for e in result.events]
+    assert all(t is not None for t in temperatures)
+    assert all(0.0 < t < 60.0 for t in temperatures)

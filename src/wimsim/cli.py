@@ -9,6 +9,7 @@ Command surface:
     wimsim inspect DIR                     what is in a run directory
     wimsim run DIR --edge default          run the edge pipeline and score it against truth
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
+    wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
     wimsim plot-pass DIR --index 0         the phase-1 checkpoint figure
     wimsim plot-run DIR                    plant ground truth over the whole run
@@ -751,6 +752,83 @@ def edge_run(
             "the next time this station publishes.",
             fg=typer.colors.YELLOW,
         )
+
+
+@app.command()
+def ingest(
+    broker: Annotated[str, typer.Option("--broker", help="MQTT broker host:port.")] = (
+        "localhost:1883"
+    ),
+    database: Annotated[
+        str | None, typer.Option("--database", help="SQLAlchemy URL. Default: the local stack.")
+    ] = None,
+    station: Annotated[
+        str, typer.Option("--station", help="Station filter; '+' subscribes to all.")
+    ] = "+",
+    otlp: Annotated[str | None, typer.Option("--otlp", help="OTLP collector endpoint.")] = None,
+    seconds: Annotated[
+        float | None,
+        typer.Option("--seconds", help="Stop after this long. Omit to run until interrupted."),
+    ] = None,
+) -> None:
+    """Subscribe, validate, and write to TimescaleDB, dead-lettering whatever cannot be accepted.
+
+    The other half of `edge-run`: it continues each pass's trace from the context in the payload,
+    so `ingest` and `persist` land in the same Tempo trace as the `publish` that produced them.
+    """
+    from wimsim.ingest import IngestConsumer
+    from wimsim.observability.logging import configure_logging, get_logger
+    from wimsim.observability.metrics import build_metrics
+    from wimsim.observability.tracing import build_tracing
+    from wimsim.storage import EventWriter
+
+    host, _, port = broker.partition(":")
+    configure_logging(station_id=station, endpoint=otlp)
+    log = get_logger("ingest")
+    metrics = build_metrics(station_id=station, endpoint=otlp)
+    tracing = build_tracing(station_id=station, service_name="wimsim-ingest", endpoint=otlp)
+
+    writer = EventWriter(database)
+    consumer = IngestConsumer(
+        writer,
+        host=host,
+        port=int(port or 1883),
+        station_filter=station,
+        metrics=metrics,
+        tracing=tracing,
+    )
+
+    typer.secho(f"ingest {broker} -> {database or 'the local stack'}", bold=True)
+    _echo_kv([("stations", station), ("traced", "yes" if tracing.enabled else "no")])
+
+    deadline = None if seconds is None else time.monotonic() + seconds
+    try:
+        consumer.start()
+    except Exception as exc:
+        typer.secho(f"cannot subscribe: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(3) from exc
+
+    try:
+        while deadline is None or time.monotonic() < deadline:
+            consumer.poll()
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        typer.echo("")
+    finally:
+        consumer.stop()
+        stats = consumer.stats.as_dict()
+        writer.dispose()
+
+    log.info("ingest finished", extra=stats)
+    typer.secho("ingested", bold=True)
+    _echo_kv(
+        [
+            ("accepted", stats["accepted"]),
+            ("written", stats["written"]),
+            ("rejected", stats["rejected"]),
+            ("by reason", stats["by_reason"] or "none"),
+        ]
+    )
 
 
 @app.command("load-truth")

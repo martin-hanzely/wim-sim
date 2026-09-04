@@ -55,6 +55,7 @@ _BUFFER_FIELDS = (
     "ts_us",
     "comp",
     "raw",
+    "temp",
     "saturated",
     "invalid",
     "warming_up",
@@ -106,6 +107,12 @@ class DetectedEvent:
     zero_suspect: bool
     truncated: bool
     """True when the stream ended before the window closed, so the features are incomplete."""
+
+    temp_c: float | None = None
+    """Probe reading at the peak sample, degC. The estimator's temperature coefficient is applied
+    at this temperature, so a detection that does not carry one compensates at 0 degC -- which is
+    what silently happened until phase 4 noticed the stored column was always null. Optional
+    because a source need not have a temperature channel, not because it is unimportant."""
 
     channel_id: str = "ch0"
 
@@ -211,6 +218,7 @@ class EventDetector:
             "ts_us": block.ts_us,
             "comp": block.compensated_value,
             "raw": block.filtered_value - block.zero_estimate,
+            "temp": block.temperature_c,
             "saturated": block.saturated,
             "invalid": ~block.valid,
             "warming_up": block.warming_up,
@@ -311,6 +319,7 @@ class EventDetector:
                 area=float(sum(a.area for a in axles)),
                 raw_peak=max(a.raw_peak for a in axles),
                 raw_area=float(sum(a.raw_area for a in axles)),
+                temp_c=self._temp_at(biggest.t_peak_s),
                 axles=axles,
                 axle_dt_s=tuple(
                     axles[i + 1].t_peak_s - axles[i].t_peak_s for i in range(len(axles) - 1)
@@ -323,6 +332,19 @@ class EventDetector:
                 channel_id=self._channel_id,
             )
         ]
+
+    def _temp_at(self, t_peak_s: float) -> float | None:
+        """The probe reading at the sample nearest the peak.
+
+        Nearest rather than an average over the window: the coefficient corrects a gain, and the
+        gain that produced the peak is the one in force at the peak.
+        """
+        t_s = self._buf["t_s"]
+        if t_s.size == 0:
+            return None
+        i = int(np.abs(t_s - t_peak_s).argmin())
+        value = float(self._buf["temp"][i])
+        return None if np.isnan(value) else value
 
     def _epoch_offset(self) -> int:
         """Microseconds between ``t_s = 0`` and the epoch, read off the buffer's own stamps."""

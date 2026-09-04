@@ -390,3 +390,28 @@ def test_detector_counts_what_it_rejected() -> None:
     assert det.rejected_too_short == 1
     assert det.rejected_too_long == 1
     assert det.detected == 0
+
+
+def test_the_detection_carries_the_temperature_at_its_peak() -> None:
+    """Without it the estimator's temperature coefficient can never be applied.
+
+    ``MassEstimator.estimate`` takes a ``temp_c`` and defaults it to 0.0, and nothing was passing
+    one: every stored event had a null temperature and every compensation was computed at 0 degC.
+    Harmless for ``StaticAffine``, whose coefficient is fixed at zero, and silently wrong for the
+    temperature-compensating estimators phase 5 adds -- so the detection carries it now.
+    """
+    n = int(2.0 * FS)
+    signal = _gauss(n, at=1.0, fwhm_s=0.01, amplitude=1.0)
+    block = _pre(signal)
+    # A temperature that varies, so reading the wrong sample gives a visibly wrong answer.
+    object.__setattr__(block, "temperature_c", 10.0 + 10.0 * block.t_s)
+
+    events = list(detector_over(block))
+    (event,) = events
+    assert event.temp_c == pytest.approx(20.0, abs=0.5)  # t = 1.0 s -> 10 + 10*1.0
+
+
+def detector_over(block: PreprocessedBlock):
+    detector = EventDetector(_cfg(), sample_rate_hz=FS)
+    yield from detector.process(block)
+    yield from detector.flush()

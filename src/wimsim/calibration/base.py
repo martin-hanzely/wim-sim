@@ -16,14 +16,22 @@ silently implied:
 
 ``sensor_gain`` / ``sensor_bias``
     The **sensor side**: ``feature = sensor_bias + sensor_gain * mass``, sensor units per kg and
-    sensor units. This is the convention the truth log uses, so the calibration dashboard can draw
-    the estimate on the same axes as ``k_true`` and ``q_true`` without either side inverting.
+    sensor units. This is the convention the truth log uses.
 
 They are exact algebraic inverses of each other, so no information is duplicated. Note that they
 are *not* what you would get by running least squares in the other direction: regressing mass on
 feature and regressing feature on mass give different answers whenever the feature carries noise
 (regression dilution). Fitting in the prediction direction is the deliberate choice, since that is
 the error the experiment reports.
+
+**Only the gain is comparable with the truth log.** ``sensor_gain`` sits on top of ``k_true`` --
+measured at 2.0002e-4 against a true 2.0e-4 on the phase-4 demo run, which is what makes the
+calibration dashboard's headline overlay meaningful. ``sensor_bias`` is *not* comparable with
+``q_true``, because the preprocessor's zero-line tracker has already removed the plant's zero line
+before the feature is taken; what the estimator fits is the small residual offset the tracker left
+behind (order 1e-4 against a ``q_true`` of 0.05). Drawing them on one axis would show a flat line
+and a near-zero line and read as a badly wrong estimator when it is in fact a correct one, so the
+dashboard keeps them apart and says why.
 """
 
 from __future__ import annotations
@@ -128,7 +136,9 @@ class EstimatorState:
 
     @property
     def sensor_bias(self) -> float:
-        """Sensor units. Directly comparable with ``q_true`` in the truth log."""
+        """Sensor units. *Not* directly comparable with ``q_true``: the preprocessor's zero-line
+        tracker removes the plant's zero line before the feature is taken, so this is the residual
+        the tracker left behind, not q. See the module docstring."""
         if self.gain == 0.0:
             return math.nan
         return -self.bias / self.gain
