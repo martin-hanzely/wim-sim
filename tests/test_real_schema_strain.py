@@ -158,3 +158,47 @@ def test_a_recording_with_passes_is_not_flagged(tmp_path: Path) -> None:
     assert report.ok
     assert not any("no excursion" in w.lower() for w in report.warnings)
     assert report.stats["max_excursion_sigma"] > 10.0
+
+
+def test_a_negative_going_excursion_is_found(tmp_path: Path) -> None:
+    """Regression: the real sensor deflects DOWNWARD under load.
+
+    The first scale estimator read the low quantiles, which is exactly where a compressive
+    excursion lives -- so the excursion inflated the very scale it was being measured against and
+    came out looking like noise. It reported "no vehicle passes" on seven of eight recordings that
+    each contain several.
+    """
+    n = 25_000
+    values = 110e-6 + 1.4e-6 * np.random.default_rng(3).standard_normal(n)
+    t = np.arange(n)
+    values -= 14e-6 * np.exp(-0.5 * ((t - 12000) / 2000.0) ** 2)  # a vehicle, downward
+    report = validate_run(_write(tmp_path / "down", values=values, n=n))
+    assert report.ok
+    assert not any("no excursion" in w.lower() for w in report.warnings)
+    assert report.stats["max_excursion_sigma"] > 10.0
+
+
+def test_excursions_are_found_when_the_sensor_is_loaded_much_of_the_time(tmp_path: Path) -> None:
+    """A vehicle parked on the sensor makes a third of the record 'loaded'.
+
+    Any scale or baseline estimated from the record as a whole is then contaminated by the very
+    thing it is meant to measure. One of the eight recordings starts with the car already in place.
+    """
+    n = 60_000
+    rng = np.random.default_rng(4)
+    values = 110e-6 + 1.4e-6 * rng.standard_normal(n)
+    values[:20_000] -= 13e-6  # the car is already there when recording starts
+    report = validate_run(_write(tmp_path / "occupied", values=values, n=n))
+    assert report.ok
+    assert not any("no excursion" in w.lower() for w in report.warnings)
+    assert report.stats["max_excursion_sigma"] > 10.0
+
+
+def test_slow_drift_alone_is_not_mistaken_for_a_pass(tmp_path: Path) -> None:
+    """The complement: a baseline that wanders over a minute is drift, not a vehicle."""
+    n = 60_000
+    rng = np.random.default_rng(5)
+    values = 110e-6 + 1.4e-6 * rng.standard_normal(n) + np.linspace(0, 8e-6, n)
+    report = validate_run(_write(tmp_path / "drifty", values=values, n=n))
+    assert report.ok
+    assert any("no excursion" in w.lower() for w in report.warnings)

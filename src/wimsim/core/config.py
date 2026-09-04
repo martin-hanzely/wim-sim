@@ -108,7 +108,17 @@ class SensorConfig(_Base):
         0.22,
         gt=0,
         description="Tyre contact-patch length along the direction of travel, m. With the "
-        "sensor treated as a line, this sets the pulse width: FWHM = contact_patch / speed.",
+        "sensor treated as a line, this sets the pulse width: FWHM = contact_patch / speed. "
+        "Used when pulse.width_source is 'contact_patch'.",
+    )
+    influence_length_m: float = Field(
+        1.0,
+        gt=0,
+        description="Length of the structural member's influence line, m -- the distance over "
+        "which an approaching load measurably deflects the instrumented element. Used when "
+        "pulse.width_source is 'influence_length'. The real installation's value is NOT yet known: "
+        "the recordings fix the ratio of pulse width to inter-gauge delay at 1.84, but pinning "
+        "either in metres needs the station geometry.",
     )
 
 
@@ -315,7 +325,15 @@ class NoiseConfig(_Base):
 
 
 class PulseConfig(_Base):
-    shape: Literal["gaussian", "emg", "ringing"] = "gaussian"
+    shape: Literal["gaussian", "emg", "ringing", "influence_line"] = "gaussian"
+    width_source: Literal["contact_patch", "influence_length"] = Field(
+        "contact_patch",
+        description="What sets the pulse width. 'contact_patch' models a sensor measuring contact "
+        "force, so the width is the tyre footprint divided by speed -- milliseconds. "
+        "'influence_length' models a strain gauge on a structural member, so the width is the "
+        "member's influence length divided by speed -- often a hundred times longer. This is a "
+        "switch between two different instruments, not a tuning knob; see docs/sim-to-real.md.",
+    )
     emg_tau_ratio: float = Field(
         0.6,
         gt=0,

@@ -133,6 +133,7 @@ docs/                 signal-model.md, real-data-schema.md
 - [`docs/infrastructure.md`](docs/infrastructure.md) -- the phase-3 stack: what each service is
   for, how an event travels from the generator to a dashboard, and the failure modes the
   publisher and ingest are built around.
-- [`docs/sim-to-real.md`](docs/sim-to-real.md) -- what the first real recording says about the
-  model, what it corrected, and what it cannot answer yet.
+- [`docs/sim-to-real.md`](docs/sim-to-real.md) -- what the eight real recordings say about the
+  model. The headline: the hardware is a structural strain sensor, not the contact-force sensor
+  the buildspec assumes, and speed *is* observable from its two gauges.
 - [`docs/determinism.md`](docs/determinism.md) -- how reproducibility is actually enforced.

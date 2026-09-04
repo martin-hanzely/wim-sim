@@ -1,0 +1,58 @@
+# The real instrumented platform at ST-CINTRON-1, as far as the 2026-02-09 recordings pin it down.
+#
+# THIS IS A DIFFERENT INSTRUMENT FROM THE OTHER STATIONS. `default` and `endurance` model a sensor
+# that measures contact force under a tyre: pulses milliseconds wide, set by the tyre footprint.
+# This one is a pair of strain gauges on a structural member, whose response is the member's
+# influence line -- roughly a second wide at the low speeds tested, and set by the structure rather
+# than the tyre. See docs/sim-to-real.md.
+#
+# WHAT IS MEASURED AND WHAT IS ASSUMED
+#
+#   measured   sample rate 25 kHz, two strain channels plus two probes
+#   measured   baseline 111.7 ue (Tenzo1) and 120.8 ue (Tenzo2)
+#   measured   sample-to-sample noise ~0.5 ue, mains-dominated in band
+#   measured   Tenzo2/Tenzo1 amplitude ratio 2.6-3.0, stable across 22 crossings
+#   measured   pulse FWHM = 1.84 x the inter-gauge delay (r = +0.965, geometry only)
+#   measured   peak amplitude independent of speed; Citroen/Fabia ratio 1.44 (p ~ 1e-3)
+#   ASSUMED    gauge factor 2.0, quarter bridge -- not in the export
+#   UNKNOWN    influence_length_m and the gauge separation, in metres. Only their RATIO is fixed
+#              by the data. Everything below that depends on an absolute length is provisional.
+#   UNKNOWN    k0 -- no reference mass has been weighed yet, so strain per kg is not established.
+
+station_id: ST-CINTRON-1
+sensor_id: Tenzo2          # the more sensitive of the two gauges
+description: >
+  Instrumented plank/slab platform, low-speed drive-over. Two strain gauges separated along the
+  direction of travel, so speed IS observable here -- unlike the single-sensor stations.
+
+sample_rate_hz: 25000.0
+lane_count: 1
+
+adc:
+  bits: 24                 # placeholder: the export is strain, not counts, so no converter is described
+  range_min: -2.0
+  range_max: 2.0
+  unit: mV/V
+
+sensor:
+  # PROVISIONAL. With gauge factor 2.0 and a quarter bridge, 1 ue = 5e-4 mV/V. The observed 13 ue
+  # peak for the Citroen is then 6.5e-3 mV/V. Turning that into mV/V per kg needs a weighed
+  # vehicle, which does not exist yet, so k0 here is a placeholder chosen to put a ~1300 kg axle at
+  # the observed amplitude and MUST NOT be quoted as a calibration.
+  k0: 5.0e-6
+  alpha0_per_c: -2.0e-4
+  alpha_walk_sigma_per_sqrt_s: 0.0
+  t_ref_c: 20.0
+  contact_patch_m: 0.22    # unused here; width_source is influence_length
+  influence_length_m: 1.0  # UNKNOWN in metres; only FWHM/delay = 1.84 is measured
+
+thermal:
+  tau_thermal_s: 1800.0
+  t_sensor_init_c: null
+
+temperature_probe:
+  enabled: true
+  lag_s: 120.0
+  offset_c: 0.0
+  noise_sigma_c: 0.01      # measured: the probes are quiet and update at ~200 Hz
+  resolution_c: 0.0

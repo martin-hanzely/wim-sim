@@ -94,6 +94,50 @@ def test_ringing_oscillates_only_after_the_impact() -> None:
     assert (y[t > 0] < -1e-3).any()
 
 
+def test_influence_line_is_parabolic_with_compact_support() -> None:
+    """The shape the real sensor actually produces.
+
+    Chosen by fitting six real crossings, not by eye: a clipped parabola gives a 5.2 % normalised
+    RMS residual against 6.9 % for a raised cosine, 8.7 % for a Gaussian and 10.2 % for the textbook
+    triangular influence line.
+    """
+    cfg = PulseConfig(shape="influence_line")
+    fwhm = 0.5
+    t = np.linspace(-fwhm, fwhm, 200_001)
+    y = pulse_waveform(t, fwhm, cfg)
+
+    assert y.max() == pytest.approx(1.0, abs=1e-6)
+    above = t[y >= 0.5]
+    assert (above.max() - above.min()) == pytest.approx(fwhm, rel=1e-3)
+
+    half_support = fwhm / np.sqrt(2.0)
+    assert (
+        pulse_waveform(np.array([-1.01 * half_support, 1.01 * half_support]), fwhm, cfg).max()
+        == 0.0
+    )
+    # a parabola, not a Gaussian: check the curve away from the peak
+    assert pulse_waveform(np.array([half_support / 2]), fwhm, cfg)[0] == pytest.approx(0.75)
+
+
+def test_influence_line_is_symmetric() -> None:
+    cfg = PulseConfig(shape="influence_line")
+    t = np.linspace(-0.4, 0.4, 8001)
+    y = pulse_waveform(t, 0.5, cfg)
+    np.testing.assert_allclose(y, y[::-1], atol=1e-12)
+
+
+def test_influence_line_is_wider_than_a_contact_pulse_of_the_same_fwhm_setting() -> None:
+    """Not about the shape but about what sets the width.
+
+    A contact-force sensor's pulse width comes from the tyre footprint -- centimetres. A structural
+    sensor's comes from the influence length of the member -- metres. At the same speed that is two
+    orders of magnitude, which is why width_source exists as a switch rather than a tuning knob.
+    """
+    patch, influence = 0.22, 1.0
+    speed = 10.0
+    assert fwhm_for(speed, influence) == pytest.approx(4.5 * fwhm_for(speed, patch), rel=0.02)
+
+
 def test_pulse_is_zero_outside_its_support() -> None:
     cfg = PulseConfig(shape="gaussian", support_widths=4.0)
     fwhm = 0.01

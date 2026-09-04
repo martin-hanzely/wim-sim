@@ -182,8 +182,13 @@ def schedule_passes(cfg: RunConfig, rngs: RngStreams) -> list[VehiclePass]:
             rng_dyn.uniform(0.0, 2.0 * np.pi)
             applied = static.copy()
 
-        patch = vc.contact_patch_m or station.sensor.contact_patch_m
-        fwhm = fwhm_for(speed_mps, patch)
+        if sc.pulse.width_source == "influence_length":
+            # A structural response is a property of the member, not of the tyre, so the per-class
+            # contact patch is deliberately ignored here rather than blended in.
+            length = station.sensor.influence_length_m
+        else:
+            length = vc.contact_patch_m or station.sensor.contact_patch_m
+        fwhm = fwhm_for(speed_mps, length)
         t_peak, peak_load, area_load = _peak_and_area(axle_times, applied, fwhm, sc.pulse)
 
         passes.append(

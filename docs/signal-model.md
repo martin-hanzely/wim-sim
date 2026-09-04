@@ -92,11 +92,20 @@ Two consequences worth stating out loud:
 
 ### The three shapes
 
+**Three of these four model a contact-force sensor; the fourth models a different instrument.**
+`gaussian`, `emg` and `ringing` describe a sensor that measures the force under a tyre, so their
+width is the footprint divided by speed -- milliseconds. `influence_line` describes a strain gauge on
+a structural member, whose width is the member's *influence length* divided by speed, often a
+hundred times longer, with the axles of a car overlapped into a single envelope. Which one applies is
+a property of the hardware, selected by `pulse.width_source`. See `docs/sim-to-real.md`: the real
+station is the second kind.
+
 | shape | form | why |
 |---|---|---|
 | `gaussian` | `exp(-t^2 / 2 sigma^2)`, `sigma = FWHM / 2 sqrt(2 ln 2)` | The idealisation. Symmetric, no tail. Use for sanity baselines only. |
 | `emg` | Gaussian convolved with a one-sided exponential of time constant `tau = emg_tau_ratio * FWHM` | Real pad and pavement sensors show a trailing tail as the structure relaxes behind the axle. Right-skewed, which biases any symmetric-window estimator. |
 | `ringing` | Gaussian plus a damped sinusoid `A exp(-zeta w_n t) sin(w_d t)` starting at the impact instant | The axle excites a structural mode. This is the shape that makes naive peak-picking hard, and the only one where the maximum is not at an axle time. |
+| `influence_line` | clipped parabola `1 - (t/h)^2`, `h = FWHM/sqrt(2)` | The response of a strain gauge on a structural member. **Chosen by fitting six real crossings, not by eye:** normalised RMS residual 5.2 %, against 6.9 % for a raised cosine, 8.7 % for a Gaussian and 10.2 % for the textbook triangular influence line. The residual is real structure -- overlapping axles, a non-ideal member -- so it is a defensible primitive rather than a claim of exactness. |
 
 Implementation notes that matter:
 

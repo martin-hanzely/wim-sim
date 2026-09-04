@@ -197,24 +197,47 @@ def _validate_run_yaml(path: Path, report: ValidationReport) -> dict[str, Any]:
 def _report_excursions(channel: str, v: np.ndarray, report: ValidationReport) -> None:
     """Say whether anything actually drove over the sensor.
 
-    The first real recording contained no vehicles at all -- 60 s of baseline. That is a perfectly
-    good noise-characterisation run and a useless calibration run, and the difference is worth
-    stating at the door rather than discovering it after fitting a gain to nothing.
+    One recording contained no vehicles at all -- 60 s of baseline. That is a perfectly good
+    noise-characterisation run and a useless calibration run, and the difference is worth stating at
+    the door rather than discovering it after fitting a gain to nothing.
 
-    Measured as the largest deviation from a running median, in units of the channel's own robust
-    noise scale. A vehicle is hundreds of deviations; noise is a handful.
+    Two things about this are harder than they look, and the first implementation got both wrong on
+    real data -- reporting "no vehicle passes" for seven of eight recordings that each contain
+    several.
+
+    **The noise scale must not be estimated from quantiles of the record.** A vehicle excursion sits
+    in one tail, so reading that tail lets the excursion inflate the very scale it is being measured
+    against. Worse, the real sensor deflects *downward* under load, so the low-quantile estimator
+    was reading exactly the wrong tail. The scale here comes from the median absolute **successive
+    difference**, which is blind to any signal slower than the sample rate -- a vehicle, a drift, a
+    parked car -- and sees only the sample-to-sample noise.
+
+    **The baseline must be global, not rolling.** This is the opposite of the intuition, and the
+    second thing the first implementation got wrong: a rolling median wide enough to reject drift is
+    narrower than a vehicle sitting on the sensor for a third of the recording, so it tracks the
+    loaded level and subtracts the event away. A plain median is unbiased while under half the
+    record is loaded, which is the regime these recordings are in.
+
+    The cost is that a *very* large slow drift would read as a pass. Real drift here is about
+    1 microstrain a minute against excursions of thirteen, so that is not close -- but it is the
+    assumption this check rests on.
     """
-    if v.size < 256:
+    if v.size < 1024:
         return
-    # median of a coarse decimation stands in for the baseline: cheap, and drift over a recording is
-    # slow compared with a pass
-    coarse = v[:: max(v.size // 4096, 1)]
-    baseline = float(np.median(coarse))
-    q05, q25 = np.quantile(coarse, [0.05, 0.25])
-    sigma = float(q25 - q05) / 0.9704
+
+    # Sample-to-sample noise: sigma = 1.4826 * median|diff| / sqrt(2). Immune to slow signal of any
+    # amplitude, which is the whole point.
+    step = max(v.size // 200_000, 1)
+    thin = v[::step]
+    diffs = np.abs(np.diff(thin))
+    sigma = float(np.median(diffs)) * 1.4826 / np.sqrt(2.0)
     if sigma <= 0:
         return
-    excursion = float(np.max(np.abs(v - baseline)) / sigma)
+
+    coarse = v[:: max(v.size // 4096, 1)]
+    deviation = np.abs(coarse - float(np.median(coarse)))
+    excursion = float(deviation.max() / sigma)
+
     report.stats[f"max_excursion_sigma[{channel}]"] = round(excursion, 1)
     report.stats["max_excursion_sigma"] = max(
         report.stats.get("max_excursion_sigma", 0.0), round(excursion, 1)

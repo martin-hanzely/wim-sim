@@ -22,6 +22,17 @@ Three shapes, in increasing order of realism:
 ``ringing``
     Gaussian plus a damped sinusoid triggered at the impact instant, representing the structural
     mode the axle excites. This is the shape that makes naive peak-picking hard.
+``influence_line``
+    A clipped parabola. **This is a different instrument, not a different tyre.** The three shapes
+    above model a sensor that measures contact force directly, so their width comes from the tyre
+    footprint and is milliseconds wide. This one models a strain gauge on a structural member, whose
+    response is the member's influence line: the width comes from the *influence length* of the
+    structure -- metres, not centimetres -- and the two axles of a car may not be resolved at all.
+
+    The parabola was chosen by fitting six real crossings, not by eye. Normalised RMS residuals:
+    parabola 5.2 %, raised cosine 6.9 %, Gaussian 8.7 %, textbook triangular influence line 10.2 %.
+    The remaining 5 % is real structure -- two overlapping axles and a member that is not an ideal
+    simply-supported beam -- so this is a defensible primitive, not a claim of exactness.
 """
 
 from __future__ import annotations
@@ -75,8 +86,21 @@ def _ringing(
     return base + np.where(t >= 0.0, ring, 0.0)
 
 
+def _parabolic(t: np.ndarray, fwhm: float) -> np.ndarray:
+    """Clipped parabola of unit peak. ``1 - (t/h)^2`` with ``h = fwhm/sqrt(2)``.
+
+    The half-width follows from the FWHM convention the other shapes use: the parabola reaches half
+    its peak at ``t = h/sqrt(2)``, so ``FWHM = h*sqrt(2)``.
+    """
+    half = fwhm / np.sqrt(2.0)
+    u = t / half
+    return np.clip(1.0 - u * u, 0.0, None)
+
+
 def _raw(t: np.ndarray, fwhm: float, cfg: PulseConfig) -> np.ndarray:
     sigma = fwhm * FWHM_TO_SIGMA
+    if cfg.shape == "influence_line":
+        return _parabolic(t, fwhm)
     if cfg.shape == "gaussian":
         return _gaussian(t, sigma)
     if cfg.shape == "emg":
@@ -93,7 +117,7 @@ def _peak_scale(fwhm: float, cfg: PulseConfig) -> float:
     form. Cached on the parameters that actually determine the shape; the grid is fixed, so the
     result is deterministic.
     """
-    if cfg.shape == "gaussian":
+    if cfg.shape in ("gaussian", "influence_line"):
         return 1.0
     key: tuple
     if cfg.shape == "emg":
