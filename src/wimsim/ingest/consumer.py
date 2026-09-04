@@ -30,6 +30,11 @@ from wimsim.transport.topics import wildcard_for
 
 __all__ = ["IngestConsumer", "IngestStats"]
 
+#: Where a queued row remembers the ``ingest`` span that accepted it, so the ``persist`` span
+#: emitted at flush time can be its child rather than its sibling. Underscored and popped before
+#: the row reaches the writer: it is bookkeeping, not payload.
+_PERSIST_PARENT = "_persist_parent"
+
 
 class IngestStats:
     __slots__ = ("accepted", "by_reason", "flush_failures", "flushes", "rejected", "written")
@@ -118,6 +123,11 @@ class IngestConsumer:
             outcome.payload, "ingest", schema_topic=outcome.schema_topic
         ):
             self._observe_lag(outcome.payload)
+            # Captured inside the span, used at flush time. A batch writes many rows, so `persist`
+            # cannot be opened inside any one message's span -- but parenting it to the *publish*
+            # context instead would draw it as a sibling of `ingest`, which reads as two concurrent
+            # operations when one follows the other.
+            persist_parent = self.tracing.current_traceparent()
 
             if outcome.schema_topic not in self._WRITERS:
                 # A valid payload of a type nothing persists yet -- calibration.profile_activated
@@ -127,6 +137,8 @@ class IngestConsumer:
                 return
 
             self.stats.accepted += 1
+            if persist_parent is not None:
+                outcome.payload[_PERSIST_PARENT] = persist_parent
             with self._lock:
                 self._pending[outcome.schema_topic].append(outcome.payload)
                 due = sum(len(v) for v in self._pending.values()) >= self.batch_size
@@ -166,6 +178,11 @@ class IngestConsumer:
         if not batches:
             return 0
 
+        parents = {
+            schema_topic: [row.pop(_PERSIST_PARENT, None) for row in rows]
+            for schema_topic, rows in batches.items()
+        }
+
         written = 0
         failed: dict[str, list[dict]] = {}
         for schema_topic, rows in batches.items():
@@ -183,7 +200,7 @@ class IngestConsumer:
             self.metrics.observe(
                 "wim_db_write_latency_ms", (finished_ns - started_ns) / 1e6, table=schema_topic
             )
-            self._record_persist_spans(rows, started_ns, finished_ns)
+            self._record_persist_spans(parents[schema_topic], len(rows), started_ns, finished_ns)
 
         if failed:
             with self._lock:
@@ -195,26 +212,28 @@ class IngestConsumer:
         self._last_flush = time.monotonic()
         return written
 
-    def _record_persist_spans(self, rows: list[dict], started_ns: int, finished_ns: int) -> None:
+    def _record_persist_spans(
+        self, parents: list[str | None], batch_size: int, started_ns: int, finished_ns: int
+    ) -> None:
         """One ``persist`` span per row, over the batch's real interval.
 
         A flush writes many passes at once, so a single span could only belong to one of their
-        traces and the rest would end at ``publish`` with no visible database write. Each row
+        traces and the rest would end at ``ingest`` with no visible database write. Each row
         therefore gets its own span over the interval the batch actually took, labelled with how
         many rows it shared that interval with -- which is the honest statement of what happened,
         rather than a fabricated per-row duration.
         """
         if not self.tracing.enabled:
             return
-        for row in rows:
-            if row.get("traceparent") is None:
+        for parent in parents:
+            if parent is None:
                 continue
             self.tracing.record(
                 "persist",
                 start_time_ns=started_ns,
                 end_time_ns=finished_ns,
-                payload=row,
-                batch_size=len(rows),
+                payload={"traceparent": parent},
+                batch_size=batch_size,
             )
 
     @property

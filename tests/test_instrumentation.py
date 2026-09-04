@@ -437,3 +437,45 @@ def test_the_profile_version_steps_on_each_activation(instrumented_pipeline) -> 
         for r in sink.records
         if r.name == "wim_cal_profile_version"
     )
+
+
+def test_persist_is_a_child_of_the_ingest_that_queued_the_row() -> None:
+    """Parenting it to the publish context instead would draw persist as a *sibling* of ingest --
+    two concurrent operations in the waterfall, when in fact one follows the other.
+
+    The batch is the reason it is not simply nested: a flush writes many rows, so the span cannot
+    be opened inside any one message's ingest span. Each row remembers which ingest queued it.
+    """
+    tracing, exporter = _sdk_tracing()
+    consumer = _consumer(_FakeWriter(), tracing=tracing)
+
+    trace_id = "c" * 32
+    payload = _sample_payload() | {
+        "trace_id": trace_id,
+        "traceparent": f"00-{trace_id}-{'2' * 16}-01",
+    }
+    consumer.handle("edge/ST-1/sample", json.dumps(payload).encode())
+    consumer.flush()
+
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    assert spans["persist"].parent.span_id == spans["ingest"].context.span_id
+
+
+def test_the_persist_parent_never_reaches_the_writer() -> None:
+    """It is bookkeeping, not payload. A row that carried it into the database would be storing a
+    span id in a column nobody declared."""
+    tracing, _ = _sdk_tracing()
+    writer = _FakeWriter()
+    consumer = _consumer(writer, tracing=tracing)
+
+    trace_id = "d" * 32
+    payload = _sample_payload() | {
+        "trace_id": trace_id,
+        "traceparent": f"00-{trace_id}-{'3' * 16}-01",
+    }
+    consumer.handle("edge/ST-1/sample", json.dumps(payload).encode())
+    consumer.flush()
+
+    (row,) = writer.rows
+    assert not any(key.startswith("_") for key in row)
+    assert row["traceparent"] == payload["traceparent"]
