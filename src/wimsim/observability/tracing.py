@@ -32,6 +32,7 @@ from typing import Any
 __all__ = [
     "STAGES",
     "Tracing",
+    "active_trace_id",
     "build_tracing",
     "format_traceparent",
     "parse_traceparent",
@@ -91,6 +92,23 @@ def trace_id_of(payload: Any) -> str | None:
     if isinstance(payload, dict):
         return payload.get("trace_id")
     return getattr(payload, "trace_id", None)
+
+
+def active_trace_id() -> str | None:
+    """The trace id of whatever span is currently active, from anywhere, with no ``Tracing`` in
+    hand.
+
+    This exists for the log formatter. Making every logging call site pass its trace id would mean
+    most of them eventually do not, and a line with no trace id cannot be joined to the pass it
+    describes. Reading the ambient context needs the API package but no provider, so it costs
+    nothing when tracing is off.
+    """
+    try:
+        from opentelemetry import trace
+    except ImportError:  # pragma: no cover -- the API is a declared dependency
+        return None
+    ctx = trace.get_current_span().get_span_context()
+    return format(ctx.trace_id, "032x") if ctx.is_valid else None
 
 
 # ----------------------------------------------------------------------------------------------
