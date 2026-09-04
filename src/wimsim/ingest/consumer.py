@@ -23,6 +23,8 @@ from typing import Any, ClassVar
 import paho.mqtt.client as mqtt
 
 from wimsim.ingest.router import Rejection, RoutedPayload, Router
+from wimsim.observability.metrics import Metrics, NullSink
+from wimsim.observability.tracing import Tracing
 from wimsim.storage.writer import EventWriter
 from wimsim.transport.topics import wildcard_for
 
@@ -74,7 +76,11 @@ class IngestConsumer:
         flush_interval_s: float = 1.0,
         router: Router | None = None,
         client_id: str = "wimsim-ingest",
+        metrics: Metrics | None = None,
+        tracing: Tracing | None = None,
     ) -> None:
+        self.metrics = metrics or Metrics(NullSink())
+        self.tracing = tracing or Tracing(None)
         self.writer = writer
         self.host = host
         self.port = port
@@ -103,23 +109,42 @@ class IngestConsumer:
         if isinstance(outcome, Rejection):
             self.stats.rejected += 1
             self.stats.by_reason[outcome.reason] += 1
+            self.metrics.add("wim_dlq_total", 1, reason=outcome.reason)
             self.writer.write_dlq(mqtt_topic, raw, outcome.reason, outcome.detail)
             return
 
         assert isinstance(outcome, RoutedPayload)
-        if outcome.schema_topic not in self._WRITERS:
-            # A valid payload of a type nothing persists yet -- calibration.profile_activated and
-            # calibration.drift_detected arrive in phase 5. Counted, not dead-lettered: it is not
-            # malformed, we simply have nowhere to put it.
-            self.stats.accepted += 1
-            return
+        with self.tracing.continue_from(
+            outcome.payload, "ingest", schema_topic=outcome.schema_topic
+        ):
+            self._observe_lag(outcome.payload)
 
-        self.stats.accepted += 1
-        with self._lock:
-            self._pending[outcome.schema_topic].append(outcome.payload)
-            due = sum(len(v) for v in self._pending.values()) >= self.batch_size
+            if outcome.schema_topic not in self._WRITERS:
+                # A valid payload of a type nothing persists yet -- calibration.profile_activated
+                # and calibration.drift_detected arrive in phase 5. Counted, not dead-lettered: it
+                # is not malformed, we simply have nowhere to put it.
+                self.stats.accepted += 1
+                return
+
+            self.stats.accepted += 1
+            with self._lock:
+                self._pending[outcome.schema_topic].append(outcome.payload)
+                due = sum(len(v) for v in self._pending.values()) >= self.batch_size
         if due:
             self.flush()
+
+    def _observe_lag(self, payload: dict) -> None:
+        """Station clock to ingest wall clock.
+
+        Clock skew is inside this number deliberately. A station whose clock is wrong produces data
+        that lands in the wrong bucket on every dashboard, and that has to be visible somewhere
+        rather than quietly corrected here.
+        """
+        for key in ("ts_start", "ts"):
+            value = payload.get(key)
+            if isinstance(value, int):
+                self.metrics.observe("wim_ingest_lag_ms", (time.time() - value / 1e6) * 1000.0)
+                return
 
     def _on_message(self, _client, _userdata, message) -> None:
         try:
@@ -145,6 +170,7 @@ class IngestConsumer:
         failed: dict[str, list[dict]] = {}
         for schema_topic, rows in batches.items():
             method = getattr(self.writer, self._WRITERS[schema_topic])
+            started_ns = time.time_ns()
             try:
                 written += method(rows)
             except Exception:
@@ -152,6 +178,12 @@ class IngestConsumer:
                 # must not undo the guarantee the station's spool just provided.
                 self.stats.flush_failures += 1
                 failed[schema_topic] = rows
+                continue
+            finished_ns = time.time_ns()
+            self.metrics.observe(
+                "wim_db_write_latency_ms", (finished_ns - started_ns) / 1e6, table=schema_topic
+            )
+            self._record_persist_spans(rows, started_ns, finished_ns)
 
         if failed:
             with self._lock:
@@ -162,6 +194,28 @@ class IngestConsumer:
         self.stats.flushes += 1
         self._last_flush = time.monotonic()
         return written
+
+    def _record_persist_spans(self, rows: list[dict], started_ns: int, finished_ns: int) -> None:
+        """One ``persist`` span per row, over the batch's real interval.
+
+        A flush writes many passes at once, so a single span could only belong to one of their
+        traces and the rest would end at ``publish`` with no visible database write. Each row
+        therefore gets its own span over the interval the batch actually took, labelled with how
+        many rows it shared that interval with -- which is the honest statement of what happened,
+        rather than a fabricated per-row duration.
+        """
+        if not self.tracing.enabled:
+            return
+        for row in rows:
+            if row.get("traceparent") is None:
+                continue
+            self.tracing.record(
+                "persist",
+                start_time_ns=started_ns,
+                end_time_ns=finished_ns,
+                payload=row,
+                batch_size=len(rows),
+            )
 
     @property
     def pending_count(self) -> int:

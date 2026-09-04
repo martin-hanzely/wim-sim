@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from wimsim.observability.tracing import (
+    SPAN_NAMES,
     STAGES,
     Tracing,
     build_tracing,
@@ -49,6 +50,19 @@ def test_stages_are_the_buildspec_lifecycle_in_order() -> None:
         "ingest",
         "persist",
     )
+
+
+def test_the_block_root_is_allowed_but_is_not_a_stage() -> None:
+    """The seven stages need a common parent to be siblings under, and per-stage latency is the
+    whole point -- making `acquire` the parent would report it as taking as long as everything it
+    contains. `block` is that parent, and it is structural rather than a stage of the measurement.
+    """
+    assert "block" not in STAGES
+    assert "block" in SPAN_NAMES
+    tracing, exporter = _sdk_tracing()
+    with tracing.span("block"):
+        pass
+    assert exporter.get_finished_spans()[0].name == "block"
 
 
 def test_an_undeclared_stage_is_refused() -> None:

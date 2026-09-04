@@ -20,11 +20,17 @@ import json
 import time
 from typing import Any
 
+from wimsim.observability.metrics import Metrics, NullSink
+from wimsim.observability.tracing import Tracing
 from wimsim.transport.base import Transport, TransportError
 from wimsim.transport.queue import PersistentQueue
 from wimsim.transport.topics import topic_for
 
 __all__ = ["Publisher"]
+
+#: How many un-acknowledged rows to keep enqueue times for. Past this the depth gauge is the number
+#: that matters, and per-message latency for a half-million-row backlog is neither useful nor free.
+_LATENCY_TRACKING_LIMIT = 10_000
 
 
 def _timestamp_of(payload: dict[str, Any]) -> int:
@@ -52,12 +58,23 @@ class Publisher:
         backoff_initial_s: float = 0.5,
         backoff_max_s: float = 30.0,
         backoff_factor: float = 2.0,
+        metrics: Metrics | None = None,
+        tracing: Tracing | None = None,
     ) -> None:
         self.transport = transport
         self.queue = queue
         self.station_id = station_id
         self.batch_size = batch_size
         self.max_queue_depth = max_queue_depth
+        self.metrics = metrics or Metrics(NullSink())
+        self.tracing = tracing or Tracing(None)
+
+        #: row_id -> monotonic time at enqueue, for the publish latency histogram. In memory on
+        #: purpose: a row spooled by a *previous* process has no enqueue time here, and inventing
+        #: one from the wall clock would put a six-hour outage into a latency histogram. Capped,
+        #: because during a long outage the depth gauge is the number that matters and per-message
+        #: latency for half a million backlogged rows is neither useful nor free.
+        self._enqueued_at: dict[int, float] = {}
 
         self._backoff_initial = backoff_initial_s
         self._backoff_max = backoff_max_s
@@ -74,18 +91,30 @@ class Publisher:
     # -- accepting work -------------------------------------------------------------------------
 
     def publish(self, schema_topic: str, payload: dict[str, Any], *, qos: int = 1) -> None:
-        """Spool an event and try to send. Never blocks on the network, never raises on failure."""
-        blob = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        self.queue.append(
-            topic_for(self.station_id, schema_topic),
-            blob,
-            ts_us=_timestamp_of(payload),
-            qos=qos,
-        )
-        dropped = self.queue.trim_to(self.max_queue_depth)
-        if dropped:
-            self.dropped_count += dropped
-        self.drain()
+        """Spool an event and try to send. Never blocks on the network, never raises on failure.
+
+        The ``publish`` span opens *before* serialisation, because this is the last moment the edge
+        holds both the payload and a span to stamp onto it -- once the bytes are in the spool the
+        context is gone, and MQTT has no header to put it in.
+        """
+        with self.tracing.span("publish", schema_topic=schema_topic) as span:
+            stamped = self.tracing.stamp(payload)
+            blob = json.dumps(stamped, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            row_id = self.queue.append(
+                topic_for(self.station_id, schema_topic),
+                blob,
+                ts_us=_timestamp_of(stamped),
+                qos=qos,
+            )
+            if len(self._enqueued_at) < _LATENCY_TRACKING_LIMIT:
+                self._enqueued_at[row_id] = time.monotonic()
+            span.set_attribute("bytes", len(blob))
+
+            dropped = self.queue.trim_to(self.max_queue_depth)
+            if dropped:
+                self.dropped_count += dropped
+            self.drain()
+            self.metrics.set("wim_buffer_depth", self.buffer_depth)
 
     def publish_model(self, model: Any, *, qos: int = 1) -> None:
         """Spool a pydantic event model. The schema topic comes from the payload's own ``topic``."""
@@ -121,18 +150,29 @@ class Publisher:
                 self.transport.publish(message.topic, message.payload, qos=message.qos)
             except TransportError:
                 self.failure_count += 1
+                self.metrics.add("wim_publish_failures_total", 1)
                 break
             sent.append(message.row_id)
 
         if sent:
             self.queue.ack(sent)
             self.published_count += len(sent)
+            self._record_latencies(sent)
+            self.metrics.set("wim_buffer_depth", self.buffer_depth)
 
         if len(sent) == len(batch):
             self._on_success()
         else:
             self._on_failure(clock)
         return len(sent)
+
+    def _record_latencies(self, row_ids: list[int]) -> None:
+        """Enqueue to acknowledgement, for the rows this process spooled."""
+        now = time.monotonic()
+        for row_id in row_ids:
+            enqueued = self._enqueued_at.pop(row_id, None)
+            if enqueued is not None:
+                self.metrics.observe("wim_publish_latency_ms", (now - enqueued) * 1000.0)
 
     def _note_connection_state(self) -> bool:
         """True when the transport has just come back. Resets the backoff as a side effect."""

@@ -30,6 +30,7 @@ from contextlib import contextmanager
 from typing import Any
 
 __all__ = [
+    "SPAN_NAMES",
     "STAGES",
     "Tracing",
     "active_trace_id",
@@ -48,6 +49,14 @@ STAGES: tuple[str, ...] = (
     "ingest",
     "persist",
 )
+
+#: The structural parent the stages hang off. Not a stage of the measurement: it exists because
+#: per-stage latency needs the stages to be *siblings*, and making `acquire` the parent would report
+#: it as taking as long as everything it contains.
+BLOCK_SPAN = "block"
+
+#: Everything ``span()`` will accept.
+SPAN_NAMES: tuple[str, ...] = (*STAGES, BLOCK_SPAN)
 
 _TRACEPARENT_VERSION = "00"
 _INVALID_TRACE_ID = "0" * 32
@@ -190,6 +199,41 @@ class Tracing:
                     span.set_attribute(key, value)
             yield span
 
+    def record(
+        self,
+        stage: str,
+        *,
+        start_time_ns: int,
+        end_time_ns: int,
+        payload: Any = None,
+        **attributes: Any,
+    ) -> None:
+        """Emit a span for work that has already happened, over an interval measured by the caller.
+
+        Two places need this, and both are cases where the work and the span cannot share a
+        ``with`` block:
+
+        * ``acquire``, because whether a block exists at all is only known after pulling it, and
+          opening the enclosing ``block`` span first would leave an empty one at every end of
+          stream.
+        * ``persist``, because one database flush writes many passes. A single span could only
+          belong to one of their traces, so each row gets its own over the batch's real interval.
+
+        ``payload`` parents the span to a carried trace context, as ``continue_from`` does.
+        """
+        self._check(stage)
+        if self._tracer is None:
+            return
+        span = self._tracer.start_span(
+            stage,
+            context=self._context_from(payload) if payload is not None else None,
+            start_time=start_time_ns,
+        )
+        for key, value in attributes.items():
+            if value is not None:
+                span.set_attribute(key, value)
+        span.end(end_time=end_time_ns)
+
     # -- context out -------------------------------------------------------------------------
 
     def current_trace_id(self) -> str | None:
@@ -214,9 +258,9 @@ class Tracing:
 
     @staticmethod
     def _check(stage: str) -> None:
-        if stage not in STAGES:
+        if stage not in SPAN_NAMES:
             raise KeyError(
-                f"{stage!r} is not one of the pass lifecycle stages {STAGES}. Dashboards and Tempo "
+                f"{stage!r} is not one of the span names {SPAN_NAMES}. Dashboards and Tempo "
                 "queries name them literally; add it here first if a stage is genuinely new."
             )
 

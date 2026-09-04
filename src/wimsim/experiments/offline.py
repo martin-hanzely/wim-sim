@@ -41,6 +41,8 @@ from wimsim.core.schemas import MeasurementEvent, ProvenanceBlock
 from wimsim.edge.detect import DetectedEvent
 from wimsim.edge.pipeline import OfflinePipeline
 from wimsim.experiments.scoring import ScoreResult, score_events
+from wimsim.observability.metrics import Metrics
+from wimsim.observability.tracing import Tracing
 from wimsim.source import SyntheticSource
 
 __all__ = ["OfflineResult", "load_run", "run_offline"]
@@ -112,6 +114,8 @@ def run_offline(
     *,
     calibration_passes: int | None = None,
     match_tolerance_s: float = 0.25,
+    metrics: Metrics | None = None,
+    tracing: Tracing | None = None,
 ) -> OfflineResult:
     """Detect over the whole run, fit on the calibration split, estimate, score the rest."""
     n_cal = calibration_passes or edge_cfg.estimate.bootstrap_passes
@@ -122,9 +126,11 @@ def run_offline(
         source=source,
         profile=_bootstrap_profile(edge_cfg),
         provenance=_provenance_for(cfg),
+        metrics=metrics,
+        tracing=tracing,
     )
 
-    detected = _detect_only(pipeline)
+    detected = list(pipeline.detect_only())
     if len(detected) <= n_cal:
         raise ValueError(
             f"{len(detected)} events detected but {n_cal} are reserved for calibration; there "
@@ -135,7 +141,7 @@ def run_offline(
     pipeline.set_profile(profile)
 
     preprocessing = pipeline.preprocessor.describe()
-    events = [pipeline._emit(d, preprocessing) for d in detected]
+    events = [pipeline.estimate(d, preprocessing) for d in detected]
 
     # Score only the held-out part. A pass used to fit the calibration cannot also test it.
     held_out = _held_out_truth(truth, detected, n_cal)
@@ -160,16 +166,6 @@ def _provenance_for(cfg: RunConfig) -> ProvenanceBlock:
         git_commit=prov.git_commit,
         git_dirty=prov.git_dirty,
     )
-
-
-def _detect_only(pipeline: OfflinePipeline) -> list[DetectedEvent]:
-    """Run acquire -> preprocess -> detect, stopping before estimation."""
-    out: list[DetectedEvent] = []
-    for block in pipeline.acquisition.stream():
-        prepared = pipeline.preprocessor.process(block)
-        out.extend(pipeline.detector.process(prepared))
-    out.extend(pipeline.detector.flush())
-    return out
 
 
 def _fit_profile(
