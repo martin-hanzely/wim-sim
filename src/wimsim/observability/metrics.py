@@ -134,18 +134,24 @@ REGISTRY: dict[str, MetricDef] = _defs(
         "flow",
     ),
     # -- calibration loop ----------------------------------------------------------------------
+    # The estimate and the truth overlay are both *sensor-side* -- sensor units per kg, and sensor
+    # units -- so the calibration dashboard draws them on one axis with neither side inverting. The
+    # convention was settled in calibration/base.py; the estimator fits in the prediction direction
+    # and reports through EstimatorState.sensor_gain/sensor_bias. A truth gain of 2e-4 drawn against
+    # a prediction gain of 5000 is a panel that looks broken rather than wrong, which is the kind of
+    # mistake that survives review.
     MetricDef(
         "wim_cal_gain_estimate",
         "gauge",
-        "kg/1",
-        "Estimated gain, prediction direction: kilograms per sensor unit.",
+        "{sensor}/kg",
+        "Estimated gain, sensor-side: sensor units per kg. Comparable with wim_cal_gain_true.",
         "calibration",
     ),
     MetricDef(
         "wim_cal_bias_estimate",
         "gauge",
-        "kg",
-        "Estimated bias, prediction direction.",
+        "{sensor}",
+        "Estimated zero line, sensor units. Comparable with wim_cal_bias_true.",
         "calibration",
     ),
     MetricDef(
@@ -245,15 +251,15 @@ REGISTRY: dict[str, MetricDef] = _defs(
     MetricDef(
         "wim_cal_gain_true",
         "gauge",
-        "kg/1",
-        "Plant gain, from the truth log. Never emitted by the estimator path.",
+        "{sensor}/kg",
+        "Plant gain k, from the truth log. Never emitted by the estimator path.",
         "truth",
     ),
     MetricDef(
         "wim_cal_bias_true",
         "gauge",
-        "kg",
-        "Plant bias, from the truth log. Never emitted by the estimator path.",
+        "{sensor}",
+        "Plant zero line q, from the truth log. Never emitted by the estimator path.",
         "truth",
     ),
     MetricDef(
