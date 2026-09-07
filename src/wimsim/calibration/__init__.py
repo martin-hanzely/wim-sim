@@ -20,6 +20,7 @@ from wimsim.calibration.base import (
     MassEstimate,
     ReferenceObservation,
 )
+from wimsim.calibration.conformal import ConformalInterval
 from wimsim.calibration.drift import (
     ADWIN,
     CUSUM,
@@ -39,6 +40,7 @@ __all__ = [
     "DETECTORS",
     "CalibrationEstimator",
     "CalibrationProfile",
+    "ConformalInterval",
     "DriftDetector",
     "EstimatorState",
     "KSWindow",
