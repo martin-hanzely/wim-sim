@@ -20,6 +20,7 @@ from wimsim.calibration.base import (
     MassEstimate,
     ReferenceObservation,
 )
+from wimsim.calibration.kalman import KalmanCalibration
 from wimsim.calibration.rls import RecursiveLeastSquares
 from wimsim.calibration.static_affine import StaticAffine
 
@@ -27,6 +28,7 @@ __all__ = [
     "CalibrationEstimator",
     "CalibrationProfile",
     "EstimatorState",
+    "KalmanCalibration",
     "MassEstimate",
     "RecursiveLeastSquares",
     "ReferenceObservation",
