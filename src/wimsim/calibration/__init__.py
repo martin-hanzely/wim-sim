@@ -20,17 +20,33 @@ from wimsim.calibration.base import (
     MassEstimate,
     ReferenceObservation,
 )
+from wimsim.calibration.drift import (
+    ADWIN,
+    CUSUM,
+    DETECTORS,
+    DriftDetector,
+    KSWindow,
+    PageHinkley,
+    build_detector,
+)
 from wimsim.calibration.kalman import KalmanCalibration
 from wimsim.calibration.rls import RecursiveLeastSquares
 from wimsim.calibration.static_affine import StaticAffine
 
 __all__ = [
+    "ADWIN",
+    "CUSUM",
+    "DETECTORS",
     "CalibrationEstimator",
     "CalibrationProfile",
+    "DriftDetector",
     "EstimatorState",
+    "KSWindow",
     "KalmanCalibration",
     "MassEstimate",
+    "PageHinkley",
     "RecursiveLeastSquares",
     "ReferenceObservation",
     "StaticAffine",
+    "build_detector",
 ]

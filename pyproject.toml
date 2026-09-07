@@ -36,6 +36,12 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 filterwarnings = ["error::DeprecationWarning:wimsim.*"]
+markers = [
+    # Measurements rather than assertions about one case: they re-run a documented sweep and are
+    # slow enough to be worth skipping during a tight edit loop, but they are the evidence behind
+    # numbers that ship, so they run in CI like everything else.
+    "slow: re-measures a documented operating point",
+]
 
 [tool.ruff]
 line-length = 100
