@@ -310,3 +310,74 @@ def test_resource_attributes_carry_station_and_version() -> None:
     assert attrs["station_id"] == "ST-1"
     assert attrs["run_id"] == "r-1"
     assert attrs["service.version"] == __version__
+
+
+# ------------------------------------------------------------------------------------------
+# flushing before exit
+# ------------------------------------------------------------------------------------------
+
+
+def test_flush_and_shutdown_are_no_ops_on_the_null_path() -> None:
+    """Every CLI command calls them, and most runs have no collector."""
+    m = Metrics(NullSink())
+    assert m.flush() is False
+    m.shutdown()  # must not raise
+
+
+def test_flush_exports_the_current_interval_rather_than_waiting_for_the_timer() -> None:
+    """The bug this exists for: the periodic reader exports on a five-second timer, so a command
+    that finishes and exits loses whatever is pending -- the tail of a long run, and *all* of a
+    short one, with the process reporting success either way.
+
+    Found while verifying the phase-5 dashboard: the controller's panels read empty immediately
+    after a run and had data a couple of minutes later. Nothing was broken except that nobody had
+    told the exporter the run was over.
+    """
+    sdk_metrics = pytest.importorskip("opentelemetry.sdk.metrics")
+    export = pytest.importorskip("opentelemetry.sdk.metrics.export")
+
+    from wimsim.observability.metrics import OtelSink
+
+    exported: list = []
+
+    class _Capturing(export.MetricExporter):
+        def __init__(self) -> None:
+            super().__init__()
+
+        def export(self, metrics_data, timeout_millis=10_000, **kwargs):
+            exported.append(metrics_data)
+            return export.MetricExportResult.SUCCESS
+
+        def force_flush(self, timeout_millis=10_000):
+            return True
+
+        def shutdown(self, timeout_millis=30_000, **kwargs):
+            return None
+
+    # An interval far longer than the test, so only an explicit flush can produce an export.
+    reader = export.PeriodicExportingMetricReader(_Capturing(), export_interval_millis=600_000)
+    provider = sdk_metrics.MeterProvider(metric_readers=[reader])
+    m = Metrics(OtelSink(provider.get_meter("wimsim"), provider))
+
+    m.add("wim_events_detected_total", 3)
+    assert exported == [], "the timer should not have fired yet"
+
+    assert m.flush() is True
+    assert exported, "flush produced no export"
+    m.shutdown()
+
+
+def test_a_bound_child_flushes_the_same_sink() -> None:
+    """`bind` returns a new facade over the *same* sink, so a caller holding the child can still
+    flush -- which is what the CLI does, since it binds station and run before use."""
+    sdk_metrics = pytest.importorskip("opentelemetry.sdk.metrics")
+    export = pytest.importorskip("opentelemetry.sdk.metrics.export")
+
+    from wimsim.observability.metrics import OtelSink
+
+    provider = sdk_metrics.MeterProvider(metric_readers=[export.InMemoryMetricReader()])
+    parent = Metrics(OtelSink(provider.get_meter("wimsim"), provider))
+    child = parent.bind(station_id="ST-1")
+    assert child.sink is parent.sink
+    assert child.flush() is True
+    child.shutdown()

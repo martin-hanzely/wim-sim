@@ -315,6 +315,39 @@ window, so coverage degrades into "recent history" rather than resting on a guar
 quietly stopped applying; the controller resets it on recalibration, since old residuals describe an
 estimator that no longer exists.
 
+### Three interval constructions on one run
+
+Measured on the full 16-hour `S4_step_fault`, nominal coverage 0.95, irreducible dynamic floor
+140.59 kg. The interval never changes the mass — only the band — so MAE and bias move only with the
+estimator:
+
+| estimator | interval | MAE | bias | **coverage** | width |
+|---|---|---|---|---|---|
+| `static_affine` | analytic | 154.99 kg | −9.44 kg | 0.9123 | 1,048 kg |
+| `static_affine` | conformal / absolute | 154.99 kg | −9.44 kg | 0.9387 | 1,433 kg |
+| `static_affine` | conformal / relative | 154.99 kg | −9.44 kg | 0.9264 | 839 kg |
+| `kalman` | analytic | 151.82 kg | −0.88 kg | **0.0065** | **2.3 kg** |
+| `kalman` | conformal / absolute | 151.82 kg | −0.88 kg | 0.9384 | 1,529 kg |
+| **`kalman`** | **conformal / relative** | **151.82 kg** | **−0.88 kg** | **0.9499** | **907 kg** |
+
+**The Kalman analytic row is the finding.** A band of 2.3 kg with 0.65 % coverage is not a small
+error, it is a confident one — far more dangerous than a wrong mass, because nothing downstream has
+any reason to doubt it. The cause is structural rather than a bug: the band is the state covariance
+propagated through the inversion plus `R/k²`, and `R` is the *sensor* noise variance. On a
+weigh-in-motion scale the dominant error is not sensor noise, it is the vehicle's own dynamics —
+141 kg of it here — which the filter was never told about. It prices only the noise it knows.
+
+Conformal is told nothing and reads the quantile off what actually happened, so it lands on nominal
+for both estimators. That is why it is now the shipped default, falling back to the analytic band
+until it has its nineteen scores.
+
+The relative score is 40 % narrower than the absolute one *and* closer to nominal — the
+load-proportional argument, confirmed on a scenario rather than on synthetic residuals. A
+constant-width band has to be wide enough for the trucks and is then far wider than the cars need.
+
+Best overall: **Kalman + conformal/relative** — bias −0.88 kg, coverage 0.9499, and the narrowest
+honest interval of the six.
+
 ---
 
 ## The profile store, and `recompute`

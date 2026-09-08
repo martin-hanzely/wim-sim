@@ -253,3 +253,94 @@ def test_the_kalman_arm_supplies_the_covariance_panel(step_fault_run) -> None:
     traces = sink.values("wim_cal_covariance_trace")
     assert traces, "the Kalman arm reported no covariance trace"
     assert all(t > 0.0 for t in traces)
+
+
+# -- the three interval constructions, measured against the same truth ------------------------------
+
+
+@pytest.mark.slow
+def test_the_kalman_analytic_interval_is_overconfident_and_conformal_repairs_it(
+    step_fault_run,
+) -> None:
+    """The clearest result phase 5 produced, and it is a warning about an interval rather than a
+    claim about an estimator.
+
+    The Kalman filter's analytic band is its state covariance propagated through the inversion,
+    plus ``R/k^2``. ``R`` is the *sensor* noise variance -- and on a weigh-in-motion scale the
+    dominant error is not sensor noise, it is the vehicle's own dynamics, which the filter was
+    never told about. So it prices only the noise it knows and reports a band of a couple of
+    kilograms where the truth is several hundred. Measured on the full 16-hour S4: 2.3 kg wide,
+    empirical coverage 0.0065 against a nominal 0.95.
+
+    That is a far more dangerous failure than a wrong mass, because it is a confident wrong mass.
+    Conformal is told nothing and reads the quantile off what actually happened, which is why it
+    lands on nominal for both estimators.
+    """
+    cfg, truth, _ = step_fault_run
+
+    def arm(estimator: str, method: str, score: str = "absolute"):
+        return run_closed_loop(
+            cfg,
+            truth,
+            load_edge_config(
+                "default",
+                overrides=[
+                    f"edge.estimate.estimator={estimator}",
+                    "edge.control.enabled=true",
+                    "edge.control.reference_every_n=2",
+                    "edge.control.cooldown_s=0.0",
+                    "edge.control.confirmation_passes=30",
+                    "edge.control.min_reference_observations=40",
+                    "edge.drift.warmup=60",
+                    f"edge.uncertainty.method={method}",
+                    f"edge.uncertainty.conformal_score={score}",
+                ],
+            ),
+            calibration_passes=60,
+        )
+
+    analytic = arm("kalman", "analytic")
+    conformal = arm("kalman", "conformal", "relative")
+
+    assert analytic.score.coverage < 0.2, (
+        "the Kalman analytic interval was not overconfident here, so this test is no longer "
+        "measuring what it claims to"
+    )
+    assert analytic.score.mean_interval_width_kg < 0.2 * analytic.score.dynamic_floor_kg
+
+    assert conformal.score.coverage > 0.9
+    # The mass is untouched: only the band changed.
+    assert conformal.score.mae_kg == pytest.approx(analytic.score.mae_kg, rel=1e-9)
+
+
+@pytest.mark.slow
+def test_the_relative_conformal_score_is_narrower_at_better_coverage(step_fault_run) -> None:
+    """The load-proportional argument, confirmed on a scenario rather than on synthetic residuals.
+
+    A weighing error is largely proportional to the load, so a constant-width band has to be wide
+    enough for the trucks and is then far wider than the cars need. Normalising by the prediction
+    buys both: on the full 16-hour S4 the relative score gave 907 kg at 0.9499 coverage against
+    1529 kg at 0.9384 for the absolute one -- 40 % narrower *and* closer to nominal.
+    """
+    cfg, truth, _ = step_fault_run
+
+    def arm(score: str):
+        return run_closed_loop(
+            cfg,
+            truth,
+            load_edge_config(
+                "default",
+                overrides=[
+                    "edge.estimate.estimator=kalman",
+                    "edge.control.enabled=true",
+                    "edge.control.reference_every_n=2",
+                    "edge.uncertainty.method=conformal",
+                    f"edge.uncertainty.conformal_score={score}",
+                ],
+            ),
+            calibration_passes=60,
+        ).score
+
+    absolute, relative = arm("absolute"), arm("relative")
+    assert relative.mean_interval_width_kg < absolute.mean_interval_width_kg
+    assert relative.coverage > 0.9

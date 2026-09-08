@@ -739,6 +739,7 @@ def edge_run(
         transport.disconnect()
     elapsed = time.perf_counter() - t0
 
+    metrics.flush()
     typer.secho("published", bold=True)
     _echo_kv(
         [
@@ -755,6 +756,8 @@ def edge_run(
             "the next time this station publishes.",
             fg=typer.colors.YELLOW,
         )
+
+    metrics.shutdown()
 
 
 @app.command()
@@ -822,6 +825,7 @@ def ingest(
         stats = consumer.stats.as_dict()
         writer.dispose()
 
+    metrics.flush()
     log.info("ingest finished", extra=stats)
     typer.secho("ingested", bold=True)
     _echo_kv(
@@ -914,6 +918,15 @@ def control(
             "statistics, the state one-hot, residuals, recalibration counts -- reach the "
             "calibration dashboard's phase-5 panels, which are otherwise empty. Defaults to "
             "$OTEL_EXPORTER_OTLP_ENDPOINT; without either the run is unobserved but identical.",
+        ),
+    ] = None,
+    broker: Annotated[
+        str | None,
+        typer.Option(
+            "--broker",
+            help="Publish the resulting events to this MQTT broker (host:port), so the "
+            "calibration dashboard has per-profile masses to draw the gain overlay from. Omit to "
+            "keep the run entirely local.",
         ),
     ] = None,
     calibration_passes: Annotated[
@@ -1044,6 +1057,16 @@ def control(
                 f"  +{hours:>5.2f} h  {event.state:<16} {event.kind:<18} {event.reason[:58]}"
             )
 
+    # Before anything else that could fail: the periodic exporter drops its current interval on
+    # exit, so a command that returns without this loses the tail of the run -- or all of it, if
+    # the run was shorter than one interval.
+    metrics.flush()
+
+    if broker:
+        _publish_events(
+            result.events, broker=broker, station_id=cfg.station.station_id, metrics=metrics
+        )
+
     if write:
         out = Path(run_dir)
         (out / f"control.{edge_cfg.name}.json").write_text(
@@ -1054,6 +1077,8 @@ def control(
             f"wrote control.{edge_cfg.name}.json, events and {store_path.name}",
             fg=typer.colors.GREEN,
         )
+
+    metrics.shutdown()
 
 
 @app.command()
@@ -1184,6 +1209,52 @@ def recompute(
         raise typer.Exit(3) from exc
     finally:
         writer.dispose()
+
+
+def _publish_events(events: list, *, broker: str, station_id: str, metrics) -> None:
+    """Spool and publish a finished run's events.
+
+    After the fact rather than inside the loop: the closed loop is offline by construction -- it
+    re-runs the same detections under successive profiles -- so there is no live trace for a publish
+    span to join. The events carry the scenario's own timestamps either way, which is what the
+    dashboards join on. `edge-run` is the traced streaming path.
+    """
+    import tempfile
+
+    from wimsim.transport import PersistentQueue, Publisher
+    from wimsim.transport.mqtt import MqttTransport
+
+    host, _, port = broker.partition(":")
+    transport = MqttTransport(host=host, port=int(port or 1883), client_id=f"wimsim-{station_id}")
+    try:
+        transport.connect()
+    except Exception as exc:
+        typer.secho(f"cannot reach the broker at {broker}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(3) from exc
+
+    with tempfile.TemporaryDirectory() as tmp:
+        publisher = Publisher(
+            transport,
+            queue=PersistentQueue(Path(tmp) / "spool.db"),
+            station_id=station_id,
+            metrics=metrics,
+        )
+        try:
+            for event in events:
+                publisher.publish_model(event)
+            drained = publisher.flush(timeout_s=60.0)
+        finally:
+            publisher.close()
+            transport.disconnect()
+
+    if drained:
+        typer.secho(f"published {len(events)} events to {broker}", fg=typer.colors.GREEN)
+    else:
+        typer.secho(
+            f"published to {broker} but the spool did not drain; some events were lost with the "
+            "temporary queue",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def _write_events(path: Path, events: list) -> None:

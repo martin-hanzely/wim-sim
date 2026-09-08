@@ -337,9 +337,23 @@ class OtelSink:
     silent second series on others.
     """
 
-    def __init__(self, meter) -> None:
+    def __init__(self, meter, provider=None) -> None:
         self._meter = meter
+        #: Kept so a short-lived process can flush. Without it the last export interval is lost on
+        #: exit -- five seconds of data for a long run, and *all* of it for a short one, with the
+        #: process reporting success either way.
+        self._provider = provider
         self._instruments: dict[str, object] = {}
+
+    def flush(self, timeout_ms: int = 10_000) -> bool:
+        """Export whatever is pending. False if there is nothing that can flush."""
+        if self._provider is None:
+            return False
+        return bool(self._provider.force_flush(timeout_millis=timeout_ms))
+
+    def shutdown(self, timeout_ms: int = 10_000) -> None:
+        if self._provider is not None:
+            self._provider.shutdown(timeout_millis=timeout_ms)
 
     def _instrument(self, mdef: MetricDef):
         inst = self._instruments.get(mdef.name)
@@ -394,6 +408,22 @@ class Metrics:
     def enabled(self) -> bool:
         """False when nothing is being exported. Callers may skip expensive derivations."""
         return not isinstance(self.sink, NullSink)
+
+    def flush(self, timeout_ms: int = 10_000) -> bool:
+        """Push pending measurements to the collector now.
+
+        Call before a short-lived process exits. The periodic reader exports on a timer, so without
+        this the final interval is dropped -- and a command that finishes inside one interval emits
+        nothing at all while reporting success.
+        """
+        flush = getattr(self.sink, "flush", None)
+        return bool(flush()) if callable(flush) else False
+
+    def shutdown(self, timeout_ms: int = 10_000) -> None:
+        """Flush and stop exporting. Safe on the null path, where it does nothing."""
+        shutdown = getattr(self.sink, "shutdown", None)
+        if callable(shutdown):
+            shutdown(timeout_ms)
 
     def bind(self, **attributes: str) -> Metrics:
         """A child carrying extra attributes on every emission. The parent is untouched."""
@@ -518,4 +548,4 @@ def _otel_sink(
         resource=build_resource(station_id=station_id, run_id=run_id),
         metric_readers=[reader],
     )
-    return OtelSink(provider.get_meter("wimsim"))
+    return OtelSink(provider.get_meter("wimsim"), provider)

@@ -869,12 +869,25 @@ class UncertaintyConfig(_Base):
     """How the interval on a mass is constructed."""
 
     method: Literal["analytic", "conformal"] = Field(
-        "analytic",
+        "conformal",
         description="analytic is whatever the active estimator produces -- a residual spread for "
         "static_affine and RLS, a propagated covariance for the Kalman. conformal reads the "
-        "quantile off the residuals actually seen and assumes nothing about their shape, which "
-        "matters because a Gaussian interval is miscalibrated in both directions on real "
-        "residuals; see calibration/conformal.py.",
+        "quantile off the residuals actually seen and assumes nothing about their shape.\n"
+        "\n"
+        "conformal is the default because the analytic band can be catastrophically wrong and is "
+        "confident while being so. Measured on the full 16-hour S4_step_fault, nominal 0.95:\n"
+        "\n"
+        "  static_affine + analytic:            coverage 0.9123, width 1048 kg\n"
+        "  static_affine + conformal/relative:  coverage 0.9264, width  839 kg\n"
+        "  kalman + analytic:                   coverage 0.0065, width    2 kg\n"
+        "  kalman + conformal/relative:         coverage 0.9499, width  907 kg\n"
+        "\n"
+        "The Kalman row is the reason. Its band is the state covariance propagated through the "
+        "inversion plus R/k^2, and R is the *sensor* noise variance -- but on a weigh-in-motion "
+        "scale the dominant error is the vehicle's own dynamics, whose irreducible contribution "
+        "here is 141 kg. The filter prices only the noise it was told about and reports two "
+        "kilograms. Conformal is told nothing and lands on nominal for both estimators. Until it "
+        "has its nineteen scores it falls back to the analytic band, so nothing is lost early.",
     )
     conformal_score: Literal["absolute", "relative"] = Field(
         "relative",

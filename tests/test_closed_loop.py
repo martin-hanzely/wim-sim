@@ -198,7 +198,11 @@ def test_the_conformal_band_never_replaces_the_mass_only_the_interval(loaded) ->
     """The override exists to change how sure the station says it is, not what it says."""
     cfg, truth, _ = loaded
     analytic = run_closed_loop(
-        cfg, truth, _edge(**{"control.reference_every_n": "1"}), calibration_passes=5
+        cfg,
+        truth,
+        # Explicit: conformal is now the shipped default, so the arms have to be named.
+        _edge(**{"uncertainty.method": "analytic", "control.reference_every_n": "1"}),
+        calibration_passes=5,
     )
     conformal = run_closed_loop(
         cfg,
