@@ -58,6 +58,21 @@ were rejected by the confirmation gate — which is the gate doing its job, not 
 `tests/test_checkpoint_control.py` asserts all of this on a four-hour window so it runs in a test
 suite; it is marked `slow`.
 
+The dashboard half of the checkpoint is pinned from both sides without needing the stack:
+`tests/test_dashboards.py` checks every panel queries a metric the registry declares, and
+`test_checkpoint_control.py` checks every metric the calibration dashboard queries is actually
+emitted by a closed-loop run. The first catches a typo; the second catches a declared metric that
+nothing ever produces, which renders exactly the same empty graph. `wim_cal_covariance_trace` is the
+one panel `StaticAffine` cannot fill — correctly, since it never updates — and the Kalman arm fills
+it. The only link left unverified offline is the live scrape, which is what
+`scripts/check_dashboards.py` is for:
+
+```bash
+docker compose --profile full up -d
+wimsim control data/synthetic/S4_demo --otlp http://localhost:4317 --reference-every 2
+python scripts/check_dashboards.py
+```
+
 ---
 
 ## Two sensitivity floors

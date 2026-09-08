@@ -906,6 +906,16 @@ def control(
             "--profiles", help="Append the calibration history here. Default: DIR/profiles.jsonl"
         ),
     ] = None,
+    otlp: Annotated[
+        str | None,
+        typer.Option(
+            "--otlp",
+            help="OTLP collector endpoint. With one, the controller's own series -- drift "
+            "statistics, the state one-hot, residuals, recalibration counts -- reach the "
+            "calibration dashboard's phase-5 panels, which are otherwise empty. Defaults to "
+            "$OTEL_EXPORTER_OTLP_ENDPOINT; without either the run is unobserved but identical.",
+        ),
+    ] = None,
     calibration_passes: Annotated[
         int | None,
         typer.Option("--calibration-passes", help="Passes reserved for the initial fit."),
@@ -954,6 +964,14 @@ def control(
             store_path.unlink()
         store = ProfileStore(store_path)
 
+    from wimsim.observability.metrics import build_metrics
+
+    metrics = build_metrics(
+        station_id=cfg.station.station_id,
+        run_id=f"{cfg.scenario.name}-{cfg.config_hash()[:12]}",
+        endpoint=otlp,
+    )
+
     typer.secho(f"{cfg.scenario.name} x {edge_cfg.name}", bold=True)
     _echo_kv(
         [
@@ -962,6 +980,7 @@ def control(
             ("detectors", ", ".join(edge_cfg.drift.detectors)),
             ("interval", edge_cfg.uncertainty.method),
             ("reference supply", f"1 pass in {edge_cfg.control.reference_every_n}"),
+            ("metrics", "yes" if metrics.enabled else "no"),
         ]
     )
 
@@ -973,6 +992,7 @@ def control(
             edge_cfg,
             calibration_passes=calibration_passes,
             profile_store=store,
+            metrics=metrics,
         )
     except ValueError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)

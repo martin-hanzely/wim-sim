@@ -171,3 +171,85 @@ def test_the_dynamic_floor_bounds_what_any_controller_could_achieve(arms) -> Non
     on = arms["on"]
     assert on.score.dynamic_floor_kg > 0.0
     assert on.score.mae_kg > on.score.dynamic_floor_kg
+
+
+# -- the dashboard half of the checkpoint ----------------------------------------------------------
+
+
+def test_every_phase_five_dashboard_panel_has_a_producer(step_fault_run) -> None:
+    """The other half of "shows ... on the calibration dashboard", checked without a stack.
+
+    ``tests/test_dashboards.py`` already asserts every panel queries a metric the registry
+    declares, which catches a typo. It cannot catch the opposite gap: a declared metric that
+    nothing ever emits, which renders exactly the same empty graph. This closes it from the
+    producer side by running the loop and collecting what actually came out.
+
+    The remaining unverified link is the live scrape, and that is what
+    ``scripts/check_dashboards.py`` is for.
+    """
+    import json
+    import pathlib
+    import re
+
+    from wimsim.observability.metrics import Metrics, RecordingSink
+
+    cfg, truth, _ = step_fault_run
+    sink = RecordingSink()
+    result = run_closed_loop(cfg, truth, _edge(True), calibration_passes=60, metrics=Metrics(sink))
+    assert result.recalibrations >= 1, "no recalibration, so the recalibration metric cannot fire"
+
+    emitted = {record.name for record in sink.records}
+
+    board = json.loads(
+        (
+            pathlib.Path(__file__).resolve().parents[1] / "dashboards" / "calibration-loop.json"
+        ).read_text(encoding="utf-8")
+    )
+    queried: set[str] = set()
+    for panel in board["panels"]:
+        for target in panel.get("targets") or []:
+            for token in re.findall(r"\bwim_[a-z0-9_]+\b", target.get("expr") or ""):
+                for suffix in ("_bucket", "_sum", "_count"):
+                    token = token.removesuffix(suffix)
+                queried.add(token)
+
+    #: Emitted by the truth exporter in experiments/, never by the estimator path (principle 1).
+    truth_side = {"wim_cal_gain_true", "wim_cal_bias_true", "wim_temperature_true", "wim_mass_true"}
+    #: StaticAffine carries no covariance; the Kalman filter does, and is covered separately.
+    estimator_specific = {"wim_cal_covariance_trace"}
+
+    missing = queried - emitted - truth_side - estimator_specific
+    assert not missing, (
+        f"the calibration dashboard queries metrics nothing emits: {sorted(missing)}"
+    )
+
+
+def test_the_kalman_arm_supplies_the_covariance_panel(step_fault_run) -> None:
+    """The one panel the static baseline cannot fill, and the reason it looked broken in phase 4.
+
+    ``wim_cal_covariance_trace`` is the convergence panel. StaticAffine has no covariance to
+    report -- correctly, since it never updates -- so the panel was empty for a reason that had
+    nothing to do with the dashboard. An adaptive estimator fills it.
+    """
+    from wimsim.core.config import load_edge_config
+    from wimsim.observability.metrics import Metrics, RecordingSink
+
+    cfg, truth, _ = step_fault_run
+    sink = RecordingSink()
+    run_closed_loop(
+        cfg,
+        truth,
+        load_edge_config(
+            "default",
+            overrides=[
+                "edge.estimate.estimator=kalman",
+                "edge.control.enabled=true",
+                "edge.control.reference_every_n=2",
+            ],
+        ),
+        calibration_passes=60,
+        metrics=Metrics(sink),
+    )
+    traces = sink.values("wim_cal_covariance_trace")
+    assert traces, "the Kalman arm reported no covariance trace"
+    assert all(t > 0.0 for t in traces)
