@@ -21,6 +21,12 @@ from wimsim.calibration.base import (
     ReferenceObservation,
 )
 from wimsim.calibration.conformal import ConformalInterval
+from wimsim.calibration.controller import (
+    ARBITRATION_MODES,
+    ControllerConfig,
+    ControllerEvent,
+    RecalibrationController,
+)
 from wimsim.calibration.drift import (
     ADWIN,
     CUSUM,
@@ -36,17 +42,21 @@ from wimsim.calibration.static_affine import StaticAffine
 
 __all__ = [
     "ADWIN",
+    "ARBITRATION_MODES",
     "CUSUM",
     "DETECTORS",
     "CalibrationEstimator",
     "CalibrationProfile",
     "ConformalInterval",
+    "ControllerConfig",
+    "ControllerEvent",
     "DriftDetector",
     "EstimatorState",
     "KSWindow",
     "KalmanCalibration",
     "MassEstimate",
     "PageHinkley",
+    "RecalibrationController",
     "RecursiveLeastSquares",
     "ReferenceObservation",
     "StaticAffine",
