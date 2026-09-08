@@ -43,7 +43,7 @@ These constrain every decision in this repository.
 | 2 | Edge pipeline offline: preprocessor, event detector, `StaticAffine`, scoring vs. truth | **done** -- MAE 1.43 kg (0.054 %) on `S1_nominal` |
 | 3 | Infrastructure: docker-compose, MQTT publisher with persistent buffer, ingest + DLQ, TimescaleDB | **done** -- synthetic passes visible in Grafana end to end |
 | 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | **done** -- one pass traceable acquire-to-persist in Tempo; all five dashboards live |
-| 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | not started |
+| 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | **done** -- on `S4_step_fault` bias falls from -136.9 kg to -9.4 kg, both injected faults detected and corrected |
 | 6 | Experiments and real data: runner, scenario suite, `ReplaySource`, sim-to-real gap report | not started |
 
 ---
@@ -79,6 +79,18 @@ wimsim load-truth data/synthetic/S1_demo
 wimsim ingest --otlp http://localhost:4317 &
 wimsim edge-run data/synthetic/S1_demo --otlp http://localhost:4317 --speed 12
 python scripts/check_dashboards.py    # ask Grafana to run all 47 panels
+
+# Phase 5 checkpoint: close the loop on a scenario with two injected sensitivity steps.
+# --no-control runs the identical pipeline with the controller off: the arm every claim
+# about the controller has to be measured against.
+wimsim generate S4_step_fault --out data/synthetic/S4_demo --samples none
+wimsim control data/synthetic/S4_demo --reference-every 2 --calibration-passes 60 --no-control
+wimsim control data/synthetic/S4_demo --reference-every 2 --calibration-passes 60
+wimsim profiles data/synthetic/S4_demo/profiles.default.jsonl
+
+# re-derive stored history under a different calibration (dry run unless --apply)
+wimsim recompute --profile p-001-... --from 2025-06-01T04:00:00Z \
+  --profiles data/synthetic/S4_demo/profiles.default.jsonl
 
 # prove determinism
 wimsim generate S1_nominal --out .determinism/a -q
@@ -122,7 +134,8 @@ src/wimsim/storage/   TimescaleDB schema, Alembic migrations, idempotent writer
 src/wimsim/observability/  metric registry, tracing, structured logging
 docker/               service configs for the compose stack
 dashboards/           Grafana dashboards, provisioned read-only from the repo
-src/wimsim/calibration/  estimators, drift detection, profile store, UQ  (numpy only)
+src/wimsim/calibration/  estimators, drift detectors, MAPE-K controller, UQ, profile store
+                      (numpy only -- cross-deploys to a Pi unchanged)
 data/real/            the real test drives land here (EXAMPLE/ shows the required shape)
 data/synthetic/       generated runs
 data/results/         experiment outputs
@@ -142,6 +155,11 @@ docs/                 signal-model.md, observability.md, real-data-schema.md
 - [`docs/infrastructure.md`](docs/infrastructure.md) -- the phase-3 stack: what each service is
   for, how an event travels from the generator to a dashboard, and the failure modes the
   publisher and ingest are built around.
+- [`docs/controller.md`](docs/controller.md) -- phase 5: the estimator ladder, the drift
+  detectors and their measured operating points, the MAPE-K machine, conformal intervals, and the
+  profile store. Includes the checkpoint numbers and the project's clearest answer to "how small a
+  drift can this system act on" -- two floors, of which the one I had documented as binding turned
+  out not to be.
 - [`docs/observability.md`](docs/observability.md) -- the phase-4 layers: the metric registry and
   why it refuses things, how one trace crosses a broker with no headers, and the three faults that
   only turned up when the data was plotted (a column that was always null, a dashboard querying a
