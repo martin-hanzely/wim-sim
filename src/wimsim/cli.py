@@ -11,6 +11,7 @@ Command surface:
     wimsim control DIR                     close the loop: detect drift, recalibrate, verify
     wimsim recompute --from TS --profile P  re-derive stored history under another profile
     wimsim profiles FILE                   show a station's calibration history
+    wimsim experiment NAME                 run a sweep and write the results table
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -30,6 +31,7 @@ import json
 import os
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
@@ -1209,6 +1211,125 @@ def recompute(
         raise typer.Exit(3) from exc
     finally:
         writer.dispose()
+
+
+@app.command()
+def experiment(
+    name: Annotated[
+        str, typer.Argument(help="An experiment in configs/experiments, or a path to one.")
+    ],
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", "-o", help="Where to write results. Default: data/results/<id>"),
+    ] = None,
+    seeds: Annotated[
+        str | None,
+        typer.Option(
+            "--seeds",
+            help="Override the seed axis, comma-separated. The shipped sweeps use three, which is "
+            "what gives a number an error bar; one is for getting a table quickly and should be "
+            "labelled as such when quoted.",
+        ),
+    ] = None,
+    scenarios: Annotated[
+        str | None, typer.Option("--scenarios", help="Override the scenario axis, comma-separated.")
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print the grid and what it will cost, and run nothing."),
+    ] = False,
+) -> None:
+    """Run a declarative sweep and write results.parquet, results.md and results.tex.
+
+    The phase-6 checkpoint: a results table comparing all estimators across all scenarios. A cell
+    that fails becomes a row saying so rather than taking the sweep down or quietly disappearing --
+    dropping it would change what every mean in the table is a mean over.
+    """
+    from wimsim.core.config import CONFIG_ROOT
+    from wimsim.experiments.runner import load_experiment, run_experiment
+
+    path = Path(name)
+    if not path.exists():
+        for candidate in (
+            CONFIG_ROOT / "experiments" / f"{name}.yaml",
+            CONFIG_ROOT / "experiments" / f"{name}.yml",
+        ):
+            if candidate.exists():
+                path = candidate
+                break
+        else:
+            available = sorted(p.stem for p in (CONFIG_ROOT / "experiments").glob("*.y*ml"))
+            typer.secho(
+                f"no experiment {name!r}; available: {available}", fg=typer.colors.RED, err=True
+            )
+            raise typer.Exit(2)
+
+    try:
+        spec = load_experiment(path)
+    except (ValueError, TypeError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    if seeds:
+        spec = replace(spec, seeds=[int(v) for v in seeds.split(",") if v.strip()])
+    if scenarios:
+        spec = replace(spec, scenarios=[v.strip() for v in scenarios.split(",") if v.strip()])
+
+    cells = list(spec.grid())
+    typer.secho(f"{spec.experiment_id}", bold=True)
+    _echo_kv(
+        [
+            ("scenarios", ", ".join(spec.scenarios)),
+            ("estimators", ", ".join(spec.estimators)),
+            ("seeds", ", ".join(str(s) for s in spec.seeds)),
+            ("runs", len(cells)),
+            ("edge config", spec.edge_config),
+        ]
+    )
+    if spec.description:
+        typer.echo(f"  {spec.description.strip()}")
+
+    if dry_run:
+        typer.secho("grid", bold=True)
+        for cell in cells:
+            typer.echo(f"  {cell.run_id}")
+        typer.secho("dry run: nothing was executed.", fg=typer.colors.YELLOW)
+        return
+
+    started = time.perf_counter()
+
+    def progress(index: int, total: int, cell) -> None:
+        elapsed = time.perf_counter() - started
+        rate = elapsed / max(index - 1, 1)
+        remaining = rate * (total - index + 1) if index > 1 else 0.0
+        sys.stderr.write(
+            f"\r  [{index:>3}/{total}] {cell.run_id:<44} "
+            f"{elapsed / 60:5.1f} min elapsed, ~{remaining / 60:5.1f} left   "
+        )
+        sys.stderr.flush()
+
+    result = run_experiment(spec, out_dir=out, progress=progress)
+    sys.stderr.write("\n")
+
+    typer.secho("results", bold=True)
+    _echo_kv(
+        [
+            ("runs", result.n_runs),
+            ("failed", result.n_failed),
+            ("elapsed", f"{(time.perf_counter() - started) / 60:.1f} min"),
+            ("written", str(result.out_dir)),
+        ]
+    )
+    if result.n_failed:
+        typer.secho(
+            f"{result.n_failed} of {result.n_runs} runs failed; they are rows in the table with "
+            "their error text, not omissions.",
+            fg=typer.colors.YELLOW,
+        )
+    typer.secho(
+        "wrote results.parquet, results.md, results.tex and manifest.json",
+        fg=typer.colors.GREEN,
+    )
 
 
 def _publish_events(events: list, *, broker: str, station_id: str, metrics) -> None:

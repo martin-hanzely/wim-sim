@@ -1,0 +1,34 @@
+# A short version of `ladder`, for checking the machinery rather than producing results.
+#
+# Same three estimators, the two scenarios that actually exercise the controller, one seed, and
+# every scenario cut to twenty minutes. Runs in a couple of minutes instead of hours.
+#
+# The numbers this produces are not results and should not be quoted: twenty minutes of S2 is not a
+# thermal cycle, and a single seed has no error bar. It exists so that a change to the runner can be
+# checked without committing to a full sweep.
+
+experiment_id: quick
+description: >
+  Machinery check. Three estimators over S1 and S3, one seed, twenty-minute runs. Not a result.
+
+# S4 is deliberately absent: its faults are scheduled at 4 h and 9 h, and the config
+# rightly refuses a fault after the run ends. S3 drifts continuously instead, so it
+# still exercises detection at any length. The full sweep in ladder.yaml runs S4 at
+# its shipped sixteen hours, which is the only honest way to run it.
+scenarios: [S1_nominal, S3_zero_drift_walk]
+estimators: [static_affine, rls, kalman]
+seeds: [1]
+
+edge_config: default
+edge_overrides:
+  - edge.control.enabled=true
+
+reference_every_n: 2
+
+overrides:
+  - scenario.duration_s=1200.0
+  - scenario.block_seconds=60.0
+  - scenario.output.samples=none
+
+calibration_passes: 30
+fault_horizon_s: 600.0
