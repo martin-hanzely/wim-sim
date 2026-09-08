@@ -37,14 +37,21 @@ from wimsim.calibration.drift import (
     build_detector,
 )
 from wimsim.calibration.kalman import KalmanCalibration
+from wimsim.calibration.registry import (
+    ESTIMATORS,
+    build_estimator,
+    estimator_from_state,
+)
 from wimsim.calibration.rls import RecursiveLeastSquares
 from wimsim.calibration.static_affine import StaticAffine
+from wimsim.calibration.store import ProfileStore
 
 __all__ = [
     "ADWIN",
     "ARBITRATION_MODES",
     "CUSUM",
     "DETECTORS",
+    "ESTIMATORS",
     "CalibrationEstimator",
     "CalibrationProfile",
     "ConformalInterval",
@@ -56,9 +63,12 @@ __all__ = [
     "KalmanCalibration",
     "MassEstimate",
     "PageHinkley",
+    "ProfileStore",
     "RecalibrationController",
     "RecursiveLeastSquares",
     "ReferenceObservation",
     "StaticAffine",
     "build_detector",
+    "build_estimator",
+    "estimator_from_state",
 ]

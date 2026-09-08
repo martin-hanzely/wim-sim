@@ -36,7 +36,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from wimsim.calibration import CalibrationProfile, StaticAffine
+from wimsim.calibration import CalibrationProfile, estimator_from_state
 from wimsim.core.config import EdgeConfig
 from wimsim.core.schemas import MeasurementEvent, ProvenanceBlock
 from wimsim.edge.acquisition import AcquisitionAgent
@@ -51,8 +51,6 @@ if TYPE_CHECKING:  # pragma: no cover
     from wimsim.source.base import SourceAdapter
 
 __all__ = ["OfflinePipeline"]
-
-_ESTIMATORS = {"static_affine": StaticAffine}
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,16 +117,15 @@ class OfflinePipeline:
             self._report_profile(profile)
 
     def _build_estimator(self, profile: CalibrationProfile) -> MassEstimator:
-        name = profile.state.estimator
-        cls = _ESTIMATORS.get(name)
-        if cls is None:
-            raise ValueError(
-                f"unknown estimator {name!r}; phase 2 ships {sorted(_ESTIMATORS)} and phase 5 adds "
-                "rls, kalman and the residual learner"
-            )
+        """Rebuild the estimator the profile names, from the shared registry.
+
+        Shared rather than a table of its own, so that a profile the pipeline can run is exactly a
+        profile ``recompute`` can re-derive. Two tables would eventually disagree, and the symptom
+        would be an event that cannot be reproduced under the profile it names.
+        """
         return MassEstimator(
             self.cfg.estimate,
-            estimator=cls.from_state(profile.state),
+            estimator=estimator_from_state(profile.state),
             profile=profile,
             station_id=self.station_id,
             sensor_id=self.sensor_id,
