@@ -8,6 +8,9 @@ Command surface:
     wimsim generate SCENARIO --out DIR     generate a run
     wimsim inspect DIR                     what is in a run directory
     wimsim run DIR --edge default          run the edge pipeline and score it against truth
+    wimsim control DIR                     close the loop: detect drift, recalibrate, verify
+    wimsim recompute --from TS --profile P  re-derive stored history under another profile
+    wimsim profiles FILE                   show a station's calibration history
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -870,6 +873,297 @@ def load_truth_cmd(
         f"loaded {passes} truth passes and {series} plant states as run {run_id}",
         fg=typer.colors.GREEN,
     )
+
+
+@app.command()
+def control(
+    run_dir: Annotated[Path, typer.Argument(help="A run directory produced by `generate`.")],
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config name.")] = "default",
+    estimator: Annotated[
+        str | None,
+        typer.Option("--estimator", help="Override the estimator: static_affine, rls, kalman."),
+    ] = None,
+    reference_every: Annotated[
+        int | None,
+        typer.Option(
+            "--reference-every",
+            help="One pass in N is a reference vehicle. In the field this is the transponder or "
+            "weighbridge supply rate, and it decides whether self-calibration is possible at all.",
+        ),
+    ] = None,
+    uncertainty: Annotated[
+        str | None, typer.Option("--uncertainty", help="analytic or conformal.")
+    ] = None,
+    no_control: Annotated[
+        bool,
+        typer.Option(
+            "--no-control", help="Run the same loop with the controller off: the control arm."
+        ),
+    ] = False,
+    profiles_out: Annotated[
+        Path | None,
+        typer.Option(
+            "--profiles", help="Append the calibration history here. Default: DIR/profiles.jsonl"
+        ),
+    ] = None,
+    calibration_passes: Annotated[
+        int | None,
+        typer.Option("--calibration-passes", help="Passes reserved for the initial fit."),
+    ] = None,
+    set_: SetOpt = None,
+    write: Annotated[
+        bool, typer.Option("--write/--no-write", help="Write control.json and events parquet.")
+    ] = True,
+) -> None:
+    """Run the edge pipeline with the phase-5 controller in the loop.
+
+    The phase-5 checkpoint: on `S4_step_fault` this should show a detection, a recalibration and a
+    reconvergence. `--no-control` runs the identical pipeline with the controller disabled, which is
+    the arm every claim about the controller has to be measured against.
+    """
+    from wimsim.calibration import ProfileStore
+    from wimsim.core.config import load_edge_config
+    from wimsim.experiments.closed_loop import run_closed_loop
+    from wimsim.experiments.offline import load_run
+
+    sets = list(set_ or [])
+    sets.append(f"edge.control.enabled={'false' if no_control else 'true'}")
+    if estimator:
+        sets.append(f"edge.estimate.estimator={estimator}")
+    if reference_every:
+        sets.append(f"edge.control.reference_every_n={reference_every}")
+    if uncertainty:
+        sets.append(f"edge.uncertainty.method={uncertainty}")
+
+    try:
+        cfg, truth, _manifest = load_run(run_dir)
+        edge_cfg = load_edge_config(edge, overrides=sets)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    store_path = profiles_out or Path(run_dir) / f"profiles.{edge_cfg.name}.jsonl"
+    store = None
+    if write:
+        # One `control` invocation is one experiment, and its calibration history belongs to that
+        # experiment -- so the file starts empty rather than appending to whatever a previous run
+        # left, which would collide on the bootstrap profile every time. The store itself stays
+        # strictly append-only: a real station accumulates across restarts, and truncating here is
+        # the CLI's decision about experiment scope, not a hole in that invariant.
+        if store_path.exists():
+            store_path.unlink()
+        store = ProfileStore(store_path)
+
+    typer.secho(f"{cfg.scenario.name} x {edge_cfg.name}", bold=True)
+    _echo_kv(
+        [
+            ("estimator", edge_cfg.estimate.estimator),
+            ("controller", "off" if no_control else "on"),
+            ("detectors", ", ".join(edge_cfg.drift.detectors)),
+            ("interval", edge_cfg.uncertainty.method),
+            ("reference supply", f"1 pass in {edge_cfg.control.reference_every_n}"),
+        ]
+    )
+
+    t0 = time.perf_counter()
+    try:
+        result = run_closed_loop(
+            cfg,
+            truth,
+            edge_cfg,
+            calibration_passes=calibration_passes,
+            profile_store=store,
+        )
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+    elapsed = time.perf_counter() - t0
+
+    s = result.score
+    typer.secho("control loop", bold=True)
+    _echo_kv(
+        [
+            ("passes detected", result.n_detected),
+            ("reference vehicles", result.n_references),
+            (
+                "detectors ready after",
+                "never"
+                if result.detectors_ready_after_references is None
+                else f"{result.detectors_ready_after_references} references",
+            ),
+            ("drift alarms", result.alarms),
+            ("recalibrations", result.recalibrations),
+            ("degradations", result.degradations),
+            ("profiles activated", len(result.profiles)),
+            ("final state", result.to_dict()["final_state"]),
+            ("elapsed", f"{elapsed:.1f} s"),
+        ]
+    )
+    typer.secho("accuracy", bold=True)
+    _echo_kv(
+        [
+            ("MAE", f"{s.mae_kg:,.2f} kg"),
+            ("MAPE", f"{100 * s.mape:.3f} %"),
+            ("bias", f"{s.bias_kg:+,.2f} kg"),
+            ("dynamic floor", f"{s.dynamic_floor_kg:,.2f} kg"),
+            ("empirical coverage", f"{s.coverage:.4f}"),
+            ("nominal", f"{edge_cfg.estimate.coverage_target:.2f}"),
+            ("mean interval width", f"{s.mean_interval_width_kg:,.1f} kg"),
+        ]
+    )
+
+    if result.controller_events:
+        # Relative to the run start: the epoch microseconds these carry are the station clock, and
+        # "1748750867.5s" tells a reader nothing about when in a 16-hour scenario it happened.
+        origin_us = min(e.ts_us for e in result.controller_events)
+        origin_us = min(origin_us, result.events[0].ts_start if result.events else origin_us)
+        typer.secho("what the controller did", bold=True)
+        for event in result.controller_events:
+            hours = (event.ts_us - origin_us) / 1e6 / 3600.0
+            typer.echo(
+                f"  +{hours:>5.2f} h  {event.state:<16} {event.kind:<18} {event.reason[:58]}"
+            )
+
+    if write:
+        out = Path(run_dir)
+        (out / f"control.{edge_cfg.name}.json").write_text(
+            json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        _write_events(out / f"events.control.{edge_cfg.name}.parquet", result.events)
+        typer.secho(
+            f"wrote control.{edge_cfg.name}.json, events and {store_path.name}",
+            fg=typer.colors.GREEN,
+        )
+
+
+@app.command()
+def profiles(
+    path: Annotated[Path, typer.Argument(help="A profiles.jsonl written by `control`.")],
+) -> None:
+    """Show a station's calibration history: what was activated, when, and why."""
+    from wimsim.calibration import ProfileStore
+
+    store = ProfileStore(path)
+    if not len(store):
+        typer.secho(f"no profiles in {path}", fg=typer.colors.YELLOW)
+        return
+
+    typer.secho(f"{len(store)} profiles in {path}", bold=True)
+    typer.echo(
+        f"  {'profile':<24} {'activated (s)':>14} {'estimator':<14} {'sensor gain':>13}  reason"
+    )
+    for profile in store:
+        state = profile.state
+        typer.echo(
+            f"  {profile.profile_id:<24} {profile.activated_ts_us / 1e6:>14.1f} "
+            f"{state.estimator:<14} {state.sensor_gain:>13.6g}  {profile.reason}"
+            + ("" if profile.superseded_by else "   <- active")
+        )
+
+
+@app.command()
+def recompute(
+    profile_id: Annotated[str, typer.Option("--profile", help="Profile id to re-derive under.")],
+    from_ts: Annotated[
+        str,
+        typer.Option(
+            "--from",
+            help="Recompute events at or after this time: an ISO-8601 instant, or integer "
+            "microseconds since the epoch.",
+        ),
+    ],
+    store_path: Annotated[
+        Path, typer.Option("--profiles", help="The profiles.jsonl holding that profile.")
+    ],
+    station: Annotated[str | None, typer.Option("--station", help="Limit to one station.")] = None,
+    database: Annotated[
+        str | None, typer.Option("--database", help="SQLAlchemy URL. Default: the local stack.")
+    ] = None,
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply/--dry-run",
+            help="Dry run by default. Recompute is an in-place rewrite of stored measurements, "
+            "so it asks before doing it.",
+        ),
+    ] = False,
+    limit: Annotated[
+        int, typer.Option("--limit", help="Most events to pull in one pass.")
+    ] = 100_000,
+) -> None:
+    """Re-derive stored events under a different calibration profile.
+
+    Buildspec section 6. The rewrite is in place: `event_id` is a UUIDv5 of station, sensor and
+    `ts_start` and of nothing else, so a recomputed event keeps its id and the upsert replaces the
+    row rather than inserting a second opinion about the same vehicle.
+
+    Dry run unless `--apply` is given, because there is no undo.
+    """
+    from datetime import datetime
+
+    from wimsim.calibration import ProfileStore
+    from wimsim.experiments.recompute import recompute_rows
+    from wimsim.storage import EventWriter
+
+    try:
+        from_ts_us = int(from_ts)
+    except ValueError:
+        try:
+            from_ts_us = int(datetime.fromisoformat(from_ts).timestamp() * 1e6)
+        except ValueError as exc:
+            typer.secho(
+                f"--from {from_ts!r} is neither an ISO-8601 instant nor integer microseconds",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2) from exc
+
+    try:
+        profile = ProfileStore(store_path).get(profile_id)
+    except (KeyError, ValueError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    writer = EventWriter(database)
+    try:
+        rows = writer.read_events(station_id=station, from_ts_us=from_ts_us, limit=limit)
+        result = recompute_rows(rows, profile, from_ts_us=from_ts_us)
+
+        typer.secho(f"recompute under {profile.profile_id}", bold=True)
+        _echo_kv(
+            [
+                ("estimator", profile.state.estimator),
+                ("sensor gain", f"{profile.state.sensor_gain:.6g} units/kg"),
+                ("events read", len(rows)),
+                ("recomputed", result.n_recomputed),
+                ("skipped (no raw peak)", result.n_skipped),
+                ("no temperature", result.n_without_temperature),
+            ]
+        )
+        if result.n_recomputed and rows:
+            before = {r["event_id"]: r["mass_kg"] for r in rows}
+            deltas = [r["mass_kg"] - before[r["event_id"]] for r in result.rows]
+            typer.secho("mass change", bold=True)
+            _echo_kv(
+                [
+                    ("mean", f"{sum(deltas) / len(deltas):+,.2f} kg"),
+                    ("largest", f"{max(deltas, key=abs):+,.2f} kg"),
+                ]
+            )
+
+        if not apply:
+            typer.secho(
+                "dry run: nothing written. Re-run with --apply to rewrite these rows in place.",
+                fg=typer.colors.YELLOW,
+            )
+            return
+        written = writer.write_events(result.rows)
+        typer.secho(f"rewrote {written} events in place", fg=typer.colors.GREEN)
+    except Exception as exc:
+        typer.secho(f"database error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(3) from exc
+    finally:
+        writer.dispose()
 
 
 def _write_events(path: Path, events: list) -> None:

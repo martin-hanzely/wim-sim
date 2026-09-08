@@ -901,11 +901,19 @@ class DriftConfig(_Base):
         "moments alone, at the cost of the slowest detection of the four.",
     )
     warmup: int = Field(
-        200,
+        60,
         ge=2,
-        description="Passes spent learning the location and scale to judge against. Residuals are "
-        "not centred on zero -- a slightly miscalibrated scale is biased from its first pass -- so "
-        "a detector that assumed zero would call that drift.",
+        description="Reference observations spent learning the location and scale to judge "
+        "against. Residuals are not centred on zero -- a slightly miscalibrated scale is biased "
+        "from its first pass -- so a detector that assumed zero would call that drift.\n"
+        "\n"
+        "Counted in *reference observations*, not in passes, because a residual needs a reference "
+        "mass. Time to readiness is therefore warmup * control.reference_every_n passes, and that "
+        "product is easy to get wrong: at the previous default of 200 with one reference in ten, "
+        "S4_step_fault's detector was not ready until 33,144 s into a 57,600 s run -- past both "
+        "injected faults, which it had by then absorbed as normal. Sixty keeps the median and MAD "
+        "estimates within about 15 percent while making readiness reachable at realistic reference "
+        "supply rates.",
     )
     cusum_threshold: float = Field(12.0, gt=0.0)
     cusum_slack: float = Field(
@@ -945,9 +953,26 @@ class ControlConfig(_Base):
         "pipeline built without the controller is exactly the pipeline they measured.",
     )
     confirmation_passes: int = Field(
-        30,
+        60,
         ge=1,
-        description="Residuals gathered after an alarm before deciding whether it was real.",
+        description="Residuals gathered after an alarm before deciding whether it was real.\n"
+        "\n"
+        "This length sets the smallest drift the loop can ever act on. The gate confirms a shift "
+        "only above confirm_sigma * 1.2533 * sigma / sqrt(confirmation_passes), so at "
+        "confirm_sigma=3 the floor is 0.841 residual standard deviations at a twenty-pass window, "
+        "0.686 at thirty and 0.485 at sixty. S4_step_fault's injected step is about 0.74 sigma, "
+        "which straddles those -- and the outcome follows exactly. Measured over the full 16-hour "
+        "run, alarms in every case:\n"
+        "\n"
+        "  window 30: 0 recalibrations, bias -136.9 kg (uncorrected, and reported as MONITORING)\n"
+        "  window 60: 2 recalibrations, bias   -9.4 kg\n"
+        "  window 90: 2 recalibrations, bias  -23.8 kg\n"
+        "\n"
+        "Sixty, therefore, and not the thirty an earlier version shipped: at thirty a real "
+        "sensitivity fault was detected five times, confirmed never, and left the station "
+        "reporting itself healthy. Longer than sixty confirms still smaller drifts but delays the "
+        "correction, so more passes are measured under the faulty calibration -- which is why 90 "
+        "is worse than 60 rather than better.",
     )
     confirm_sigma: float = Field(
         3.0,

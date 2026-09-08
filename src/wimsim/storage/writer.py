@@ -36,12 +36,23 @@ from wimsim.storage.schema import (
 )
 from wimsim.storage.url import database_url
 
-__all__ = ["EventWriter", "us_to_datetime"]
+__all__ = ["EventWriter", "datetime_to_us", "us_to_datetime"]
 
 
 def us_to_datetime(value: int | None) -> datetime | None:
     """Microseconds since the epoch to an aware UTC datetime."""
     return None if value is None else datetime.fromtimestamp(value / 1e6, tz=UTC)
+
+
+def datetime_to_us(value: datetime | None) -> int | None:
+    """The exact inverse of :func:`us_to_datetime`, and it has to stay exact.
+
+    ``event_id`` is a UUIDv5 of ``ts_start``, so a round trip that lost a microsecond would give a
+    recomputed event a different id and the upsert would insert it alongside the original rather
+    than replacing it. Rounded rather than truncated so a value that arrives as x.999999 does not
+    come back a microsecond early.
+    """
+    return None if value is None else int(round(value.timestamp() * 1e6))
 
 
 class EventWriter:
@@ -250,6 +261,45 @@ class EventWriter:
         return self._insert(truth_timeseries, prepared)
 
     # -- reading back --------------------------------------------------------------------------------
+
+    def read_events(
+        self,
+        *,
+        station_id: str | None = None,
+        from_ts_us: int | None = None,
+        to_ts_us: int | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Measurement events, in the same shape ``write_events`` accepts.
+
+        Timestamps come back as integer microseconds, inverting exactly the conversion the writer
+        applies on the way in. That symmetry is load-bearing rather than tidy: ``event_id`` is
+        derived from ``ts_start``, so a recomputed row written under a timestamp that had drifted
+        by a microsecond would get a *new* id and be inserted alongside the original instead of
+        replacing it.
+
+        Ordered by time and bounded by ``limit``, because a station that has been running for a
+        year holds more events than a recompute should pull into memory at once.
+        """
+        statement = select(measurement_event)
+        if station_id is not None:
+            statement = statement.where(measurement_event.c.station_id == station_id)
+        if from_ts_us is not None:
+            statement = statement.where(measurement_event.c.ts_start >= us_to_datetime(from_ts_us))
+        if to_ts_us is not None:
+            statement = statement.where(measurement_event.c.ts_start <= us_to_datetime(to_ts_us))
+        statement = statement.order_by(measurement_event.c.ts_start)
+        if limit is not None:
+            statement = statement.limit(int(limit))
+
+        with self.engine.connect() as conn:
+            rows = [dict(row) for row in conn.execute(statement).mappings()]
+
+        for row in rows:
+            for column in ("ts_start", "ts_peak", "ts_end"):
+                row[column] = datetime_to_us(row[column])
+            row.pop("ingested_at", None)
+        return rows
 
     def count(self, table: Table) -> int:
         with self.engine.connect() as conn:

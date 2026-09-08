@@ -17,6 +17,14 @@ supply rate of known masses, and it decides whether self-calibration is possible
 a motorway with a co-located weighbridge and a rural road with none are the same code and completely
 different problems. ``S7_sparse_reference`` exists to push it to zero.
 
+It also sets how long the *detectors* take to become usable, which is less obvious and was worth a
+wasted afternoon. A detector's warm-up is counted in residuals, residuals arrive only on reference
+passes, so readiness costs ``drift.warmup * reference_every_n`` passes. On ``S4_step_fault`` at the
+old default that was 33,144 s of a 57,600 s run -- past both injected faults, which the detector had
+by then learned as normal, reporting zero alarms and looking entirely healthy while doing it.
+``detectors_ready_after_references`` is on the result so that a run which could not have detected
+anything says so.
+
 **Both adaptation mechanisms run, and they interact.** An RLS or Kalman estimator folds every
 reference observation into itself continuously; the controller performs a wholesale refit when drift
 is *confirmed*. A sufficiently fast estimator may absorb a step before any detector alarms, so the
@@ -75,6 +83,12 @@ class ClosedLoopResult:
     state_timeline: list[tuple[int, str]] = field(default_factory=list)
     n_references: int = 0
     n_detected: int = 0
+    detectors_ready_after_references: int | None = None
+    """How many reference observations it took before any detector could raise an alarm.
+
+    Reported because a run in which the fault arrived before this number is not a test of the
+    detector at all -- it is a test of whether the detector can learn a post-fault level as normal,
+    which it can. Time to readiness is ``drift.warmup * control.reference_every_n`` passes."""
     stats: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -102,6 +116,7 @@ class ClosedLoopResult:
             "uncertainty": self.edge_config.uncertainty.method,
             "n_detected": self.n_detected,
             "n_references": self.n_references,
+            "detectors_ready_after_references": self.detectors_ready_after_references,
             "alarms": self.alarms,
             "recalibrations": self.recalibrations,
             "degradations": self.degradations,
@@ -253,6 +268,10 @@ def run_closed_loop(
             continue
         controller.offer_reference(observation)
         events = controller.observe(detection.ts_peak_us, residual)
+        if result.detectors_ready_after_references is None and all(
+            getattr(d, "ready", True) for d in controller.detectors
+        ):
+            result.detectors_ready_after_references = result.n_references
         _report_controller(metrics, controller)
         result.state_timeline.append((detection.ts_peak_us, controller.state))
         for controller_event in events:
@@ -265,7 +284,11 @@ def run_closed_loop(
                 # pipeline, so continuous adaptation resumes from the new profile.
                 estimator = estimator_from_state(controller_event.estimator_state)
                 new_profile = _activate(
-                    pipeline, controller_event.estimator_state, detection.ts_peak_us, estimator
+                    pipeline,
+                    controller_event.estimator_state,
+                    detection.ts_peak_us,
+                    estimator,
+                    ordinal=len(result.profiles),
                 )
                 result.profiles.append(new_profile)
                 if profile_store is not None:
@@ -284,6 +307,18 @@ def run_closed_loop(
 # ----------------------------------------------------------------------------------------------
 # wiring helpers
 # ----------------------------------------------------------------------------------------------
+
+
+def _profile_id(ordinal: int, state: EstimatorState) -> str:
+    """``p-<activation ordinal>-<state hash>``.
+
+    The ordinal is what makes it unique: a recalibration can legitimately produce a state identical
+    to an earlier one -- it means the reference buffer did not yet hold the post-fault evidence --
+    and that activation is still a distinct record with its own timestamp and its own reason. The
+    hash is kept in the id anyway because it makes "did the calibration actually change" answerable
+    by eye, which is the question anyone reading a profile history asks first.
+    """
+    return f"p-{ordinal:03d}-{state.state_hash}"
 
 
 def _fit_initial(estimator, edge_cfg, calibration_detections, references) -> CalibrationProfile:
@@ -311,7 +346,7 @@ def _fit_initial(estimator, edge_cfg, calibration_detections, references) -> Cal
     state = estimator.state()
     return CalibrationProfile.from_state(
         state,
-        profile_id=f"p-{state.state_hash}",
+        profile_id=_profile_id(0, state),
         activated_ts_us=observations[-1].ts_us,
         reason="bootstrap",
         provenance={"n_reference_observations": len(observations)},
@@ -373,7 +408,11 @@ def _conformal_interval(conformal, estimator, detection, edge_cfg):
 
 
 def _activate(
-    pipeline: OfflinePipeline, state: EstimatorState, ts_us: int, estimator: Any = None
+    pipeline: OfflinePipeline,
+    state: EstimatorState,
+    ts_us: int,
+    estimator: Any = None,
+    ordinal: int = 1,
 ) -> CalibrationProfile:
     """Put a recalibrated state into service.
 
@@ -383,7 +422,7 @@ def _activate(
     """
     profile = CalibrationProfile.from_state(
         state,
-        profile_id=f"p-{state.state_hash}",
+        profile_id=_profile_id(ordinal, state),
         activated_ts_us=int(ts_us),
         reason="drift_confirmed",
     )

@@ -42,7 +42,7 @@ uncertainty:
 
 drift:
   detectors: [cusum, page_hinkley]
-  warmup: 200
+  warmup: 60                 # in *references*, so readiness costs warmup * reference_every_n passes
   cusum_threshold: 12.0
   cusum_slack: 0.5           # nothing at or below this is ever detected -- the loop's hard floor
   page_hinkley_threshold: 15.0
@@ -54,7 +54,7 @@ drift:
 control:
   # Off by default so phase 2's and phase 4's numbers stay comparable.
   enabled: false
-  confirmation_passes: 30
+  confirmation_passes: 60    # the confirmable floor is 3 * 1.2533 / sqrt(this) residual sigmas
   confirm_sigma: 3.0
   min_reference_observations: 10
   cooldown_s: 3600.0

@@ -27,17 +27,47 @@ the alarm never happened; both leave a scale weighing while it knows it is wrong
 them tells anyone. Verification failing lands here too, and that is the most dangerous outcome of
 all, because the station has just announced that it fixed itself.
 
+**A refit uses only references from after the drift began.** The obvious implementation hands the
+whole reference buffer to the fit, and it does not work: measured on ``S4_step_fault``, a confirmed
+recalibration then removed only about a third of the bias the step had introduced, and stayed there
+even after the loop declared itself reconverged. The buffer spans both sides of the fault -- two
+hundred references at one in two passes is four hundred passes of history -- so the new profile was
+a compromise between a plant that exists and one that does not. Filtering from the onset of the
+suspicion is right for a ramp too, where it keeps the recent observations. And when there are not
+yet enough post-drift references, the controller *waits* rather than refitting across the fault: a
+profile fitted on a mixture is confidently wrong and passes verification often enough to hide it.
+
 **The cool-down is on the station clock.** Recalibration consumes reference vehicles and briefly
 makes the calibration worse, so doing it twice in a minute is a real cost. An hour is an hour whether
 forty vehicles crossed in it or four.
 
-**The loop has a hard sensitivity floor, and it is not in this file.** CUSUM's slack makes it a
-drift detector rather than an outlier detector, which means deviations smaller than ``slack`` sigmas
-never accumulate at all -- invisible permanently, not merely slowly. Measured against a 50 kg
-residual spread over twenty runs of five hundred passes: 0/20 at half a sigma, 3/20 at 0.6, 12/20 at
-one sigma, 19/20 at two. No tuning here can lift that floor, so the honest statement of this
-system's sensitivity is "about two sigma of the residual spread", and every detection claim has to
-quote the spread alongside it. ``tests/test_controller.py`` re-measures the curve.
+**The loop has two sensitivity floors, and the second one surprised me.**
+
+The first is the detector's. CUSUM's slack makes it a drift detector rather than an outlier
+detector, so deviations smaller than ``slack`` sigmas never accumulate at all -- invisible
+permanently, not merely slowly. Measured against a 50 kg residual spread over twenty runs of five
+hundred passes: 0/20 at half a sigma, 3/20 at 0.6, 12/20 at one sigma, 19/20 at two.
+
+The second is *this* gate, and at the shipped settings it is the binding one:
+
+    minimum confirmable shift = confirm_sigma * 1.2533 * sigma / sqrt(confirmation_passes)
+
+At ``confirm_sigma = 3`` that is 0.686 sigma with a thirty-pass window and 0.841 with a twenty-pass
+one. ``S4_step_fault``'s injected step is 0.74 sigma of the residual spread -- between the two --
+and the outcome follows the arithmetic exactly: with a twenty-pass window the drift is detected
+twice and confirmed never, and the run ends with the bias entirely uncorrected while reporting
+itself healthy in MONITORING. At thirty it confirms, recalibrates, and the bias falls from -200.5 kg
+to -17.8 kg.
+
+So "the detector's slack puts a hard floor under the whole loop" -- which is what an earlier version
+of this docstring said -- is wrong at default settings. The confirmation window is the tighter
+constraint, and unlike the slack it *can* be traded: a longer window confirms smaller drifts and
+delays the correction, so more passes are measured under the faulty calibration. Measured on the
+same run: window 30 gives a residual bias of -17.8 kg, 60 gives -14.0, and 120 gives -45.9 because
+by then the recalibration arrives too late to help most of the window.
+
+Both floors are re-measured in ``tests/test_controller.py``, and every detection claim has to quote
+the residual spread beside it.
 
 **Arbitration is a switch because it is a deployment question.** A systematic error across twenty
 stations is a fleet problem, and twenty stations independently recalibrating away from it destroys
@@ -191,6 +221,9 @@ class RecalibrationController:
         #: How many references had been seen when the last attempt was made. DEGRADED only retries
         #: once that number has grown -- see ``_retry``.
         self._references_at_last_attempt = -1
+        #: When the drift being acted on began. Outlives the suspicion, because DEGRADED still has
+        #: to know which references describe the current plant when it retries.
+        self._drift_since_us: int | None = None
         self.recalibration_count = 0
         self.last_recalibration_ts_us: int | None = None
         self.active_state: EstimatorState | None = None
@@ -273,6 +306,7 @@ class RecalibrationController:
             baseline_scale=scale,
         )
         self._arbitration = None
+        self._drift_since_us = int(ts_us)
         self._transition(
             "DRIFT_SUSPECTED",
             ts_us,
@@ -314,11 +348,17 @@ class RecalibrationController:
         if not self._cooled_down(ts_us):
             return
 
-        if self.n_references < self.config.min_reference_observations:
+        usable = self._usable_references()
+        if len(usable) < self.config.min_reference_observations:
+            if self.n_references >= self.config.min_reference_observations:
+                # There are plenty of references, they are just all from before the drift. Waiting
+                # for post-drift ones beats refitting across the fault, which produces a profile
+                # that is confidently wrong and passes verification often enough to hide it.
+                return
             self._degrade(
                 ts_us,
-                f"drift confirmed but only {self.n_references} reference observations are "
-                f"available; {self.config.min_reference_observations} are needed to refit",
+                f"drift confirmed but only {len(usable)} reference observations postdate it; "
+                f"{self.config.min_reference_observations} are needed to refit",
             )
             return
 
@@ -327,8 +367,9 @@ class RecalibrationController:
     def _execute(self, ts_us: int) -> None:
         self._state = "RECALIBRATING"
         self._references_at_last_attempt = self.n_references
+        usable = self._usable_references()
         try:
-            new_state = self._recalibrate(list(self._references))
+            new_state = self._recalibrate(usable)
         except Exception as exc:  # a failed fit must not take the station down with it
             self._degrade(ts_us, f"recalibration failed: {exc}")
             return
@@ -340,7 +381,7 @@ class RecalibrationController:
             "recalibrated",
             ts_us,
             "RECALIBRATING",
-            f"refitted from {self.n_references} reference observations",
+            f"refitted from {len(usable)} reference observations postdating the drift",
         )
         self._append(
             "profile_activated",
@@ -381,6 +422,7 @@ class RecalibrationController:
         self._baseline.clear()
         self._baseline.extend(self._verification)
         self._verification = []
+        self._drift_since_us = None  # verified: this plant is the current one again
         self._transition(
             "MONITORING",
             ts_us,
@@ -398,7 +440,7 @@ class RecalibrationController:
         not merely that it is large enough.
         """
         self._baseline.append(residual)
-        if self.n_references < self.config.min_reference_observations:
+        if len(self._usable_references()) < self.config.min_reference_observations:
             return
         if self.n_references <= self._references_at_last_attempt:
             return
@@ -409,6 +451,18 @@ class RecalibrationController:
         self._execute(ts_us)
 
     # -- helpers -------------------------------------------------------------------------------
+
+    def _usable_references(self) -> list[ReferenceObservation]:
+        """Reference observations that describe the *current* plant.
+
+        Everything from the moment the drift began. Before that they describe a plant that no
+        longer exists, and a refit that averages the two sides of a fault only partly corrects it:
+        measured on S4_step_fault, using the whole buffer removed about a third of the bias the
+        step introduced, and the loop still declared itself reconverged.
+        """
+        if self._drift_since_us is None:
+            return list(self._references)
+        return [o for o in self._references if int(o.ts_us) >= self._drift_since_us]
 
     def _confirmed(self) -> bool:
         assert self._suspicion is not None

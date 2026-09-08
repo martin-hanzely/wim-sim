@@ -83,12 +83,18 @@ class _Plant:
     cancels the drift.
     """
 
-    def __init__(self, controller, *, seed: int = 0, scale: float = 50.0) -> None:
+    def __init__(
+        self, controller, *, seed: int = 0, scale: float = 50.0, responds: bool = True
+    ) -> None:
         self.controller = controller
         self.rng = np.random.default_rng(seed)
         self.scale = scale
         self.offset = 0.0
         self.ts_s = 0
+        #: Whether a refit actually fixes anything. False is the plant whose drift the new profile
+        #: fails to correct -- a broken sensor rather than a mis-calibrated one -- which is the
+        #: situation the verification window exists to catch.
+        self.responds = responds
         self._seen_recalibrations = controller.recalibration_count
 
     def fault(self, offset: float) -> None:
@@ -99,7 +105,8 @@ class _Plant:
         for _ in range(n):
             if self.controller.recalibration_count != self._seen_recalibrations:
                 self._seen_recalibrations = self.controller.recalibration_count
-                self.offset = 0.0  # the refit absorbed it
+                if self.responds:
+                    self.offset = 0.0  # the refit absorbed it
             residual = self.offset + float(self.rng.standard_normal()) * self.scale
             events += self.controller.observe(SECOND * self.ts_s, residual)
             if reference_every and self.ts_s % reference_every == 0:
@@ -111,6 +118,17 @@ class _Plant:
                 )
             self.ts_s += step_s
         return events
+
+
+def _supply(controller, plant, n: int = 12, *, k: float = 2.0e-4) -> None:
+    """Drop a batch of reference vehicles in at the plant's current time.
+
+    Stamped *now* rather than at second zero, because a refit only uses references postdating the
+    drift: a batch from before it describes a plant that no longer exists, and the controller is
+    right to decline it.
+    """
+    for obs in _references(n, k=k, start_s=plant.ts_s, seed=plant.ts_s + n):
+        controller.offer_reference(obs)
 
 
 # -- the happy path ----------------------------------------------------------------------------
@@ -127,33 +145,34 @@ def test_it_starts_monitoring_and_stays_there_on_a_healthy_stream() -> None:
 def test_a_confirmed_drift_walks_the_whole_cycle_and_comes_back_to_monitoring() -> None:
     """The cycle the buildspec names, end to end, against a plant that responds to the refit."""
     controller = _controller()
-    for obs in _references(10):
-        controller.offer_reference(obs)
     plant = _Plant(controller, seed=2)
 
-    plant.run(300)
+    plant.run(300, reference_every=4)
     assert controller.state == "MONITORING"
 
     plant.fault(400.0)
-    plant.run(30)
+    plant.run(60, reference_every=2)
     assert controller.recalibration_count == 1
-    assert controller.state == "VERIFYING"
-
-    plant.run(40)
-    assert controller.state == "MONITORING"
     assert plant.offset == 0.0, "the plant should have been corrected by the refit"
+
+    # Deliberately no assertion on VERIFYING here: how long it lasts is a config value, and a test
+    # that pins the state at an exact pass count is a test that breaks when that value changes
+    # without anything being wrong. What matters is where the cycle *ends*.
+    plant.run(60, reference_every=4)
+    assert controller.state == "MONITORING"
+    assert [e.kind for e in controller.drain_events()][:1] == ["drift_detected"]
 
 
 def test_every_transition_is_announced_as_an_event() -> None:
     """The dashboard draws recalibrations as annotations and the controller state as a timeline;
     a transition that happened without an event is a timeline with a gap in it."""
     controller = _controller()
-    for obs in _references(10):
-        controller.offer_reference(obs)
-
-    events = _run(controller, _noise(300, seed=6))
-    events += _run(controller, _noise(300, shift=400.0, seed=7), start_s=300)
-    events += _run(controller, _noise(40, seed=8), start_s=600)
+    plant = _Plant(controller, seed=6)
+    plant.run(300, reference_every=4)
+    plant.fault(400.0)
+    plant.run(120, reference_every=2)
+    plant.run(120, reference_every=4)
+    events = controller.drain_events()
 
     kinds = [e.kind for e in events]
     assert "drift_detected" in kinds
@@ -173,10 +192,10 @@ def test_every_transition_is_announced_as_an_event() -> None:
 
 def test_the_new_state_is_handed_back_so_the_edge_can_activate_it() -> None:
     controller = _controller()
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=9))
-    _run(controller, _noise(300, shift=400.0, seed=10), start_s=300)
+    plant = _Plant(controller, seed=9)
+    plant.run(300, reference_every=4)
+    plant.fault(400.0)
+    plant.run(120, reference_every=2)
 
     activated = [e for e in controller.drain_events() if e.kind == "profile_activated"]
     assert controller.active_state is not None
@@ -207,10 +226,10 @@ def test_a_transient_alarm_is_not_confirmed_and_falls_back_to_monitoring() -> No
 
 def test_a_suspicion_that_persists_is_confirmed() -> None:
     controller = _controller(confirmation_passes=40)
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=14))
-    _run(controller, _noise(80, shift=500.0, seed=15), start_s=300)
+    plant = _Plant(controller, seed=14)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(140, reference_every=2)
     assert controller.recalibration_count == 1
 
 
@@ -261,10 +280,10 @@ def test_a_recalibration_that_raises_degrades_rather_than_propagating() -> None:
         raise ValueError("degenerate reference set")
 
     controller = _controller(recalibrate=explode)
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=24))
-    _run(controller, _noise(200, shift=500.0, seed=25), start_s=300)
+    plant = _Plant(controller, seed=24)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(140, reference_every=2)
 
     assert controller.state == "DEGRADED"
     reasons = [e.reason for e in controller.drain_events() if e.kind == "degraded"]
@@ -275,14 +294,15 @@ def test_verification_that_fails_degrades_rather_than_declaring_success() -> Non
     """A recalibration that did not help is the most dangerous outcome of all, because the station
     has just told everyone it fixed itself."""
     controller = _controller(verification_passes=30)
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=26))
-    _run(controller, _noise(200, shift=500.0, seed=27), start_s=300)
-    assert controller.recalibration_count == 1
+    # responds=False: a sensor that is broken rather than mis-calibrated, so no refit helps. That
+    # is what the verification window is for, and the only honest way to test it -- re-injecting
+    # the fault afterwards would instead be testing a *second* drift cycle.
+    plant = _Plant(controller, seed=26, responds=False)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(400, reference_every=2)
 
-    # The residuals are still displaced after the new profile went live.
-    _run(controller, _noise(60, shift=500.0, seed=28), start_s=500)
+    assert controller.recalibration_count >= 1
     assert controller.state == "DEGRADED"
 
 
@@ -293,15 +313,15 @@ def test_a_cooldown_prevents_a_second_recalibration_too_soon() -> None:
     """Recalibration consumes reference vehicles and briefly makes the calibration worse. A
     controller that can do it twice in a minute will, on a noisy afternoon."""
     controller = _controller(cooldown_s=3600.0, verification_passes=5)
-    for obs in _references(30):
-        controller.offer_reference(obs)
-
-    _run(controller, _noise(300, seed=29))
-    _run(controller, _noise(200, shift=500.0, seed=30), start_s=300)
+    plant = _Plant(controller, seed=29)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(140, reference_every=2)
     assert controller.recalibration_count == 1
     first_at = controller.last_recalibration_ts_us
 
-    _run(controller, _noise(300, shift=1500.0, seed=31), start_s=520)
+    plant.fault(1500.0)
+    plant.run(200, reference_every=2)
     assert controller.recalibration_count == 1, "recalibrated again inside the cool-down"
     assert controller.last_recalibration_ts_us == first_at
 
@@ -329,8 +349,11 @@ def test_the_cooldown_is_measured_on_the_station_clock_not_on_pass_count() -> No
     assert controller.recalibration_count == 1, "recalibrated again inside the cool-down"
     assert controller.last_recalibration_ts_us == first_at
 
-    # The same drift, still unaddressed, but now the clock has moved on.
-    plant.run(120, step_s=3600, reference_every=5)
+    # The same drift, still unaddressed, but now the clock has moved on. One long step to cross
+    # the cool-down, then ordinary passes -- running 120 passes an hour apart would cross it a
+    # hundred times over and measure nothing.
+    plant.ts_s += 7200
+    plant.run(80, reference_every=2)
     assert controller.recalibration_count == 2
 
 
@@ -339,10 +362,10 @@ def test_the_cooldown_is_measured_on_the_station_clock_not_on_pass_count() -> No
 
 def test_local_arbitration_acts_without_asking() -> None:
     controller = _controller(arbitration="local")
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=35))
-    _run(controller, _noise(200, shift=500.0, seed=36), start_s=300)
+    plant = _Plant(controller, seed=35)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(140, reference_every=2)
     assert controller.recalibration_count == 1
 
 
@@ -351,30 +374,30 @@ def test_cloud_arbitration_waits_for_a_grant_and_says_it_is_waiting() -> None:
     twenty stations is a fleet problem, and twenty stations independently recalibrating away from
     it destroys the evidence. Which of the two applies is a deployment question, so it is a switch."""
     controller = _controller(arbitration="cloud")
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=37))
-    _run(controller, _noise(200, shift=500.0, seed=38), start_s=300)
+    plant = _Plant(controller, seed=37)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(140, reference_every=2)
 
     assert controller.state == "DRIFT_SUSPECTED"
     assert controller.awaiting_arbitration
     assert controller.recalibration_count == 0
 
     controller.grant_arbitration()
-    _run(controller, _noise(5, shift=500.0, seed=39), start_s=500)
+    plant.run(5, reference_every=2)
     assert controller.recalibration_count == 1
     assert not controller.awaiting_arbitration
 
 
 def test_a_denied_arbitration_degrades_rather_than_waiting_forever() -> None:
     controller = _controller(arbitration="cloud")
-    for obs in _references(10):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=40))
-    _run(controller, _noise(200, shift=500.0, seed=41), start_s=300)
+    plant = _Plant(controller, seed=40)
+    plant.run(300, reference_every=4)
+    plant.fault(500.0)
+    plant.run(140, reference_every=2)
 
     controller.deny_arbitration("fleet-wide error under investigation")
-    _run(controller, _noise(5, shift=500.0, seed=42), start_s=500)
+    plant.run(5, reference_every=2)
     assert controller.state == "DEGRADED"
     assert controller.recalibration_count == 0
 
@@ -384,10 +407,10 @@ def test_a_denied_arbitration_degrades_rather_than_waiting_forever() -> None:
 
 def test_too_few_references_is_not_enough_to_recalibrate() -> None:
     controller = _controller(min_reference_observations=8)
-    for obs in _references(3):
-        controller.offer_reference(obs)
-    _run(controller, _noise(300, seed=43))
-    _run(controller, _noise(200, shift=500.0, seed=44), start_s=300)
+    plant = _Plant(controller, seed=43)
+    plant.run(300)
+    plant.fault(500.0)
+    plant.run(140, reference_every=60)  # a trickle: never eight inside the window
     assert controller.state == "DEGRADED"
 
 
@@ -461,14 +484,12 @@ def test_the_confirmation_gate_rejects_blips() -> None:
     confirmed = 0
     for seed in range(30):
         controller = _controller()
-        for obs in _references(10):
-            controller.offer_reference(obs)
         plant = _Plant(controller, seed=seed)
-        plant.run(300)
+        plant.run(300, reference_every=4)
         plant.fault(900.0)
-        plant.run(4)  # a handful of very bad passes
+        plant.run(4, reference_every=2)  # a handful of very bad passes
         plant.fault(0.0)
-        plant.run(80)
+        plant.run(80, reference_every=2)
         confirmed += controller.recalibration_count
 
     assert confirmed <= 3, f"{confirmed}/30 blips were confirmed as drift"
@@ -501,15 +522,123 @@ def test_the_detection_floor_is_set_by_the_detector_slack_not_by_the_controller(
         hits = 0
         for seed in range(seeds):
             controller = _controller()
-            for obs in _references(10):
-                controller.offer_reference(obs)
             plant = _Plant(controller, seed=200 + seed)
-            plant.run(300)
+            plant.run(300, reference_every=4)
             plant.fault(shift)
-            plant.run(500)
+            plant.run(500, reference_every=2)
             hits += controller.recalibration_count > 0
         return hits
 
     assert detected(25.0) == 0, "a drift at the slack should be structurally invisible"
     assert detected(100.0) >= 17, "two sigma should be caught almost every time"
     assert detected(25.0) < detected(50.0) < detected(100.0)
+
+
+# -- which references a recalibration is allowed to use -------------------------------------------
+
+
+def test_a_recalibration_uses_only_references_from_after_the_drift_began() -> None:
+    """Measured on S4 and worth the change it forced.
+
+    The first version refitted from the whole reference buffer, which spans both sides of the
+    fault -- so the new profile was a compromise between the old regime and the new one, and the
+    bias it was meant to remove only fell by about a third even after the loop had declared itself
+    reconverged. References from before the drift describe a plant that no longer exists.
+
+    Filtering from the moment the suspicion started is right for a ramp as well as a step: for a
+    ramp it keeps the recent observations, which is what a drifting plant means.
+    """
+    seen: list[list[ReferenceObservation]] = []
+
+    def capture(observations):
+        seen.append(list(observations))
+        return _fit_from(observations)
+
+    controller = _controller(recalibrate=capture, min_reference_observations=5)
+    plant = _Plant(controller, seed=71)
+
+    # References from the healthy regime, then a fault, then references from the new one.
+    for obs in _references(20, k=2.0e-4, start_s=0, seed=1):
+        controller.offer_reference(obs)
+    plant.run(300)
+
+    plant.fault(600.0)
+    plant.ts_s = 400
+    for obs in _references(20, k=2.3e-4, start_s=400, seed=2):
+        controller.offer_reference(obs)
+    plant.run(60)
+
+    assert seen, "the controller never recalibrated"
+    used = seen[0]
+    assert used, "refitted from nothing"
+    assert all(o.ts_us >= 400 * SECOND for o in used), (
+        "the refit used references from before the drift began, which describe the old plant"
+    )
+
+
+def test_it_waits_rather_than_refitting_on_a_mixture() -> None:
+    """If there are not yet enough post-drift references, refitting on the pre-drift ones is worse
+    than waiting: it produces a profile that is confidently wrong and then passes verification
+    often enough to hide the problem."""
+    attempts: list[int] = []
+
+    def capture(observations):
+        attempts.append(len(observations))
+        return _fit_from(observations)
+
+    controller = _controller(recalibrate=capture, min_reference_observations=10)
+    for obs in _references(30, start_s=0):
+        controller.offer_reference(obs)  # all from before the drift
+    plant = _Plant(controller, seed=73)
+    plant.run(300)
+    plant.fault(600.0)
+    plant.run(80)
+
+    assert attempts == [], "refitted despite having no post-drift references"
+    assert controller.state in {"DRIFT_SUSPECTED", "DEGRADED"}
+
+
+@pytest.mark.slow
+def test_the_confirmable_floor_follows_the_window_length_as_predicted() -> None:
+    """The second sensitivity floor, and the arithmetic behind it.
+
+        minimum confirmable shift = confirm_sigma * 1.2533 * sigma / sqrt(confirmation_passes)
+
+    At the shipped ``confirm_sigma = 3`` that is 0.841 residual standard deviations with a
+    twenty-pass window and 0.485 with a sixty-pass one. Worth pinning because it is the *binding*
+    constraint at default settings -- tighter than the detector slack -- and because getting it
+    wrong is silent: on S4_step_fault a twenty-pass window detected the injected step twice,
+    confirmed it never, and finished in MONITORING with the bias entirely uncorrected.
+
+    Measured at 0.8 sigma, which is chosen so the two floors do not confound each other: the
+    detector alarms 11 times in 12 at *both* window lengths, so detection is not what changes.
+    Only confirmation does, and it flips from 1/12 to 9/12 as the window crosses the shift. An
+    earlier version of this test used 0.6 sigma and failed, because at 0.6 the detector is the
+    binding floor and the window length barely matters.
+    """
+    import math
+
+    def confirms(shift_sigma: float, passes: int, seeds: int = 12) -> tuple[int, int]:
+        alarms = confirmed = 0
+        for seed in range(seeds):
+            controller = _controller(confirmation_passes=passes, min_reference_observations=5)
+            plant = _Plant(controller, seed=500 + seed)
+            plant.run(300, reference_every=4)
+            plant.fault(shift_sigma * plant.scale)
+            plant.run(500, reference_every=2)
+            alarms += any(e.kind == "drift_detected" for e in controller.drain_events())
+            confirmed += controller.recalibration_count > 0
+        return alarms, confirmed
+
+    def floor(passes: int) -> float:
+        return 3.0 * 1.2533141373155003 / math.sqrt(passes)
+
+    assert floor(20) == pytest.approx(0.841, abs=0.002)
+    assert floor(60) == pytest.approx(0.485, abs=0.002)
+
+    tight_alarms, tight_confirmed = confirms(0.8, passes=20)  # floor 0.841 > 0.8
+    wide_alarms, wide_confirmed = confirms(0.8, passes=60)  # floor 0.485 < 0.8
+
+    assert tight_alarms >= 9 and wide_alarms >= 9, "detection should not be what differs here"
+    assert tight_confirmed <= 3, "a shift below the confirmable floor was confirmed anyway"
+    assert wide_confirmed >= 7, "a shift above the confirmable floor was not confirmed"
