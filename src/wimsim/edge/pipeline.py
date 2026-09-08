@@ -116,26 +116,36 @@ class OfflinePipeline:
         if profile is not None:
             self._report_profile(profile)
 
-    def _build_estimator(self, profile: CalibrationProfile) -> MassEstimator:
-        """Rebuild the estimator the profile names, from the shared registry.
+    def _build_estimator(self, profile: CalibrationProfile, estimator: Any = None) -> MassEstimator:
+        """Wrap the estimator the profile names, from the shared registry.
 
         Shared rather than a table of its own, so that a profile the pipeline can run is exactly a
         profile ``recompute`` can re-derive. Two tables would eventually disagree, and the symptom
         would be an event that cannot be reproduced under the profile it names.
+
+        ``estimator`` supplies a live instance instead of rebuilding one from the profile state.
+        The closed loop needs that: it folds reference observations into an estimator with
+        ``update()``, and rebuilding here would leave those updates in the caller's copy -- an RLS
+        run would then report the same gain on every pass and be indistinguishable from the static
+        baseline, with nothing failing to say so.
         """
         return MassEstimator(
             self.cfg.estimate,
-            estimator=estimator_from_state(profile.state),
+            estimator=estimator if estimator is not None else estimator_from_state(profile.state),
             profile=profile,
             station_id=self.station_id,
             sensor_id=self.sensor_id,
         )
 
-    def set_profile(self, profile: CalibrationProfile) -> None:
-        """Activate a new profile mid-stream, as phase-5 recalibration will."""
+    def set_profile(self, profile: CalibrationProfile, *, estimator: Any = None) -> None:
+        """Activate a new profile mid-stream, as phase-5 recalibration does.
+
+        ``estimator`` hands over a live instance rather than one rebuilt from the state; see
+        ``_build_estimator``.
+        """
         self.profile = profile
         self.preprocessor.set_profile(profile)
-        self.estimator = self._build_estimator(profile)
+        self.estimator = self._build_estimator(profile, estimator)
         self._report_profile(profile)
 
     def _report_profile(self, profile: CalibrationProfile) -> None:
@@ -259,6 +269,7 @@ class OfflinePipeline:
         parent: str | None = None,
         straddles_block: bool = False,
         on_event: Callable[[MeasurementEvent], None] | None = None,
+        interval: Any = None,
     ) -> MeasurementEvent:
         """Turn one detection into a measured event, inside its ``estimate`` span.
 
@@ -269,6 +280,10 @@ class OfflinePipeline:
 
         ``on_event`` is called *inside* the span, which is what lets a publisher downstream of it
         join the same trace.
+
+        ``interval`` replaces the estimator's own band while keeping its mass, which is how the
+        conformal construction reaches an event: it needs a history of scored passes and so cannot
+        live inside a single estimator. See ``edge/estimate.py``.
         """
         assert self.estimator is not None
         with self.tracing.continue_from(
@@ -284,6 +299,7 @@ class OfflinePipeline:
                 provenance=self.provenance,
                 preprocessing=preprocessing,
                 temp_c=detected.temp_c,
+                interval=interval,
             )
             span.set_attribute("event_id", event.event_id)
             span.set_attribute("mass_kg", event.mass_kg)

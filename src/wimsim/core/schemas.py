@@ -218,6 +218,12 @@ class MeasurementEvent(_Payload):
     mass_ci_low: float
     mass_ci_high: float
     coverage_target: float = Field(0.95, gt=0.0, lt=1.0)
+    interval_source: str | None = Field(
+        None,
+        description="How the interval was derived: residual_sd, rls_residual_sd, kalman_analytic, "
+        "conformal_absolute, conformal_relative. Phase 5 compares them, and a number whose "
+        "provenance is unknown cannot be compared with one whose is.",
+    )
 
     calibration: CalibrationBlock
     preprocessing: PreprocessingBlock

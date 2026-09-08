@@ -116,8 +116,18 @@ class MassEstimator:
         preprocessing: PreprocessingBlock,
         temp_c: float | None = None,
         trace_id: str | None = None,
+        interval: MassEstimate | None = None,
     ) -> MeasurementEvent:
+        """One detected window as a publishable event.
+
+        ``interval`` replaces the estimator's own band while keeping its mass. That is how the
+        conformal construction reaches an event: it needs a history of scored passes, so it cannot
+        live inside a single estimator, and teaching MassEstimator about it would put the choice of
+        interval construction somewhere the experiment cannot sweep. The mass is never taken from
+        the override -- only the band and the coverage it claims.
+        """
         estimate = self.estimate(event, temp_c)
+        band = interval or estimate
         return MeasurementEvent(
             station_id=self.station_id,
             sensor_id=self.sensor_id,
@@ -132,9 +142,10 @@ class MassEstimator:
             speed_mps=None,  # a single sensor cannot measure speed; see edge/detect.py
             axle_count=event.axle_count,
             mass_kg=estimate.mass_kg,
-            mass_ci_low=estimate.mass_ci_low,
-            mass_ci_high=estimate.mass_ci_high,
-            coverage_target=estimate.coverage_target,
+            mass_ci_low=band.mass_ci_low,
+            mass_ci_high=band.mass_ci_high,
+            coverage_target=band.coverage_target,
+            interval_source=band.interval_source,
             calibration=self.calibration_block(),
             preprocessing=preprocessing,
             provenance=provenance,

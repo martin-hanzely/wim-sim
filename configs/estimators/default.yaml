@@ -32,3 +32,34 @@ estimate:
   estimator: static_affine
   coverage_target: 0.95
   bootstrap_passes: 50
+
+uncertainty:
+  # analytic is the estimator's own band; conformal reads the quantile off the residuals actually
+  # seen and assumes nothing about their shape. The experiment sweeps this.
+  method: analytic
+  conformal_score: relative
+  max_calibration: 500
+
+drift:
+  detectors: [cusum, page_hinkley]
+  warmup: 200
+  cusum_threshold: 12.0
+  cusum_slack: 0.5           # nothing at or below this is ever detected -- the loop's hard floor
+  page_hinkley_threshold: 15.0
+  page_hinkley_tolerance: 0.5
+  adwin_delta: 0.002
+  ks_window: 60
+  ks_alpha: 0.0001
+
+control:
+  # Off by default so phase 2's and phase 4's numbers stay comparable.
+  enabled: false
+  confirmation_passes: 30
+  confirm_sigma: 3.0
+  min_reference_observations: 10
+  cooldown_s: 3600.0
+  verification_passes: 50
+  max_references: 200
+  arbitration: local
+  reference_mode: supervised
+  reference_every_n: 20      # the supply rate of known masses; the most important swept factor

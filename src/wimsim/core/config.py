@@ -823,8 +823,37 @@ class EstimateConfig(_Base):
         description="per_axle_sum estimates each axle and adds; whole_signal treats the merged "
         "vehicle window as one measurement.",
     )
-    estimator: Literal["static_affine"] = Field(
-        "static_affine", description="RLS, Kalman and the residual learner arrive in phase 5."
+    estimator: Literal["static_affine", "rls", "kalman"] = Field(
+        "static_affine",
+        description="The ladder, in order of adaptivity. static_affine fits once and freezes, so "
+        "it is the floor the others must beat; rls is the same model and objective with a "
+        "forgetting factor, which isolates adaptivity and changes nothing else; kalman models the "
+        "plant's own [q, k] and is the only one not attenuated by feature noise. The residual "
+        "learner is phase 6, behind a feature flag.",
+    )
+    forgetting: float = Field(
+        0.99,
+        gt=0.0,
+        le=1.0,
+        description="RLS forgetting factor. 1.0 is recursive OLS; the literature sweeps "
+        "0.90-0.999. Ignored by the other estimators.",
+    )
+    measurement_noise: float = Field(
+        1.0e-8,
+        gt=0.0,
+        description="Kalman R: variance of the feature noise, in sensor units squared. Ignored by "
+        "the other estimators.",
+    )
+    process_noise_bias: float = Field(
+        1.0e-7,
+        ge=0.0,
+        description="Kalman Q for the zero line, as a standard deviation per *second* -- a plant "
+        "drifts on a clock, not on traffic.",
+    )
+    process_noise_gain: float = Field(
+        1.0e-11,
+        ge=0.0,
+        description="Kalman Q for the gain, standard deviation per second.",
     )
     coverage_target: float = Field(0.95, gt=0, lt=1)
     bootstrap_passes: int = Field(
@@ -836,6 +865,142 @@ class EstimateConfig(_Base):
     )
 
 
+class UncertaintyConfig(_Base):
+    """How the interval on a mass is constructed."""
+
+    method: Literal["analytic", "conformal"] = Field(
+        "analytic",
+        description="analytic is whatever the active estimator produces -- a residual spread for "
+        "static_affine and RLS, a propagated covariance for the Kalman. conformal reads the "
+        "quantile off the residuals actually seen and assumes nothing about their shape, which "
+        "matters because a Gaussian interval is miscalibrated in both directions on real "
+        "residuals; see calibration/conformal.py.",
+    )
+    conformal_score: Literal["absolute", "relative"] = Field(
+        "relative",
+        description="absolute gives a constant-width band; relative normalises by the prediction, "
+        "so the band widens with the load. Relative is the default because weighing error is "
+        "largely proportional to what is being weighed, and neither the analytic nor the "
+        "absolute-conformal interval can express that.",
+    )
+    max_calibration: int = Field(
+        500,
+        ge=19,
+        description="Sliding window of nonconformity scores. Nineteen is the floor at 0.95 "
+        "coverage -- below it no score is high enough to carry the finite-sample guarantee.",
+    )
+
+
+class DriftConfig(_Base):
+    """Which detectors watch the residual stream, and how twitchy they are."""
+
+    detectors: tuple[Literal["cusum", "page_hinkley", "adwin", "ks"], ...] = Field(
+        ("cusum", "page_hinkley"),
+        description="Two by default: a cumulative sum for speed and Page-Hinkley as a second "
+        "opinion against a running mean. Adding ks buys sensitivity to a change that leaves both "
+        "moments alone, at the cost of the slowest detection of the four.",
+    )
+    warmup: int = Field(
+        200,
+        ge=2,
+        description="Passes spent learning the location and scale to judge against. Residuals are "
+        "not centred on zero -- a slightly miscalibrated scale is biased from its first pass -- so "
+        "a detector that assumed zero would call that drift.",
+    )
+    cusum_threshold: float = Field(12.0, gt=0.0)
+    cusum_slack: float = Field(
+        0.5,
+        gt=0.0,
+        description="Deviations below this never accumulate, which is what makes CUSUM a drift "
+        "detector rather than an outlier detector -- and what puts a hard floor under the whole "
+        "loop's sensitivity. Measured: nothing at or below the slack is ever detected.",
+    )
+    page_hinkley_threshold: float = Field(15.0, gt=0.0)
+    page_hinkley_tolerance: float = Field(0.5, gt=0.0)
+    adwin_delta: float = Field(0.002, gt=0.0, lt=1.0)
+    ks_window: int = Field(60, ge=5)
+    ks_alpha: float = Field(1.0e-4, gt=0.0, lt=1.0)
+
+    @model_validator(mode="after")
+    def _at_least_one_detector(self) -> DriftConfig:
+        if not self.detectors:
+            raise ValueError(
+                "a controller with no detectors can never leave MONITORING, so drift would never "
+                "be acted on. Name at least one."
+            )
+        if len(set(self.detectors)) != len(self.detectors):
+            raise ValueError(
+                f"duplicate detectors in {self.detectors}: wim_drift_statistic is labelled by "
+                "detector name, so two of the same would collide into one series"
+            )
+        return self
+
+
+class ControlConfig(_Base):
+    """The MAPE-K controller. Buildspec section 6 asks for every one of these to be configurable."""
+
+    enabled: bool = Field(
+        False,
+        description="Off by default so that phase 2's and phase 4's numbers stay comparable: a "
+        "pipeline built without the controller is exactly the pipeline they measured.",
+    )
+    confirmation_passes: int = Field(
+        30,
+        ge=1,
+        description="Residuals gathered after an alarm before deciding whether it was real.",
+    )
+    confirm_sigma: float = Field(
+        3.0,
+        gt=0.0,
+        description="How far the median of those must still sit from the monitored level, in "
+        "standard errors. Three, not one: this is the second of two gates and its job is to reject "
+        "the false alarms the detectors were tuned to allow. At one sigma it rejects almost "
+        "nothing -- a 32 percent false-confirmation rate by construction.",
+    )
+    min_reference_observations: int = Field(
+        10,
+        ge=2,
+        description="Fewer than this and there is nothing to recalibrate against, so the answer is "
+        "DEGRADED rather than a refit on nothing.",
+    )
+    cooldown_s: float = Field(
+        3600.0,
+        ge=0.0,
+        description="Measured on the station clock, not in passes: an hour is an hour whether "
+        "forty vehicles crossed in it or four.",
+    )
+    verification_passes: int = Field(
+        50,
+        ge=1,
+        description="Residuals gathered after a new profile goes live, to check it actually "
+        "helped. Failing this is the most dangerous outcome available, because the station has "
+        "just announced that it fixed itself.",
+    )
+    max_references: int = Field(200, ge=2)
+    arbitration: Literal["local", "cloud"] = Field(
+        "local",
+        description="Whether the station may decide for itself. A systematic error across twenty "
+        "stations is a fleet problem, and twenty stations independently recalibrating away from it "
+        "destroys the evidence that it was systematic -- so this is a deployment question and both "
+        "modes are worth comparing.",
+    )
+    reference_mode: Literal["supervised", "population"] = Field(
+        "supervised",
+        description="supervised: a vehicle of known mass provides a direct update. population: "
+        "self-calibration from the statistics of an assumed axle-load distribution, which is the "
+        "classical WiM auto-calibration assumption. Population mode arrives in phase 6.",
+    )
+    reference_every_n: int = Field(
+        20,
+        ge=1,
+        description="One pass in this many is treated as a reference vehicle. In the field this is "
+        "the transponder or weighbridge supply rate, and it is the single most important number "
+        "for whether self-calibration is possible at a site at all -- so it is a swept factor, "
+        "not a constant. The harness reads those masses from the truth log; nothing in "
+        "calibration/ ever does (principle 1).",
+    )
+
+
 class EdgeConfig(_Base):
     """One complete pipeline configuration. Hashed into every event's provenance."""
 
@@ -844,6 +1009,9 @@ class EdgeConfig(_Base):
     preprocess: PreprocessConfig = PreprocessConfig()
     detect: DetectConfig = DetectConfig()
     estimate: EstimateConfig = EstimateConfig()
+    uncertainty: UncertaintyConfig = UncertaintyConfig()
+    drift: DriftConfig = DriftConfig()
+    control: ControlConfig = ControlConfig()
 
     @model_validator(mode="after")
     def _hysteresis_is_a_gap(self) -> EdgeConfig:

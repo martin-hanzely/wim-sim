@@ -376,7 +376,17 @@ def test_a_malformed_traceparent_is_rejected_at_the_boundary() -> None:
         MeasurementEvent.model_validate(_event(traceparent="not-a-traceparent"))
 
 
-def test_adding_traceparent_was_a_minor_version_bump() -> None:
-    """An optional additive field. Consumers on 1.0.0 keep working, which is the whole contract."""
-    major, minor, _ = SCHEMA_VERSION.split(".")
-    assert (major, minor) == ("1", "1")
+def test_optional_additive_fields_only_ever_bump_the_minor_version() -> None:
+    """Both `traceparent` (1.1.0) and `interval_source` (1.2.0) are optional additive fields, so
+    consumers written against 1.0.0 keep working -- which is the whole contract of buildspec
+    section 11. The assertion is on the *property*, not on the current number: pinning the number
+    means every additive field breaks this test and teaches the next person to just bump it.
+    """
+    major, minor, patch = (int(part) for part in SCHEMA_VERSION.split("."))
+    assert major == 1, "a major bump means a consumer somewhere stopped working; say why here"
+    assert minor >= 1
+    assert patch == 0, "a shape change is minor or major; patch is for nothing here"
+
+    for name in ("traceparent", "interval_source"):
+        field = MeasurementEvent.model_fields[name]
+        assert not field.is_required(), f"{name} must be optional for old payloads to validate"
