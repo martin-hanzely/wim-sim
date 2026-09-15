@@ -65,46 +65,95 @@ weak. The response is quasi-static in this speed range, so the peak is a load me
 rate measurement. That is exactly the property phase 2 concluded made `peak` the better feature, now
 confirmed on the real instrument for a different reason.
 
-### 3. Speed *is* observable here — which overturns a phase-2 conclusion
+### 3. Speed is **not** observable here — a phase-3 conclusion, withdrawn
 
-Phase 2 concluded that a single sensor cannot measure speed, so the `area` feature cannot be
-speed-normalised. **That does not apply to this installation.** The two gauges are separated along
-the direction of travel, and the interval between their peaks is a direct speed measurement:
+> **This section replaces a claim that was wrong.** Phase 3 reported that the two gauges are
+> separated along the direction of travel and that the interval between their peaks is a direct
+> speed measurement. The station's owner has since supplied the geometry — **the two gauges are
+> 126 mm apart, one parallel to the road and one rotated 90°, and both respond to the whole
+> platform, each a little more as the vehicle arrives and leaves** — and re-measuring against that
+> shows the phase-3 offset was an artefact. The original text is in git history at `23ad31a`.
 
-| direction | n | peak-time offset | mean duration |
-|---|---|---|---|
-| Tenzo1 first | 11 | +236 ms (Citroën), +225 ms (Fabia) | 0.5–0.6 s |
-| Tenzo2 first | 11 | −386 ms (Citroën), −521 ms (Fabia) | 0.9–1.0 s |
+Phase 3 measured the inter-gauge offset by **differencing the two channels' peak times**, and got
+162–739 ms. On a pulse ~770 ms wide, `argmax` wanders by hundreds of milliseconds while the pulse
+itself has not moved — and its wander grows with the pulse width, which is precisely the
+`r = +0.965` correlation phase 3 read as geometry.
 
-Eleven each way — the vehicle was driven back and forth, exactly as the `_spat` filename implies.
-**The sign of the offset is the direction of travel.** The magnitude is larger in the direction
-where the crossing also lasted longer, i.e. the slower direction, as it must be if both scale as
-1/speed.
+Cross-correlating the *whole* crossing uses every sample instead of one. Over 26 crossings:
 
-That last point is worth stating as a check rather than an observation, because it is what makes the
-interpretation safe:
+| | mean | correlation with pulse FWHM |
+|---|---|---|
+| \|peak-time difference\| | 345 ms | **+0.88** — argmax jitter, scaling with the width it is measured on |
+| \|cross-correlation lag\| | **9.6 ms** | +0.19 — no 1/speed scaling at all |
 
-```
-pulse FWHM = 1.84 x |peak-time offset|      r = +0.965  (n = 22)
-duration   = 2.09 x |peak-time offset|      r = +0.924
-```
+The residual lag does carry the direction sign — **+5.89 ms one way (sd 0.10 ms over 11 crossings),
+−10.0 ms the other** — but a fixed few milliseconds across crossings that differ *fivefold* in
+duration is an instrument offset, not a propagation time. A real time-of-flight must scale as
+1/speed; this does not.
 
-Both quantities scale as 1/*v*, so their ratio is pure geometry and **contains no speed at all**:
-the sensor's influence length is 1.84 × the gauge separation, measured, with no assumptions.
+And the geometry now rules it out arithmetically. If the 126 mm lay along the direction of travel:
 
-### 4. What cannot be pinned without the station geometry
-
-Speed is `L / Δt` where `L` is the gauge separation, and `L` is not in the data. The observed
-offsets span 162–739 ms, a factor of 4.6 in speed. For scale:
-
-| if the mean crossing were | then L is |
+| speed | delay it would produce |
 |---|---|
-| 5 km/h | 0.46 m |
-| 10 km/h | 0.91 m |
-| 15 km/h | 1.37 m |
+| 2 km/h | 227 ms |
+| 5 km/h | 91 ms |
+| 10 km/h | 45 ms |
 
-One number — the gauge separation, or the speed of any single run — fixes all of it, including the
-influence length via the 1.84 ratio. **This is the single most valuable missing measurement.**
+The measured 9.6 ms implies **47 km/h**, which the one-second pulses rule out. The separation is
+mostly *across* the road, which is what "one rotated 90°" and "both affected at once" describe.
+
+**So phase 2's conclusion stands after all**: a single measurement point cannot measure speed, and
+this installation does not escape it. The consequences:
+
+* `area` still cannot be speed-normalised, so `peak` remains the feature — now for phase 2's
+  original reason rather than the phase-3 one.
+* The influence length is **still unknown in metres**. It was thought to be 1.84 × the gauge
+  separation; with the offset withdrawn that route is gone, and with no speed there is no way to
+  turn the ~770 ms FWHM into a length.
+* The two channels are not a redundant pair to be differenced. They are one transverse and one
+  longitudinal view of the same load, which is why they are the same sign, synchronous, and
+  differ by a fixed factor of 2.4–3.0.
+
+### 4. Wheel loads, estimated — the first kilograms in this project
+
+No vehicle has been weighed. But one of them is **identified**, and that is enough for an estimate
+with its uncertainty carried rather than hidden.
+
+Škoda publishes an **operating weight** that already includes a 75 kg driver, 90 % fuel and the
+toolkit — exactly the condition a car being driven over a platform is in. Across Fabia petrol
+variants that is **1081–1204 kg**. At 59–63 % on the front axle, and with **one wheel on the
+platform at a time**:
+
+| | value |
+|---|---|
+| Fabia front wheel | **319–379 kg**, centrally 348 kg |
+| Fabia rear wheel | 200–247 kg |
+| Tenzo2 peak for that wheel | 9.07–10.30 µε (two independent extractions) |
+| **Tenzo2 sensitivity** | **0.0261–0.0296 µε/kg** = 2.61–2.96 × 10⁻⁸ strain/kg |
+| **Tenzo1 sensitivity** | 0.0092–0.0130 µε/kg = 0.92–1.30 × 10⁻⁸ strain/kg |
+
+The Citroën is not identified, so it is inferred from the measured peak ratio (1.25–1.44 across
+both channels and both extractions) rather than looked up:
+
+| | value |
+|---|---|
+| Citroën wheel load | 470–489 kg |
+| implied front axle | 941–978 kg |
+| implied vehicle, with driver | **1542–1603 kg** |
+
+That band fits a C5 Aircross (1615 kg with driver), a Berlingo or a C4 — and **excludes a C3**
+(958–1090 kg), which is far too light to produce the observed ratio. This is a consistency check,
+not an identification.
+
+**What dominates the error is the axle split, not the strain.** Moving the front fraction from 0.55
+to 0.67 moves the sensitivity by −20 %/+11 %, while the two independent strain extractions differ by
+13 %. One weighbridge ticket for either car would collapse all of it.
+
+**These numbers are an estimate and must not be used as ground truth.** Principle 1 says truth is an
+output, never an estimator input; a `reference.csv` built from published kerb weights would put a
+guess where the pipeline expects a weighing, and every accuracy figure downstream would inherit it
+silently. The sensitivity now lives in `configs/stations/cintron_platform.yaml`, labelled
+`ESTIMATED`, where it makes the simulator resemble the real instrument — which is what it is for.
 
 ---
 
@@ -181,11 +230,11 @@ answer.
 recordings establish that the sensor responds to load repeatably and discriminates two vehicles by
 44 %; turning that into kilograms needs one known mass.
 
-**The two-sensor question is now open and is a scope decision, not a bug.** The station model, the
-source adapter and the detector all assume one measurement channel. Supporting a sensor *pair* —
-speed from the inter-gauge delay, then genuinely speed-normalised area, then a peak-versus-area
-comparison that is fair to both — is a real piece of work and it belongs in phase 6 alongside the
-experiment runner. Worth doing: it is the configuration the hardware actually is.
+**The two-sensor question has changed shape.** It was scoped as "speed from the inter-gauge delay,
+then genuinely speed-normalised area". Section 3 withdraws the delay, so that work has no basis.
+What the pair does offer is two views of the same load at a fixed ratio of 2.4–3.0 — useful for
+redundancy, cross-checking and fault detection on one channel against the other, but not for
+speed. A smaller and better-founded piece of work than the one that was planned.
 
 ## Re-running this: `wimsim gap-report`
 
@@ -254,10 +303,14 @@ That agreement is the evidence the number means anything.
 
 ## What would help most, in order
 
-1. **The gauge separation in metres**, or the speed of any single run. One number fixes speed,
-   influence length, and the width scale of the whole model.
-2. **One weighed vehicle.** Without it there is no kilogram anywhere in this project that came from
-   the real sensor.
+1. **The speed of any single run** — a stopwatch over a measured distance is enough. The gauge
+   separation has now been supplied (126 mm) and it does *not* fix speed, because the gauges are not
+   a time-of-flight pair (section 3). Speed is the one number that would turn the ~770 ms pulse
+   width into an influence length in metres.
+2. **One weighed vehicle.** Section 4 estimates the wheel loads from published operating weights,
+   which is enough to make the simulator resemble the instrument but is not a calibration. The axle
+   split dominates the error, so a single weighbridge ticket is worth more than any amount of
+   further analysis of these recordings.
 3. **A recording at road speed**, if the deployment is meant to be a road. Everything here is
    walking-to-jogging pace, and whether the response stays quasi-static at 90 km/h is exactly the
    question a WiM system turns on.

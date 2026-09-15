@@ -11,19 +11,43 @@
 #   measured   sample rate 25 kHz, two strain channels plus two probes
 #   measured   baseline 111.7 ue (Tenzo1) and 120.8 ue (Tenzo2)
 #   measured   sample-to-sample noise ~0.5 ue, mains-dominated in band
-#   measured   Tenzo2/Tenzo1 amplitude ratio 2.6-3.0, stable across 22 crossings
-#   measured   pulse FWHM = 1.84 x the inter-gauge delay (r = +0.965, geometry only)
-#   measured   peak amplitude independent of speed; Citroen/Fabia ratio 1.44 (p ~ 1e-3)
+#   measured   Tenzo2/Tenzo1 amplitude ratio 2.4-3.0, same sign, synchronous
+#   measured   peak amplitude independent of speed; Citroen/Fabia ratio 1.25-1.44
+#   TOLD       gauge separation 126 mm; one gauge parallel to the road, one rotated 90 deg
+#   TOLD       both gauges respond to the whole platform, each a little more as the vehicle
+#              arrives and leaves; ONE WHEEL on the platform at a time
+#   ESTIMATED  k0 -- from the Fabia's published operating weight, NOT from a weighing. See below
+#              and docs/sim-to-real.md.
 #   ASSUMED    gauge factor 2.0, quarter bridge -- not in the export
-#   UNKNOWN    influence_length_m and the gauge separation, in metres. Only their RATIO is fixed
-#              by the data. Everything below that depends on an absolute length is provisional.
-#   UNKNOWN    k0 -- no reference mass has been weighed yet, so strain per kg is not established.
+#   UNKNOWN    influence_length_m in metres. It was thought to be 1.84 x the gauge separation;
+#              that is withdrawn -- see "the delay is not a speed" below.
+#   UNKNOWN    vehicle speed. There is no longer any measurement of it in this data.
+#
+# THE DELAY IS NOT A SPEED, AND THE GAUGES ARE NOT A TIME-OF-FLIGHT PAIR.
+#
+# Phase 3 measured an inter-gauge offset of 162-739 ms by differencing the two channels' PEAK
+# TIMES, and read it as a vehicle crossing one gauge and then the other. On a ~1 s pulse argmax
+# wanders by hundreds of milliseconds while the pulse itself has not moved, and its wander scales
+# with the pulse width -- which is exactly the r = +0.965 correlation phase 3 read as geometry.
+#
+# Cross-correlating the whole crossing instead of one sample, over 26 crossings:
+#
+#     |peak-time difference|   mean 345 ms    corr with FWHM +0.88   <- argmax jitter
+#     |cross-correlation lag|  mean 9.6 ms    corr with FWHM +0.19   <- no 1/speed scaling
+#
+# The lag does carry the direction sign (+5.89 ms one way with sd 0.10 ms over 11 crossings,
+# -10.0 ms the other), but a fixed few milliseconds across crossings that differ fivefold in
+# duration is an instrument offset, not a propagation time. 126 mm along the travel direction
+# would be 227 ms at 2 km/h and 91 ms at 5 km/h; the measured lag implies 47 km/h, which the
+# one-second pulses rule out. Consistent with what the installation actually is: the 126 mm is
+# mostly across the road, and both gauges see the whole platform at once.
 
 station_id: ST-CINTRON-1
 sensor_id: Tenzo2          # the more sensitive of the two gauges
 description: >
-  Instrumented plank/slab platform, low-speed drive-over. Two strain gauges separated along the
-  direction of travel, so speed IS observable here -- unlike the single-sensor stations.
+  Instrumented plank/slab platform, low-speed drive-over, one wheel on it at a time. Two strain
+  gauges 126 mm apart, one parallel to the road and one rotated 90 degrees; both respond to the
+  whole platform and peak together, so speed is NOT observable here after all.
 
 sample_rate_hz: 25000.0
 lane_count: 1
@@ -35,16 +59,30 @@ adc:
   unit: mV/V
 
 sensor:
-  # PROVISIONAL. With gauge factor 2.0 and a quarter bridge, 1 ue = 5e-4 mV/V. The observed 13 ue
-  # peak for the Citroen is then 6.5e-3 mV/V. Turning that into mV/V per kg needs a weighed
-  # vehicle, which does not exist yet, so k0 here is a placeholder chosen to put a ~1300 kg axle at
-  # the observed amplitude and MUST NOT be quoted as a calibration.
-  k0: 5.0e-6
+  # ESTIMATED, NOT WEIGHED. The Skoda Fabia is identified, and Skoda's published "operating weight"
+  # already includes a 75 kg driver, 90 % fuel and the toolkit -- the condition a car being driven
+  # over a platform is in. 1081-1204 kg across petrol variants; at 59-63 % on the front axle and
+  # one wheel on the platform at a time, the front wheel carries 319-379 kg, centrally 348 kg.
+  #
+  # Tenzo2 peaks at 9.07-10.30 ue for that wheel across two independent extractions, so
+  #
+  #     Tenzo2   0.0261-0.0296 ue/kg   =  2.61e-8 to 2.96e-8 strain/kg
+  #     Tenzo1   0.0092-0.0130 ue/kg   =  9.20e-9 to 1.30e-8 strain/kg
+  #
+  # k0 below is Tenzo2's central value converted at gauge factor 2.0 and a QUARTER BRIDGE
+  # (1 ue = 5e-4 mV/V), which is the assumed half of this and the part that is not measured. The
+  # strain-per-kg figures above are the ones to quote; k0 inherits the bridge assumption.
+  #
+  # The dominant uncertainty is the front-axle fraction, not the strain: 0.55 to 0.67 moves k0 by
+  # -20 %/+11 %. A single weighbridge ticket would collapse all of it.
+  k0: 1.39e-8            # (2.78e-8 strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain
   alpha0_per_c: -2.0e-4
   alpha_walk_sigma_per_sqrt_s: 0.0
   t_ref_c: 20.0
   contact_patch_m: 0.22    # unused here; width_source is influence_length
-  influence_length_m: 1.0  # UNKNOWN in metres; only FWHM/delay = 1.84 is measured
+  influence_length_m: 1.0  # STILL UNKNOWN. The 1.84 x separation route is withdrawn (see above),
+                           # and with no speed measurement there is no way to convert the ~770 ms
+                           # FWHM into metres.
 
 thermal:
   tau_thermal_s: 1800.0
