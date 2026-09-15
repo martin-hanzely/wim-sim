@@ -187,6 +187,71 @@ speed from the inter-gauge delay, then genuinely speed-normalised area, then a p
 comparison that is fair to both — is a real piece of work and it belongs in phase 6 alongside the
 experiment runner. Worth doing: it is the configuration the hardware actually is.
 
+## Re-running this: `wimsim gap-report`
+
+Everything above was measured by hand in phase 3. That is the problem with it. A hand-run analysis
+is a claim about one afternoon, and the recordings will be re-imported, the model will change, and
+nobody will redo it. Phase 6 made it a command:
+
+```bash
+wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1
+wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1 -o data/results/gap/c1_t1.md
+```
+
+It compares the recording against a synthetic stream generated at the recording's own sample rate,
+in three parts -- noise in bands, drift as a spectral slope, pulse shape by fitting four candidates
+-- and ends with the `--set` lines that move the model towards it.
+
+Run across all eight recordings and both strain channels, sixteen channel-runs:
+
+| | measured by the command | stated above, by hand |
+|---|---|---|
+| white sigma, Tenzo1 | 4.439-4.466e-7 | -- |
+| white sigma, Tenzo2 | 4.572-4.589e-7 | -- |
+| 50 Hz over its local floor | +35.7 to +41.0 dB | +54 dB |
+| low-frequency slope | -2.58 to -3.82, median -3.34 | -1.96 to -2.65 |
+| best-fitting pulse shape | triangle 7, raised cosine 3, gaussian 1, parabola 1 | parabola on 5 of 6 |
+| shape residual | 0.046 to 0.159, median 0.098 | 5.2 % |
+| channel-runs with no fittable crossing | 4 of 16 | -- |
+
+**The white noise floor is a property of the channel, not of the day.** Tenzo1 sits at 4.44-4.47e-7
+and Tenzo2 at 4.57-4.59e-7 across eight independent recordings, and the two ranges do not overlap.
+A 3 % difference that reproduces over a whole corpus is a real difference between two channels of
+the same instrument. The hand analysis could not see this, because it quoted one total noise figure.
+
+**Where the command and the hand analysis disagree, they are not measuring the same thing, and
+neither supersedes the other.**
+
+* The mains figure differs because the "local floor" is defined differently: the command measures
+  the 50 Hz peak against the median PSD in 30-45 and 55-70 Hz, which is a deliberately conservative
+  neighbour band. Both numbers say mains dominates; they must not be quoted interchangeably.
+* The slope differs because the fit band and segment length differ. Both are at or past Brownian,
+  and both carry the same caveat the command now prints on every report: sixty seconds resolves
+  about 1.4 decades, which cannot separate a random walk from a slow trend. Neither number should
+  drive the drift model.
+* The pulse shape differs for the reason that matters most. The hand analysis fitted **six clean
+  crossings that a person had picked**; the command fits **the single largest crossing in each
+  channel-run**, whatever it is. It has no way to know which events are clean, and it includes
+  channels that turned out not to contain crossings at all.
+
+**So the pulse-shape primitive is less settled than the table above makes it look.** At residuals of
+5-16 %, the four candidates are four single-humped curves being ranked on the part of the signal
+that is *not* the hump -- and the ranking moves when the selection does. What both analyses agree
+on is the thing that was actually load-bearing: the residual is real structure rather than noise, so
+a shape choice here is a defensible primitive and not a claim of exactness. Settling *which* shape
+needs the station geometry, which is still the first item on the list below.
+
+**Four of sixteen channel-runs contain no crossing to fit, and the report says so rather than
+fitting one.** `20260209_fabia1/Tenzo1` is the clearest: it is a bistable level switching between
++/-1.3 microstrain with plateaus tens of seconds long, not a vehicle. Refusing it is the correct
+answer, and the refusal names which window widths were tried.
+
+The width itself is only reported when at least two window widths independently find it. The window
+decides the answer in both directions -- too narrow and the fit measures the window, too wide and
+the Brownian baseline dominates -- and on `cintron1/Tenzo1` the half-widths from 0.75 s to 4 s
+disagree about whether a fit is possible at all while every one that succeeds returns 890-942 ms.
+That agreement is the evidence the number means anything.
+
 ## What would help most, in order
 
 1. **The gauge separation in metres**, or the speed of any single run. One number fixes speed,

@@ -1,0 +1,421 @@
+"""Figures for a sweep, written beside the parquet they describe.
+
+Buildspec section 10: "a LaTeX/Markdown comparison table and matplotlib figures written straight to
+``data/results/<id>/figures/``".
+
+Four figures, because the sweep is asked four different questions and no one plot answers more than
+one of them:
+
+``accuracy``
+    MAE as a multiple of the dynamic floor. Not MAE in kilograms -- the floor spans two orders of
+    magnitude across the scenario set, so a bare axis compares scenarios rather than estimators,
+    and an estimator sitting two per cent above a large floor would look worse than one sitting
+    three times above a small one.
+``coverage``
+    Empirical coverage against the nominal target, which is drawn. 0.91 is a good number or a bad
+    one depending entirely on what was promised.
+``reconvergence``
+    Seconds from an injected fault until the error came back and stayed back. The headline control
+    metric, and the one scenarios without faults are kept out of: a zero bar there would read as
+    "reconverged instantly" rather than "the question was never asked".
+``detectors``
+    Recall against false alarms per hour. Either alone can be made perfect by a detector that is
+    useless in the other direction, so they belong on one pair of axes.
+
+Three rules the figures follow, all of which exist to stop a plot flattering the system:
+
+**Seeds are drawn, not averaged.** Three seeds exist to give a number an error bar. A plot that
+means over them has thrown away the only thing separating a result from an anecdote.
+
+**Failed runs are counted where a reader will see it.** A bar absent because a run crashed looks
+exactly like a bar absent because the value was zero, so the count goes in the title and in the
+captions file.
+
+**The same frame draws the same bytes.** Principle 4 applies to figures too: one that changes
+between renders cannot be diffed, and a reviewer cannot tell a re-render from a new result.
+
+Grafana remains the UI (buildspec section 13). These exist so a results directory is one thing that
+can be handed to somebody, not to become a dashboard.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+__all__ = [
+    "FIGURES",
+    "Reconvergence",
+    "accuracy_ratios",
+    "coverage_rows",
+    "detector_points",
+    "reconvergence_rows",
+    "write_figures",
+]
+
+#: Figure stem -> caption. The caption is written to ``figures/README.md`` rather than living only
+#: in the code that drew it, because a figure separated from its caption is a shape.
+FIGURES: dict[str, str] = {
+    "accuracy": (
+        "MAE as a multiple of the dynamic floor -- the load error the vehicles brought with them, "
+        "which no calibration can remove. 1.0 is the floor; below it would be a coincidence rather "
+        "than a result. Scenarios with no dynamic load have no floor to divide by and are absent. "
+        "One marker per seed."
+    ),
+    "coverage": (
+        "Empirical coverage of the prediction interval against its nominal target, drawn as the "
+        "dashed line. Above the line is conservative, below it is an interval that promises more "
+        "than it delivers. One marker per seed."
+    ),
+    "reconvergence": (
+        "Seconds from the first injected fault until the error returned to its pre-fault level and "
+        "stayed there. Scenarios with no faults are absent rather than drawn at zero. Runs that "
+        "never reconverged are counted in the label rather than dropped, because dropping them "
+        "makes a system that never recovers look identical to one that was not measured."
+    ),
+    "detectors": (
+        "Recall against false alarms per hour of simulated operation: the trade-off an operator "
+        "actually faces. Either axis alone can be made perfect by a detector that is useless in "
+        "the other direction. Scenarios with no faults have undefined recall and appear on the "
+        "false-alarm axis only, at the bottom -- they are the cleanest measurement of that cost."
+    ),
+}
+
+#: Distinct without relying on colour alone, since these end up printed and pasted into slides.
+_MARKERS = ("o", "s", "^", "D", "v", "P")
+
+_Key = tuple[str, str]
+
+
+def _usable(frame: pd.DataFrame) -> pd.DataFrame:
+    if "failed" not in frame:
+        return frame
+    return frame[~frame["failed"].fillna(False).astype(bool)]
+
+
+def _keys(frame: pd.DataFrame) -> list[_Key]:
+    """Scenario/estimator pairs, in the frame's own scenario order and a stable estimator order."""
+    scenarios = list(dict.fromkeys(frame["scenario"]))
+    estimators = sorted(dict.fromkeys(frame["estimator"]))
+    present = set(zip(frame["scenario"], frame["estimator"], strict=True))
+    return [(s, e) for s in scenarios for e in estimators if (s, e) in present]
+
+
+def _values(frame: pd.DataFrame, key: _Key, column: str) -> list[float]:
+    rows = frame[(frame["scenario"] == key[0]) & (frame["estimator"] == key[1])]
+    series = rows.sort_values("seed")[column]
+    return [float(v) for v in series if pd.notna(v)]
+
+
+def accuracy_ratios(frame: pd.DataFrame) -> dict[_Key, list[float]]:
+    """MAE as a multiple of the dynamic floor, one value per seed.
+
+    A scenario whose floor is zero carries no dynamic load, so the ratio is a division by zero
+    rather than an impressive number, and it is left out.
+    """
+    usable = _usable(frame)
+    usable = usable[usable["dynamic_floor_kg"].fillna(0.0) > 0.0]
+    out: dict[_Key, list[float]] = {}
+    for key in _keys(usable):
+        rows = usable[(usable["scenario"] == key[0]) & (usable["estimator"] == key[1])]
+        rows = rows.sort_values("seed")
+        ratios = [
+            float(mae) / float(floor)
+            for mae, floor in zip(rows["mae_kg"], rows["dynamic_floor_kg"], strict=True)
+            if pd.notna(mae) and floor > 0
+        ]
+        if ratios:
+            out[key] = ratios
+    return out
+
+
+def coverage_rows(
+    frame: pd.DataFrame, target: float | None = None
+) -> tuple[dict[_Key, list[float]], float]:
+    """Empirical coverage per seed, and the nominal target it is being judged against."""
+    if target is None:
+        from wimsim.core.config import EstimateConfig
+
+        # From the config rather than a literal 0.95, so the line on the figure moves when the
+        # shipped target does instead of quietly disagreeing with it.
+        target = float(EstimateConfig().coverage_target)
+    usable = _usable(frame)
+    rows = {k: _values(usable, k, "coverage") for k in _keys(usable)}
+    return {k: v for k, v in rows.items() if v}, target
+
+
+@dataclass(frozen=True, slots=True)
+class Reconvergence:
+    """Reconvergence times for one scenario/estimator, and the runs that never got there.
+
+    The two are kept apart because a bare NaN cannot tell "never reconverged" from "the run was too
+    short to tell", and averaging them together would flatter whichever way was convenient.
+    """
+
+    seconds: list[float] = field(default_factory=list)
+    never_reconverged: int = 0
+    unmeasurable: int = 0
+
+
+def reconvergence_rows(frame: pd.DataFrame) -> dict[_Key, Reconvergence]:
+    """Time to reconverge per seed, for the scenarios that had a fault to reconverge from."""
+    usable = _usable(frame)
+    if "reconverge_measurable" in usable:
+        measurable = usable["reconverge_measurable"].fillna(False).astype(bool)
+    else:  # pragma: no cover - a frame from before the control columns existed
+        measurable = pd.Series(True, index=usable.index)
+
+    out: dict[_Key, Reconvergence] = {}
+    for key in _keys(usable):
+        rows = usable[(usable["scenario"] == key[0]) & (usable["estimator"] == key[1])]
+        if not measurable.loc[rows.index].any():
+            continue
+        reconverged = rows["reconverged"].fillna(False).astype(bool)
+        out[key] = Reconvergence(
+            seconds=sorted(float(v) for v in rows.loc[reconverged, "reconverge_s"] if pd.notna(v)),
+            never_reconverged=int((~reconverged & measurable.loc[rows.index]).sum()),
+            unmeasurable=int((~measurable.loc[rows.index]).sum()),
+        )
+    return out
+
+
+def detector_points(frame: pd.DataFrame) -> dict[_Key, list[tuple[float, float | None]]]:
+    """``(false alarms per hour, recall)`` per seed.
+
+    Recall is ``None`` where the scenario had no faults: recall on zero faults is undefined, not
+    1.0, and a scenario with nothing to detect is still the cleanest measurement of what a detector
+    costs when it is wrong.
+    """
+    usable = _usable(frame)
+    out: dict[_Key, list[tuple[float, float | None]]] = {}
+    for key in _keys(usable):
+        rows = usable[(usable["scenario"] == key[0]) & (usable["estimator"] == key[1])]
+        rows = rows.sort_values("seed")
+        points = [
+            (float(fa), float(recall) if pd.notna(recall) else None)
+            for fa, recall in zip(rows["false_alarms_per_hour"], rows["recall"], strict=True)
+            if pd.notna(fa)
+        ]
+        if points:
+            out[key] = points
+    return out
+
+
+# -- drawing ---------------------------------------------------------------------------------------
+
+
+def _save(fig: Any, path: Path) -> Path:
+    # No timestamp in the metadata: a figure that changes between renders cannot be diffed.
+    fig.savefig(path, dpi=150, bbox_inches="tight", metadata={"Software": "wimsim"})
+    plt.close(fig)
+    return path
+
+
+def _grouped_axes(keys: list[_Key], title: str) -> tuple[Any, Any, dict[str, float]]:
+    """One x position per scenario, with estimators offset within it."""
+    scenarios = list(dict.fromkeys(s for s, _e in keys))
+    fig, ax = plt.subplots(figsize=(max(6.0, 1.6 * len(scenarios) + 2.0), 4.0))
+    ax.set_title(title)
+    ax.set_xticks(range(len(scenarios)))
+    ax.set_xticklabels(scenarios, rotation=20, ha="right")
+    ax.grid(axis="y", alpha=0.3, linewidth=0.5)
+    return fig, ax, {s: float(i) for i, s in enumerate(scenarios)}
+
+
+def _offsets(estimators: list[str]) -> dict[str, float]:
+    if len(estimators) == 1:
+        return {estimators[0]: 0.0}
+    span = 0.6
+    return {
+        e: -span / 2 + span * i / (len(estimators) - 1) for i, e in enumerate(sorted(estimators))
+    }
+
+
+def _scatter(ax: Any, positions: Mapping[str, float], keys: list[_Key], series, ylabel: str):
+    estimators = sorted({e for _s, e in keys})
+    offsets = _offsets(estimators)
+    markers = dict(zip(estimators, _MARKERS, strict=False))
+    for index, estimator in enumerate(estimators):
+        xs, ys = [], []
+        for scenario, est in keys:
+            if est != estimator:
+                continue
+            for value in series[(scenario, est)]:
+                xs.append(positions[scenario] + offsets[estimator])
+                ys.append(value)
+        ax.scatter(
+            xs,
+            ys,
+            label=estimator,
+            marker=markers[estimator],
+            s=34,
+            color=f"C{index}",
+            zorder=3,
+            alpha=0.85,
+        )
+    ax.set_ylabel(ylabel)
+    ax.legend(fontsize=8, framealpha=0.9)
+
+
+def _draw_accuracy(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    ratios = accuracy_ratios(frame)
+    if not ratios:
+        return None
+    keys = list(ratios)
+    fig, ax, positions = _grouped_axes(keys, title)
+    _scatter(ax, positions, keys, ratios, "MAE / dynamic floor")
+    ax.axhline(1.0, color="k", linestyle="--", linewidth=1.0, zorder=2)
+    ax.annotate(
+        "the floor: error the vehicles brought with them",
+        xy=(0.01, 1.0),
+        xycoords=("axes fraction", "data"),
+        xytext=(0, 4),
+        textcoords="offset points",
+        fontsize=7,
+        color="k",
+    )
+    ax.set_ylim(bottom=0.9)
+    return _save(fig, path)
+
+
+def _draw_coverage(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    rows, target = coverage_rows(frame)
+    if not rows:
+        return None
+    keys = list(rows)
+    fig, ax, positions = _grouped_axes(keys, title)
+    _scatter(ax, positions, keys, rows, "empirical coverage")
+    ax.axhline(target, color="k", linestyle="--", linewidth=1.0, zorder=2)
+    ax.annotate(
+        f"nominal {target:.2f}",
+        xy=(0.01, target),
+        xycoords=("axes fraction", "data"),
+        xytext=(0, 4),
+        textcoords="offset points",
+        fontsize=7,
+    )
+    return _save(fig, path)
+
+
+def _draw_reconvergence(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    rows = reconvergence_rows(frame)
+    if not rows:
+        return None
+    keys = list(rows)
+    fig, ax, positions = _grouped_axes(keys, title)
+    _scatter(ax, positions, keys, {k: v.seconds for k, v in rows.items()}, "time to reconverge (s)")
+
+    # A run that never reconverged has no y value to plot, so it is written on the axis instead of
+    # being silently absent.
+    stuck = [(k, v.never_reconverged) for k, v in rows.items() if v.never_reconverged]
+    if stuck:
+        ax.set_xlabel(
+            "never reconverged: "
+            + ", ".join(f"{s}/{e} x{n}" for (s, e), n in stuck)
+            + " (not plotted)",
+            fontsize=7,
+        )
+    ax.set_ylim(bottom=0.0)
+    return _save(fig, path)
+
+
+def _draw_detectors(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    points = detector_points(frame)
+    if not points:
+        return None
+    fig, ax = plt.subplots(figsize=(6.0, 4.0))
+    ax.set_title(title)
+    estimators = sorted({e for _s, e in points})
+    markers = dict(zip(estimators, _MARKERS, strict=False))
+    for index, estimator in enumerate(estimators):
+        xs = [p[0] for k, ps in points.items() if k[1] == estimator for p in ps if p[1] is not None]
+        ys = [p[1] for k, ps in points.items() if k[1] == estimator for p in ps if p[1] is not None]
+        undefined = [
+            p[0] for k, ps in points.items() if k[1] == estimator for p in ps if p[1] is None
+        ]
+        ax.scatter(xs, ys, label=estimator, marker=markers[estimator], s=34, color=f"C{index}")
+        ax.scatter(
+            undefined, np.zeros(len(undefined)), marker="|", s=80, color=f"C{index}", alpha=0.6
+        )
+    ax.set_xlabel("false alarms per hour")
+    ax.set_ylabel("recall")
+    ax.set_ylim(-0.05, 1.05)
+    ax.grid(alpha=0.3, linewidth=0.5)
+    ax.annotate(
+        "ticks at y=0: no faults to detect, so recall is undefined",
+        xy=(0.02, 0.02),
+        xycoords="axes fraction",
+        fontsize=7,
+    )
+    ax.legend(fontsize=8, framealpha=0.9)
+    return _save(fig, path)
+
+
+_DRAW = {
+    "accuracy": _draw_accuracy,
+    "coverage": _draw_coverage,
+    "reconvergence": _draw_reconvergence,
+    "detectors": _draw_detectors,
+}
+
+
+def write_figures(frame: pd.DataFrame, *, out_dir: Path | str, experiment_id: str) -> list[Path]:
+    """Draw every figure the frame supports into ``<out_dir>/figures/``.
+
+    Returns the paths written, PNGs and the captions file. A figure with nothing to draw is not
+    written at all: an axis with no data on it is not a result, and a reader shown four
+    plausible-looking empty plots has been told less than one shown none.
+    """
+    if frame.empty:
+        return []
+    figures = Path(out_dir) / "figures"
+    figures.mkdir(parents=True, exist_ok=True)
+
+    failed = int(frame["failed"].fillna(False).sum()) if "failed" in frame else 0
+    provenance = f"{experiment_id} -- {len(frame) - failed} of {len(frame)} runs"
+    if failed:
+        provenance += f", {failed} failed"
+
+    written: list[Path] = []
+    drawn: list[str] = []
+    for name, draw in _DRAW.items():
+        path = draw(frame, f"{name}  [{provenance}]", figures / f"{name}.png")
+        if path is not None:
+            written.append(path)
+            drawn.append(name)
+
+    if not written:
+        return []
+
+    lines = [
+        f"# Figures: {experiment_id}",
+        "",
+        f"{len(frame) - failed} of {len(frame)} runs are drawn"
+        + (f"; {failed} of {len(frame)} failed and carry no values." if failed else "."),
+        "",
+    ]
+    for name in drawn:
+        lines += [f"### `{name}.png`", "", FIGURES[name], ""]
+    missing = [n for n in FIGURES if n not in drawn]
+    if missing:
+        lines += [
+            "### Not drawn",
+            "",
+            "These had no data in this sweep, and an empty axis is not a result: "
+            + ", ".join(f"`{n}.png`" for n in missing)
+            + ".",
+            "",
+        ]
+    readme = figures / "README.md"
+    readme.write_text("\n".join(lines), encoding="utf-8")
+    written.append(readme)
+    return written

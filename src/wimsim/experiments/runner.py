@@ -241,7 +241,8 @@ def run_experiment(
     out_dir: Path | str | None = None,
     progress: Any = None,
 ) -> ExperimentResult:
-    """Execute every cell of the grid and write the results, the manifest and the table."""
+    """Execute every cell of the grid and write the results, manifest, table and figures."""
+    from wimsim.experiments.figures import write_figures
     from wimsim.experiments.table import write_table
 
     out = Path(out_dir) if out_dir is not None else RESULTS_ROOT / spec.experiment_id
@@ -293,6 +294,7 @@ def run_experiment(
         rows=rows,
     )
     write_table(result, spec)
+    write_figures(result.frame, out_dir=result.out_dir, experiment_id=spec.experiment_id)
     return result
 
 

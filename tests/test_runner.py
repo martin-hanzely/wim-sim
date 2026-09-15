@@ -342,3 +342,12 @@ def test_the_table_says_how_many_passes_each_row_is_a_mean_over() -> None:
     table = markdown_table(frame, experiment_id="t", git_commit="0" * 40)
     assert "| 2 |" in table
     assert "| 4210 |" in table
+
+
+def test_a_sweep_writes_its_figures_beside_its_table(tiny_spec, tmp_path) -> None:
+    """Buildspec section 10 asks for the table *and* matplotlib figures in the same place. A
+    results directory a reader has to post-process is a results directory nobody looks at."""
+    result = run_experiment(tiny_spec, out_dir=tmp_path / "results")
+    figures = result.out_dir / "figures"
+    assert figures.is_dir()
+    assert (figures / "README.md").is_file(), "the captions travel with the figures"
