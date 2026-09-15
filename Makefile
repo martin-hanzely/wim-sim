@@ -4,8 +4,12 @@ PY ?= .venv/Scripts/python
 SCENARIO ?= S1_nominal
 EDGE ?= default
 OUT ?= data/synthetic/$(SCENARIO)
+EXPERIMENT ?= ladder
+REAL ?= data/real/20260209_cintron1
+CHANNEL ?= Tenzo1
 
-.PHONY: install sim inspect checkpoint determinism test clean up up-core down logs migrate score experiment
+.PHONY: install sim inspect checkpoint determinism test clean up up-core down logs migrate
+.PHONY: score experiment experiment-dry detect-real gap-report
 
 install:
 	$(PY) -m pip install -e ".[dev]"
@@ -57,5 +61,22 @@ migrate:
 score: sim
 	$(PY) -m wimsim.cli run $(OUT) --edge $(EDGE)
 
-experiment:    ## phase 6
-	@echo "phase 6: wimsim experiment run <id>"
+## Phase 6 checkpoint: every estimator across every scenario, three seeds each.
+## About an hour. `make experiment EXPERIMENT=quick` is the two-scenario version.
+## Results, table, LaTeX and figures land in data/results/$(EXPERIMENT)/.
+experiment:
+	$(PY) -m wimsim.cli experiment $(EXPERIMENT)
+
+## the grid and what it costs, running nothing
+experiment-dry:
+	$(PY) -m wimsim.cli experiment $(EXPERIMENT) --dry-run
+
+## what the detector finds in a real recording. No masses: that needs a weighed vehicle.
+detect-real:
+	$(PY) -m wimsim.cli detect S8_replay_real --edge cintron_platform \
+	  --set scenario.source.replay.run_dir=$(REAL) \
+	  --set scenario.source.replay.channel=$(CHANNEL)
+
+## where the simulator and the real sensor disagree
+gap-report:
+	$(PY) -m wimsim.cli gap-report $(REAL) --channel $(CHANNEL)
