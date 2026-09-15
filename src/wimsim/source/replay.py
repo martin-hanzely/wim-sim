@@ -38,6 +38,11 @@ from wimsim.source.real_schema import validate_run
 __all__ = ["ReplaySource"]
 
 
+#: `raw_value_kind` -> the unit the values are in. One entry per `real_schema.RAW_VALUE_KINDS`;
+#: a kind not listed there cannot reach this far, because `validate_run` rejects it.
+_UNITS = {"counts": "counts", "mv_per_v": "mV/V", "strain": "strain"}
+
+
 class ReplaySource(BaseSource):
     def __init__(
         self,
@@ -90,20 +95,46 @@ class ReplaySource(BaseSource):
         self._ts = ts[order]
         self._temp = temp[order]
 
-        lo, hi = (float(x) for x in self.run["adc_range"])
-        bits = int(self.run["adc_bits"])
-        lsb = (hi - lo) / ((1 << bits) - 1)
-        if self.run["raw_value_kind"] == "counts":
+        # `adc_bits` and `adc_range` are required only for `raw_value_kind: counts`; a strain or
+        # mV/V export is already a physical quantity, so there is nothing to invert. Reading them
+        # unconditionally is what kept this class from opening a single one of the project's real
+        # recordings -- the schema said optional and its only consumer said required.
+        self.kind = str(self.run["raw_value_kind"])
+        declared = self.run.get("adc_range")
+        self._adc_range = (float(declared[0]), float(declared[1])) if declared is not None else None
+        self._bits = int(self.run["adc_bits"]) if self.run.get("adc_bits") is not None else None
+
+        if self.kind == "counts":
+            if self._adc_range is None or self._bits is None:
+                raise ValueError(
+                    f"{self.run_dir}: raw_value_kind 'counts' needs adc_bits and adc_range to "
+                    "become a physical quantity, and neither is declared"
+                )
+            lo, hi = self._adc_range
+            lsb = (hi - lo) / ((1 << self._bits) - 1)
             self._counts = raw[order].astype(np.int64)
             self._value = lo + self._counts * lsb
         else:
             self._value = raw[order]
-            self._counts = np.clip(np.rint((self._value - lo) / lsb), 0, (1 << bits) - 1).astype(
-                np.int64
-            )
-        self._saturated = (self._counts <= 0) | (self._counts >= (1 << bits) - 1)
-        self._adc_range = (lo, hi)
-        self._bits = bits
+            if self._adc_range is not None and self._bits is not None:
+                lo, hi = self._adc_range
+                lsb = (hi - lo) / ((1 << self._bits) - 1)
+                self._counts = np.clip(
+                    np.rint((self._value - lo) / lsb), 0, (1 << self._bits) - 1
+                ).astype(np.int64)
+            else:
+                # There are no counts. Zeros are a placeholder, not a measurement, which is why
+                # `metadata.extra['raw_counts']` says so rather than leaving a reader of the
+                # database to conclude the channel was stuck at the bottom of its range.
+                self._counts = np.zeros(self._value.size, dtype=np.int64)
+
+        if self._adc_range is not None and self._bits is not None:
+            self._saturated = (self._counts <= 0) | (self._counts >= (1 << self._bits) - 1)
+        else:
+            # Saturation cannot be checked without a range. `validate_run` already warns about
+            # exactly this; the source has to agree with it rather than assert every sample is in
+            # a range nobody declared.
+            self._saturated = np.zeros(self._value.size, dtype=bool)
         self._t0_us = int(self._ts[0]) if self._ts.size else 0
 
     @property
@@ -116,7 +147,7 @@ class ReplaySource(BaseSource):
             channels=(self.channel,),
             station_id=str(self.run.get("station_id", "unknown")),
             sensor_id=str(entry.get("sensor_id", self.channel)),
-            unit="mV/V" if self.run.get("raw_value_kind") == "mv_per_v" else "counts",
+            unit=_UNITS.get(self.kind, self.kind),
             adc_bits=self._bits,
             adc_range=self._adc_range,
             start_time_us=self._t0_us,
@@ -126,6 +157,12 @@ class ReplaySource(BaseSource):
                 "run_dir": str(self.run_dir),
                 "notes": self.run.get("notes", ""),
                 "validation_warnings": list(self.report.warnings),
+                "raw_counts": (
+                    "recovered from adc_range"
+                    if self._adc_range is not None
+                    else "absent: this recording declares no adc_range, so the counts column is a "
+                    "placeholder and carries no information"
+                ),
             },
         )
 

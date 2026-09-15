@@ -267,3 +267,47 @@ def test_a_consumer_cannot_tell_them_apart(tmp_path: Path, short_cfg: RunConfig)
     assert synth["n"] == short_cfg.sample_count
     # the replay covers the first 10 s of the same signal, so its peak cannot exceed the whole run's
     assert replay["peak"] <= synth["peak"] + 1e-12
+
+
+def test_replay_opens_a_recording_that_declares_no_adc_range(
+    tmp_path: Path, short_cfg: RunConfig
+) -> None:
+    """Regression: `ReplaySource` read `adc_range` and `adc_bits` unconditionally and died with a
+    `KeyError` on every recording the project actually has.
+
+    `real_schema` makes both optional unless `raw_value_kind: counts` -- a strain or mV/V export is
+    already a physical quantity, so there is no quantisation to declare -- and `import-csv` writes
+    exactly that. The schema said one thing and the only consumer of it said another, so principle
+    2's single interface did not reach the real data at all.
+    """
+    run = _fake_real_run(tmp_path / "physical", short_cfg)
+    doc = yaml.safe_load((run / "run.yaml").read_text(encoding="utf-8"))
+    doc["raw_value_kind"] = "strain"
+    doc.pop("adc_range")
+    doc.pop("adc_bits")
+    doc["gauge_factor"] = 2.0
+    (run / "run.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    src = ReplaySource(run)
+    blocks = list(src.stream_blocks())
+    assert blocks
+    assert src.metadata.unit == "strain"
+    assert src.metadata.adc_range is None, "a range that was never declared must not be invented"
+
+    # Saturation cannot be checked without a range, which the validator already warns about; the
+    # source has to agree with it rather than claim every sample is in range on its own authority.
+    assert not any(b.saturated.any() for b in blocks)
+    assert "raw_counts" in src.metadata.extra
+
+
+def test_replay_still_inverts_the_adc_when_a_range_is_declared(
+    tmp_path: Path, short_cfg: RunConfig
+) -> None:
+    """The counts path is the one that has a range, and it must keep working: dropping it in order
+    to support physical quantities would trade one unreadable half of the corpus for the other."""
+    run = _fake_real_run(tmp_path / "counts", short_cfg)
+    src = ReplaySource(run)
+    block = next(iter(src.stream_blocks()))
+    assert src.metadata.adc_range is not None
+    assert block.raw_counts.dtype.kind == "i"
+    assert block.raw_counts.max() > 0

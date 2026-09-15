@@ -111,8 +111,11 @@ class SourceMetadata:
     station_id: str
     sensor_id: str
     unit: str = "mV/V"
-    adc_bits: int = 16
-    adc_range: tuple[float, float] = (0.0, 1.0)
+    adc_bits: int | None = 16
+    adc_range: tuple[float, float] | None = (0.0, 1.0)
+    """``None`` when the source never declared one. A recording exported as a physical quantity
+    (strain, mV/V) has no quantisation to declare, and inventing a plausible range would make
+    saturation look checked when it was not."""
     start_time_us: int = 0
     run_id: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
