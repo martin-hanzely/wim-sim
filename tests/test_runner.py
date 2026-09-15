@@ -20,6 +20,7 @@ import json
 import pandas as pd
 import pytest
 
+from wimsim.core.config import load_run_config
 from wimsim.experiments.runner import (
     ExperimentSpec,
     load_experiment,
@@ -351,3 +352,46 @@ def test_a_sweep_writes_its_figures_beside_its_table(tiny_spec, tmp_path) -> Non
     figures = result.out_dir / "figures"
     assert figures.is_dir()
     assert (figures / "README.md").is_file(), "the captions travel with the figures"
+
+
+def test_only_faults_that_move_the_calibration_are_scored_as_detections() -> None:
+    """A connectivity loss does not make the scale wrong, so a drift detector that stays quiet
+    through one is correct rather than blind.
+
+    Regression, and a bad one: `_fault_times_us` said exactly this in its docstring and then
+    counted every fault that had a start time. `S5_outage`'s three faults are a connectivity loss,
+    a publish delay and a 45-second ADC dropout -- none of them touches the sensor's gain -- so the
+    first `ladder` sweep reported `recall 0.000, missed 3` on all nine S5 runs. Read off the table
+    that says "the drift detectors caught nothing", when what actually happened is that they were
+    scored against three events they are not built to see and should not fire on.
+    """
+    from wimsim.experiments.runner import CALIBRATION_FAULTS, _fault_times_us
+
+    assert CALIBRATION_FAULTS == frozenset({"gain_instability", "sensor_displacement"})
+
+    truth = pd.DataFrame({"ts_peak_us": [1_000_000_000], "t_peak_s": [0.0]})
+    cfg = load_run_config("S5_outage")
+    assert cfg.scenario.faults, "S5 should still carry its transport faults"
+    assert _fault_times_us(cfg, truth) == []
+
+
+def test_a_sensitivity_fault_is_still_scored() -> None:
+    """The counterpart: filtering must not empty the column it was meant to fix."""
+    from wimsim.experiments.runner import _fault_times_us
+
+    truth = pd.DataFrame({"ts_peak_us": [0], "t_peak_s": [0.0]})
+    cfg = load_run_config("S4_step_fault")
+    times = _fault_times_us(cfg, truth)
+    assert len(times) == 2, "S4 injects two sensitivity steps"
+    assert times == sorted(times)
+
+
+def test_a_scenario_mixing_both_counts_only_the_calibration_half() -> None:
+    """`S6_combined` overlaps six fault mechanisms, of which two move the calibration. Scoring the
+    detector against all six made its recall look six times worse than it is."""
+    from wimsim.experiments.runner import _fault_times_us
+
+    truth = pd.DataFrame({"ts_peak_us": [0], "t_peak_s": [0.0]})
+    cfg = load_run_config("S6_combined")
+    assert len(cfg.scenario.faults) == 6
+    assert len(_fault_times_us(cfg, truth)) == 2

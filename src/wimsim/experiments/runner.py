@@ -55,6 +55,15 @@ __all__ = [
 #: Where sweeps land unless told otherwise, per buildspec section 10.
 RESULTS_ROOT = Path("data/results")
 
+#: Fault types a drift detector is supposed to catch, because they move the calibration.
+#:
+#: Everything else the scenarios inject -- connectivity loss, publish delay, clock skew, channel
+#: dropout, malformed schema, heartbeat loss -- is a transport or acquisition failure. None of them
+#: makes the scale wrong, so a detector that stays quiet through one is behaving correctly, and
+#: scoring it as a missed detection measures the wrong thing. `S5_outage` injects three faults and
+#: not one of them is of this kind.
+CALIBRATION_FAULTS = frozenset({"gain_instability", "sensor_displacement"})
+
 
 #: Every column a results row can carry, in order, with its null value. Rows start from this so
 #: the parquet's schema does not depend on how many cells happened to succeed -- a sweep where
@@ -448,9 +457,14 @@ def _control_row(spec: ExperimentSpec, cfg, truth, result) -> dict[str, Any]:
 def _fault_times_us(cfg, truth) -> list[int]:
     """When each injected fault began, on the same clock the events carry.
 
-    Faults are declared in scenario seconds; the truth log fixes the epoch. Only faults that
-    actually move the calibration are counted -- an outage does not make the scale wrong, so a
-    detector that stays quiet through one is correct rather than blind.
+    Faults are declared in scenario seconds; the truth log fixes the epoch. Only faults in
+    :data:`CALIBRATION_FAULTS` are counted -- an outage does not make the scale wrong, so a detector
+    that stays quiet through one is correct rather than blind.
+
+    This docstring said exactly that before the code did, and the first `ladder` sweep is what
+    caught the difference: all nine `S5_outage` runs reported `recall 0.000, missed 3`, which reads
+    off the table as "the drift detectors caught nothing" when in fact they were scored against
+    three events they are not built to see.
     """
     if truth.empty:
         return []
@@ -458,6 +472,8 @@ def _fault_times_us(cfg, truth) -> list[int]:
 
     times: list[int] = []
     for fault in cfg.scenario.faults:
+        if fault.type not in CALIBRATION_FAULTS:
+            continue
         start = getattr(fault, "t_start_s", None)
         if start is None:
             start = getattr(fault, "t_s", None)
