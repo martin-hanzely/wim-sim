@@ -19,9 +19,8 @@
 #   ESTIMATED  k0 -- from the Fabia's published operating weight, NOT from a weighing. See below
 #              and docs/sim-to-real.md.
 #   ASSUMED    gauge factor 2.0, quarter bridge -- not in the export
-#   UNKNOWN    influence_length_m in metres. It was thought to be 1.84 x the gauge separation;
-#              that is withdrawn -- see "the delay is not a speed" below.
-#   UNKNOWN    vehicle speed. There is no longer any measurement of it in this data.
+#   INFERRED   vehicle speed 0.62-0.95 m/s (2.2-3.4 km/h) and influence_length_m ~0.60 m, from
+#              the front-to-rear axle interval. Not measured, not re-measurable -- see below.
 #
 # THE DELAY IS NOT A SPEED, AND THE GAUGES ARE NOT A TIME-OF-FLIGHT PAIR.
 #
@@ -41,6 +40,44 @@
 # would be 227 ms at 2 km/h and 91 ms at 5 km/h; the measured lag implies 47 km/h, which the
 # one-second pulses rule out. Consistent with what the installation actually is: the 126 mm is
 # mostly across the road, and both gauges see the whole platform at once.
+#
+# SPEED, INFERRED FROM THE WHEELBASE
+#
+# The speed was never measured and the rig is gone, so this is an inference. It is stated as one.
+# The route does not use the gauge separation at all, which is what makes it independent of the
+# error above.
+#
+# Peak amplitudes are BIMODAL, in two tight clusters rather than a continuum:
+#
+#     Citroen   13.52 ue (n=12)   vs   9.73 ue (n=4)    ratio 1.390
+#     Fabia     11.11 ue (n=2)    vs   7.86 ue (n=2)    ratio 1.414
+#
+# Two different cars giving the same ratio is a vehicle property, not an accident of where the
+# wheel landed -- a placement effect would be continuous. The ratio is the front/rear axle split
+# of a transverse-engine FWD car: 1.39-1.41 means 58-59 % on the front, which is exactly the range
+# assumed for the load estimate below. So HI is a front wheel and LO is a rear one, and the gap
+# between a consecutive pair is the WHEELBASE divided by the speed.
+#
+#     Fabia III, wheelbase 2.470 m, gap 3.95 s   ->  0.625 m/s = 2.25 km/h
+#     Citroen,   wheelbase ~2.67-2.79 m, gaps 2.84 / 3.34 / 4.23 s
+#                                                ->  0.63-0.98 m/s = 2.3-3.5 km/h
+#
+# Three things make this hang together rather than merely fit:
+#
+#   1. The implied influence length, FWHM x v = 0.77 s x 0.78 m/s, is 0.60 m. A slab element with
+#      a 0.6 m influence line is physically ordinary; 0.05 m or 5 m would not be. The speed was
+#      not chosen to produce that.
+#   2. At 0.62-0.95 m/s the measured 10 ms inter-gauge lag puts only 6-10 mm of the 126 mm along
+#      the direction of travel -- i.e. the gauges are side by side across the road, which is what
+#      "one rotated 90 degrees" and "both affected at once" describe.
+#   3. 2-3 km/h is a car being crept onto a plank with the clutch slipping, which is what the
+#      recordings are of.
+#
+# HOW IT COULD BE WRONG. It rests on four front/rear pairs. Most detected crossings are unpaired
+# single FRONT events, consistent with the front wheel being driven on and backed off deliberately
+# -- but if the bimodal amplitude is something other than the axle split, the gaps are not
+# wheelbases and the speed is unfounded. A stopwatch over a measured distance on any future
+# recording settles it in one run.
 
 station_id: ST-CINTRON-1
 sensor_id: Tenzo2          # the more sensitive of the two gauges
@@ -61,28 +98,31 @@ adc:
 sensor:
   # ESTIMATED, NOT WEIGHED. The Skoda Fabia is identified, and Skoda's published "operating weight"
   # already includes a 75 kg driver, 90 % fuel and the toolkit -- the condition a car being driven
-  # over a platform is in. 1081-1204 kg across petrol variants; at 59-63 % on the front axle and
-  # one wheel on the platform at a time, the front wheel carries 319-379 kg, centrally 348 kg.
+  # over a platform is in. 1081-1204 kg across petrol variants; at 58-59 % on the front axle --
+  # no longer assumed but MEASURED, from the bimodal peak amplitudes above -- and one wheel on the
+  # platform at a time, the front wheel carries 336 kg.
   #
   # Tenzo2 peaks at 9.07-10.30 ue for that wheel across two independent extractions, so
   #
-  #     Tenzo2   0.0261-0.0296 ue/kg   =  2.61e-8 to 2.96e-8 strain/kg
-  #     Tenzo1   0.0092-0.0130 ue/kg   =  9.20e-9 to 1.30e-8 strain/kg
+  #     Tenzo2   0.0270-0.0306 ue/kg   =  2.70e-8 to 3.06e-8 strain/kg
+  #     Tenzo1   0.0095-0.0135 ue/kg   =  9.52e-9 to 1.35e-8 strain/kg
   #
   # k0 below is Tenzo2's central value converted at gauge factor 2.0 and a QUARTER BRIDGE
   # (1 ue = 5e-4 mV/V), which is the assumed half of this and the part that is not measured. The
   # strain-per-kg figures above are the ones to quote; k0 inherits the bridge assumption.
   #
-  # The dominant uncertainty is the front-axle fraction, not the strain: 0.55 to 0.67 moves k0 by
-  # -20 %/+11 %. A single weighbridge ticket would collapse all of it.
-  k0: 1.39e-8            # (2.78e-8 strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain
+  # The front-axle fraction used to be the dominant uncertainty; measuring it from the amplitude
+  # split removed most of that, and what remains is the 13 % spread between the two independent
+  # strain extractions plus the unmeasured bridge configuration. A single weighbridge ticket would
+  # collapse the rest.
+  k0: 1.44e-8            # (2.88e-8 strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain
   alpha0_per_c: -2.0e-4
   alpha_walk_sigma_per_sqrt_s: 0.0
   t_ref_c: 20.0
   contact_patch_m: 0.22    # unused here; width_source is influence_length
-  influence_length_m: 1.0  # STILL UNKNOWN. The 1.84 x separation route is withdrawn (see above),
-                           # and with no speed measurement there is no way to convert the ~770 ms
-                           # FWHM into metres.
+  influence_length_m: 0.60 # INFERRED, not measured: the ~770 ms mean FWHM times the 0.78 m/s
+                           # inferred above. Range 0.32-1.23 m across the individual crossings.
+                           # The 1.84 x gauge-separation route is withdrawn (see above).
 
 thermal:
   tau_thermal_s: 1800.0

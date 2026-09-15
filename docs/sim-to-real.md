@@ -114,6 +114,58 @@ this installation does not escape it. The consequences:
   longitudinal view of the same load, which is why they are the same sign, synchronous, and
   differ by a fixed factor of 2.4–3.0.
 
+### 3b. Speed, inferred from the wheelbase
+
+The speed was never measured and the rig cannot be reinstalled, so this is an **inference, not a
+measurement**, and it is labelled as one everywhere it is used. It matters because it is the last
+number standing between the recordings and a physical model: without it the ~770 ms pulse cannot
+become an influence length in metres.
+
+The route deliberately does not use the gauge separation, which is what makes it independent of the
+error section 3 just withdrew.
+
+**Peak amplitudes are bimodal** — two tight clusters, not a continuum:
+
+| | high | low | ratio |
+|---|---|---|---|
+| Citroën | 13.52 µε (n=12) | 9.73 µε (n=4) | **1.390** |
+| Fabia | 11.11 µε (n=2) | 7.86 µε (n=2) | **1.414** |
+
+Two different cars giving the same ratio is a property of cars, not of where a wheel happened to
+land — a placement effect would be continuous. And 1.39–1.41 is the **front/rear axle split of a
+transverse-engine FWD car**: 58–59 % on the front. So the high cluster is a front wheel, the low one
+a rear wheel, and **the gap between a consecutive pair is the wheelbase divided by the speed**:
+
+| | wheelbase | gap | speed |
+|---|---|---|---|
+| Fabia III | 2.470 m (known) | 3.95 s | **0.625 m/s = 2.25 km/h** |
+| Citroën | ~2.67–2.79 m | 2.84 / 3.34 / 4.23 s | 0.63–0.98 m/s = 2.3–3.5 km/h |
+
+**v = 0.62–0.95 m/s (2.2–3.4 km/h), centrally 0.78 m/s.**
+
+Three independent things make it hang together rather than merely fit:
+
+1. **The implied influence length is ordinary.** FWHM × v = 0.77 s × 0.78 m/s = **0.60 m**. A slab
+   element with a 0.6 m influence line is unremarkable; 0.05 m or 5 m would not be. The speed was
+   not chosen to land there.
+2. **It explains the residual lag.** At 0.62–0.95 m/s, the measured 10 ms puts only **6–10 mm** of
+   the 126 mm along the direction of travel — the gauges are side by side *across* the road, which
+   is exactly what "one rotated 90°" and "both affected at once" describe. Section 3 had to assert
+   that; this derives it.
+3. **It is what the recordings are of.** 2–3 km/h is a car being crept onto a plank with the clutch
+   slipping. Phase 3's "walking-to-jogging pace" was a guess from the photographs and was roughly
+   double.
+
+**How this could be wrong.** It rests on four front/rear pairs. Most detected crossings are
+unpaired single *front* events — consistent with a front wheel being driven on and backed off
+deliberately, which is what "only one wheel at a time" describes, but not proof of it. If the
+bimodal amplitude is something other than the axle split, the gaps are not wheelbases and the speed
+is unfounded. A stopwatch over a measured distance on any future recording settles it in one run.
+
+**What it buys.** `influence_length_m` goes from unknown to 0.60 m, so the simulator's pulse widths
+now come from geometry rather than from a placeholder — and the front-axle fraction stops being an
+assumption in the load estimate below and becomes a measurement.
+
 ### 4. Wheel loads, estimated — the first kilograms in this project
 
 No vehicle has been weighed. But one of them is **identified**, and that is enough for an estimate
@@ -126,11 +178,11 @@ platform at a time**:
 
 | | value |
 |---|---|
-| Fabia front wheel | **319–379 kg**, centrally 348 kg |
-| Fabia rear wheel | 200–247 kg |
+| Fabia front wheel | **336 kg** (at the 58–59 % split measured in 3b, not assumed) |
+| Fabia rear wheel | ~236 kg |
 | Tenzo2 peak for that wheel | 9.07–10.30 µε (two independent extractions) |
-| **Tenzo2 sensitivity** | **0.0261–0.0296 µε/kg** = 2.61–2.96 × 10⁻⁸ strain/kg |
-| **Tenzo1 sensitivity** | 0.0092–0.0130 µε/kg = 0.92–1.30 × 10⁻⁸ strain/kg |
+| **Tenzo2 sensitivity** | **0.0270–0.0306 µε/kg** = 2.70–3.06 × 10⁻⁸ strain/kg |
+| **Tenzo1 sensitivity** | 0.0095–0.0135 µε/kg = 0.95–1.35 × 10⁻⁸ strain/kg |
 
 The Citroën is not identified, so it is inferred from the measured peak ratio (1.25–1.44 across
 both channels and both extractions) rather than looked up:
@@ -145,9 +197,10 @@ That band fits a C5 Aircross (1615 kg with driver), a Berlingo or a C4 — and *
 (958–1090 kg), which is far too light to produce the observed ratio. This is a consistency check,
 not an identification.
 
-**What dominates the error is the axle split, not the strain.** Moving the front fraction from 0.55
-to 0.67 moves the sensitivity by −20 %/+11 %, while the two independent strain extractions differ by
-13 %. One weighbridge ticket for either car would collapse all of it.
+**The axle split used to dominate the error; section 3b removed it.** It was assumed at 0.59–0.63,
+which moved the sensitivity by −20 %/+11 % over a plausible range. The bimodal amplitudes measure it
+at 0.58–0.59 directly. What remains is the 13 % spread between the two strain extractions, and the
+bridge configuration, which is still unmeasured. One weighbridge ticket would collapse the rest.
 
 **These numbers are an estimate and must not be used as ground truth.** Principle 1 says truth is an
 output, never an estimator input; a `reference.csv` built from published kerb weights would put a
@@ -303,10 +356,11 @@ That agreement is the evidence the number means anything.
 
 ## What would help most, in order
 
-1. **The speed of any single run** — a stopwatch over a measured distance is enough. The gauge
-   separation has now been supplied (126 mm) and it does *not* fix speed, because the gauges are not
-   a time-of-flight pair (section 3). Speed is the one number that would turn the ~770 ms pulse
-   width into an influence length in metres.
+1. **The speed of any single run** — a stopwatch over a measured distance is enough, and it is
+   still the single most valuable measurement. Section 3b *infers* 0.62–0.95 m/s from the wheelbase,
+   which is enough to give the simulator a physical influence length, but it rests on four axle
+   pairs and one measurement would settle it. The gauge separation (126 mm) does not fix speed: the
+   gauges are not a time-of-flight pair (section 3).
 2. **One weighed vehicle.** Section 4 estimates the wheel loads from published operating weights,
    which is enough to make the simulator resemble the instrument but is not a calibration. The axle
    split dominates the error, so a single weighbridge ticket is worth more than any amount of
