@@ -21,7 +21,10 @@ station: default
 source:
   kind: replay
   replay:
+    # A bare name is resolved under data/real/. Both are here rather than only in the model's
+    # defaults because `--set` refuses a key that does not already exist in the document.
     run_dir: drive_01
+    channel: null
     rate: accelerated
 
 duration_s: 3600.0          # placeholder; the recording's own length wins in replay mode

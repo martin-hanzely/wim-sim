@@ -366,8 +366,15 @@ def test_a_pulse_that_fits_with_room_to_spare_is_still_measured() -> None:
 
 
 def _record_with_pulse(
-    *, fwhm_s: float, at_s: float = 15.0, duration_s: float = 60.0, fs: float = 2000.0,
-    amplitude: float = 4e-6, sigma: float = 4.6e-7, drift: float = 0.0, seed: int = 20,
+    *,
+    fwhm_s: float,
+    at_s: float = 15.0,
+    duration_s: float = 60.0,
+    fs: float = 2000.0,
+    amplitude: float = 4e-6,
+    sigma: float = 4.6e-7,
+    drift: float = 0.0,
+    seed: int = 20,
 ) -> np.ndarray:
     """A recording shaped like the real ones: a slow Gaussian crossing on a drifting baseline."""
     rng = np.random.default_rng(seed)

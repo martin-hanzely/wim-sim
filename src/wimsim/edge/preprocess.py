@@ -352,6 +352,11 @@ class Preprocessor:
             np.asarray(block.temperature_c, dtype=np.float64)
         )
         compensated = (filtered - zero) / factor
+        if self.cfg.invert:
+            # After the zero line is removed, not before: the zero-line tracker's median is
+            # invariant to the flip, but `raw_value` is what the station reported and is
+            # carried for provenance, so it stays as recorded.
+            compensated = -compensated
 
         return PreprocessedBlock(
             ts_us=block.ts_us - self._shift_us,

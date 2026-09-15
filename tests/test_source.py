@@ -311,3 +311,90 @@ def test_replay_still_inverts_the_adc_when_a_range_is_declared(
     assert src.metadata.adc_range is not None
     assert block.raw_counts.dtype.kind == "i"
     assert block.raw_counts.max() > 0
+
+
+# -- the factory ---------------------------------------------------------------------------------
+
+
+def _with_source(cfg: RunConfig, **source) -> RunConfig:
+    """A copy of `cfg` with a different `scenario.source`. Configs are frozen, so this goes
+    through the loader rather than mutating -- which is also the path a real config takes."""
+    tree = cfg.model_dump(mode="json")
+    tree["scenario"]["source"] = source
+    return RunConfig.model_validate(tree)
+
+
+def test_build_source_returns_a_synthetic_source_for_a_synthetic_scenario(
+    short_cfg: RunConfig,
+) -> None:
+    """Principle 2 says switching to real data is a config change and nothing else. Until this
+    existed, nothing dispatched on `source.kind` at all: every caller constructed
+    `SyntheticSource(cfg)` directly, and `S8_replay_real` was a config file nothing read.
+    """
+    from wimsim.source import build_source
+
+    assert isinstance(build_source(short_cfg), SyntheticSource)
+
+
+def test_build_source_returns_a_replay_source_for_a_replay_scenario(
+    tmp_path: Path, short_cfg: RunConfig
+) -> None:
+    from wimsim.source import build_source
+
+    run = _fake_real_run(tmp_path / "drive_09", short_cfg)
+    cfg = _with_source(short_cfg, kind="replay", replay={"run_dir": str(run)})
+
+    source = build_source(cfg)
+    assert isinstance(source, ReplaySource)
+    assert source.metadata.mode == "replay"
+
+
+def test_a_replay_run_dir_is_resolved_under_the_real_data_root(
+    tmp_path: Path, short_cfg: RunConfig
+) -> None:
+    """`S8_replay_real` says `run_dir: drive_01`, a bare name. The schema documents it as "a
+    directory under data/real/", so a bare name has to mean that rather than a path relative to
+    whatever directory the command happened to be run from."""
+    from wimsim.source import build_source
+
+    run = _fake_real_run(tmp_path / "real" / "drive_10", short_cfg)
+    cfg = _with_source(short_cfg, kind="replay", replay={"run_dir": "drive_10"})
+
+    source = build_source(cfg, real_root=tmp_path / "real")
+    assert isinstance(source, ReplaySource)
+    assert source.run_dir == run
+
+
+def test_a_serial_scenario_is_refused_with_a_reason_rather_than_a_stub(
+    short_cfg: RunConfig,
+) -> None:
+    """`SerialSource` is a stub with no hardware behind it. Returning it from the factory would
+    mean a config typo produced a run that read zeros and reported them as measurements."""
+    from wimsim.source import build_source
+
+    cfg = _with_source(short_cfg, kind="serial")
+    with pytest.raises(ValueError, match="serial"):
+        build_source(cfg)
+
+
+def test_a_replay_scenario_can_name_its_channel(tmp_path: Path, short_cfg: RunConfig) -> None:
+    """Every real recording this project has carries two strain channels, so "the only channel" is
+    not a case that occurs outside the test fixtures. Without a way to name one in the config, a
+    replay scenario cannot be run at all."""
+    from wimsim.source import build_source
+
+    run = _fake_real_run(tmp_path / "two_channel", short_cfg)
+    table = pq.read_table(run / "samples.parquet")
+    second = table.set_column(
+        table.schema.get_field_index("channel_id"),
+        "channel_id",
+        pa.array(["S2"] * table.num_rows, pa.string()),
+    )
+    pq.write_table(pa.concat_tables([table, second]), run / "samples.parquet")
+
+    doc = yaml.safe_load((run / "run.yaml").read_text(encoding="utf-8"))
+    doc["channel_map"]["S2"] = {"sensor_id": "S2", "lane": 1}
+    (run / "run.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    cfg = _with_source(short_cfg, kind="replay", replay={"run_dir": str(run), "channel": "S2"})
+    assert build_source(cfg).metadata.sensor_id == "S2"

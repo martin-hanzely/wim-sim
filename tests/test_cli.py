@@ -251,3 +251,39 @@ def test_gap_report_generates_its_reference_at_the_recordings_sample_rate(
     result = _run("gap-report", str(_example_run(repo_root)), "--out", str(out))
     assert result.exit_code == 0, _text(result)
     assert "2,000 Hz" in _text(result) or "2000 Hz" in _text(result)
+
+
+# -- detect -----------------------------------------------------------------------------------
+
+
+def test_detect_reports_what_the_detector_found_without_scoring_it(repo_root: Path) -> None:
+    """Detection needs no truth, so it is the one part of the pipeline a real recording can drive
+    end to end. Everything past it -- calibration, mass, score -- bootstraps from a truth log a
+    recording does not have."""
+    result = _run("detect", "S1_nominal", "--set", "scenario.duration_s=300")
+    assert result.exit_code == 0, _text(result)
+    out = _text(result)
+    assert "events" in out
+    assert "kg" not in out, "a detection is not a mass, and printing one would imply a calibration"
+
+
+def test_detect_runs_a_replay_scenario_from_its_config(repo_root: Path) -> None:
+    """`S8_replay_real` was written in phase 1 so that switching to real data would be a config
+    change and nothing else. This is the first command that makes that true."""
+    example = _example_run(repo_root)
+    result = _run(
+        "detect",
+        "S8_replay_real",
+        "--set",
+        f"scenario.source.replay.run_dir={example}",
+    )
+    assert result.exit_code == 0, _text(result)
+    assert "replay" in _text(result)
+
+
+def test_detect_refuses_a_replay_scenario_whose_recording_is_missing(tmp_path: Path) -> None:
+    result = _run(
+        "detect", "S8_replay_real", "--set", f"scenario.source.replay.run_dir={tmp_path / 'nope'}"
+    )
+    assert result.exit_code == 2
+    assert "cannot read" in _text(result).lower() or "does not" in _text(result).lower()

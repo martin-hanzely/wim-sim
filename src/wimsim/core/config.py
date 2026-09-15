@@ -483,6 +483,12 @@ class ReplayConfig(_Base):
         ...,
         description="Directory under data/real/ holding samples.parquet, run.yaml, reference.csv.",
     )
+    channel: str | None = Field(
+        None,
+        description="Which channel to replay. Required when the recording carries more than one, "
+        "which every real recording this project has does -- two strain gauges separated along "
+        "the direction of travel. None means 'the only channel', which is a test fixture.",
+    )
     rate: Literal["true", "accelerated"] = Field(
         "accelerated", description="'true' replays at the recorded wall-clock rate."
     )
@@ -732,6 +738,18 @@ class PreprocessConfig(_Base):
         lt=0.5,
         description="Flag the zero estimate as suspect once this fraction of the window sits well "
         "above the baseline. Past 0.5 the median stops being the baseline at all.",
+    )
+
+    invert: bool = Field(
+        False,
+        description="Negate the signal after zero-line removal, so a crossing that pulls the "
+        "sensor down reads as a rise. This is a property of the wiring -- which leg of the "
+        "bridge, which way the gauge is bonded -- not of the algorithm, which is why it lives "
+        "here and not in the detector: the detector opens on a rise above the zero line and "
+        "should keep exactly one definition of 'above'. Measured on 20260209_cintron1/Tenzo1, "
+        "the crossing at t=15.2 s pulls the compensated signal *down* by 7.1 microstrain, so "
+        "with the recording as exported nothing is detected at any threshold with any filter. "
+        "See configs/estimators/cintron_platform.yaml.",
     )
 
     @model_validator(mode="after")

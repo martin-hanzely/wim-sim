@@ -1,0 +1,75 @@
+# The pipeline for the real instrumented platform at ST-CINTRON-1.
+#
+# THIS IS A DIFFERENT INSTRUMENT FROM THE ONE `default` IS TUNED FOR, and every setting below is a
+# consequence of that rather than a preference. `default` models a sensor measuring contact force
+# under a tyre: pulses milliseconds wide, amplitudes in mV/V. This one is a strain gauge on a
+# structural member: pulses about a second wide at the speeds tested, amplitudes in microstrain.
+# See docs/sim-to-real.md and configs/stations/cintron_platform.yaml.
+#
+# With `default`, `wimsim detect S8_replay_real` finds *nothing* on any of the eight recordings, at
+# any threshold. Three separate reasons, each measured on 20260209_cintron1/Tenzo1:
+#
+#   1. Scale. `start_threshold: 0.05` is four orders of magnitude above a 7e-6 strain excursion.
+#   2. Bandwidth. `default` applies no low-pass, so at 25 kHz the per-sample signal is dominated by
+#      noise and by mains -- the compensated signal chatters across any threshold 90,000 times in a
+#      60 s recording. The crossing is real and about 900 ms wide; it is simply not visible one
+#      sample at a time.
+#   3. Polarity. The crossing pulls the signal *down*. The detector opens on a rise, by design, so
+#      no threshold and no filter can recover it without `preprocess.invert`.
+#
+# Fix all three and the detector finds the crossing at t=15.2 s, 1.35 s wide -- which is the same
+# event, at the same time and the same width, that `wimsim gap-report` fits independently.
+
+extends: default
+name: cintron_platform
+description: >
+  For the ST-CINTRON-1 strain platform: influence-line pulses about a second wide, in microstrain,
+  going negative. Detects crossings. It cannot weigh them -- no vehicle has been weighed at this
+  site, so there is no strain-per-kg anywhere in this project.
+
+preprocess:
+  # Negative-going, per the note above.
+  invert: true
+
+  # 4th-order Butterworth at 5 Hz. `filtered.yaml`'s rule of thumb is a cutoff at least three times
+  # the bandwidth of the fastest pulse; a 900 ms FWHM crossing has a bandwidth near 0.5 Hz, so
+  # 1.5 Hz would be the minimum and 5 Hz leaves headroom for a faster drive-over. It also puts the
+  # 50 Hz line, which stands 36-41 dB above the local floor on every recording, 80 dB down.
+  #
+  # Measured: compensated noise sd falls from 1.35e-6 (unfiltered) to 5.1e-7 at 2 Hz, 5.4e-7 at
+  # 5 Hz, 5.6e-7 at 10 Hz. All three find the same single crossing; 5 Hz is chosen for the headroom
+  # rather than for the noise figure.
+  filter: butterworth
+  cutoff_hz: 5.0
+  order: 4
+
+  # Despiking is off. Its window is sized for isolated samples against a millisecond pulse, and on
+  # a second-wide pulse at 25 kHz there is nothing it can distinguish. Leave the evidence alone.
+  despike: false
+
+  # 20 s rather than 2 s. The zero line is a trailing median, and it is unbiased only while
+  # vehicles occupy well under half the window -- with a 1.7 s crossing, a 2 s window *is* mostly
+  # vehicle, and the tracker follows the pulse and removes it. The same mistake as the phase-3
+  # validator bug, in a different place: a statistic contaminated by what it is measuring.
+  zero_window_s: 20.0
+  zero_update_s: 1.0
+
+detect:
+  # In microstrain, and set from the measured noise floor rather than from the pulse: the
+  # compensated noise sd after filtering is 5.4e-7, so 1.5e-6 is a little under 3 sigma to open and
+  # 6e-7 to close. The observed crossing peaks at 7.1e-6, about 13 sigma.
+  start_threshold: 1.5e-6
+  end_threshold: 6.0e-7
+
+  # Everything below is a second-scale version of the millisecond-scale defaults.
+  end_hold_s: 0.1
+  min_duration_s: 0.1
+  max_duration_s: 8.0
+  merge_gap_s: 0.5
+
+estimate:
+  # No estimator is named as usable here. `default`'s static_affine is inherited so the config
+  # loads, but nothing at this site can be fitted: calibration needs reference masses and no
+  # vehicle has been weighed. `wimsim detect` is the command this config is for; `wimsim run` and
+  # `wimsim control` will fail for want of a truth log, and that failure is correct.
+  bootstrap_passes: 2

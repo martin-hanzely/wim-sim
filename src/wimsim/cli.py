@@ -12,6 +12,7 @@ Command surface:
     wimsim recompute --from TS --profile P  re-derive stored history under another profile
     wimsim profiles FILE                   show a station's calibration history
     wimsim experiment NAME                 run a sweep and write the results table
+    wimsim detect SCENARIO                 what the detector finds, synthetic or replayed
     wimsim gap-report REAL_DIR             where the simulator and the sensor disagree
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import statistics
 import sys
 import time
 from dataclasses import replace
@@ -1331,6 +1333,115 @@ def experiment(
         "wrote results.parquet, results.md, results.tex and manifest.json",
         fg=typer.colors.GREEN,
     )
+
+
+@app.command()
+def detect(
+    scenario: ScenarioArg,
+    station: StationOpt = None,
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config name.")] = "default",
+    show: Annotated[
+        int, typer.Option("--show", "-n", help="How many events to list. 0 lists none.")
+    ] = 10,
+    set_: SetOpt = None,
+    seed: SeedOpt = None,
+) -> None:
+    """Acquire, preprocess and detect -- and stop there.
+
+    Detection is the one part of the pipeline a real recording can drive end to end, because it
+    needs no truth. Everything past it bootstraps its calibration from a truth log, and a recording
+    has none; see docs/sim-to-real.md, which has said since phase 3 that turning this sensor's
+    response into kilograms needs one weighed vehicle.
+
+    So this prints crossings, widths and axle counts, and deliberately prints no masses. A mass
+    here would imply a calibration that does not exist.
+
+    The source comes from `scenario.source.kind`, which is what makes `S8_replay_real` a scenario
+    rather than a document:
+
+        wimsim detect S8_replay_real --set scenario.source.replay.run_dir=20260209_cintron1
+    """
+    from wimsim.core.config import load_edge_config
+    from wimsim.edge.pipeline import OfflinePipeline
+    from wimsim.experiments.offline import _bootstrap_profile, _provenance_for
+    from wimsim.source import build_source
+
+    cfg = _resolve(scenario, station, set_, seed)
+    # `--set` goes to the scenario here. `load_edge_config` applies overrides to its own tree, so
+    # one list cannot serve both; pick a pipeline with `--edge` instead.
+    try:
+        edge_cfg = load_edge_config(edge)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    try:
+        source = build_source(cfg)
+    except (OSError, KeyError, ValueError) as exc:
+        typer.secho(f"cannot read the source: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    meta = source.metadata
+    pipeline = OfflinePipeline(
+        edge_cfg,
+        source=source,
+        profile=_bootstrap_profile(edge_cfg),
+        provenance=_provenance_for(cfg),
+    )
+    events = list(pipeline.detect_only())
+
+    typer.secho(f"{cfg.scenario.name} via {meta.mode}", bold=True)
+    _echo_kv(
+        [
+            ("source", meta.extra.get("run_dir", "generator")),
+            ("channel", meta.sensor_id),
+            ("unit", meta.unit),
+            ("sample rate", f"{meta.sample_rate_hz:,.0f} Hz"),
+            ("events", len(events)),
+            ("saturated", sum(1 for e in events if e.saturated)),
+            ("with invalid samples", sum(1 for e in events if e.has_invalid)),
+            ("during warm-up", sum(1 for e in events if e.warming_up)),
+        ]
+    )
+    if not events:
+        typer.secho(
+            "No crossings detected. On a real recording that is a finding about the detector as "
+            "much as about the road -- `wimsim gap-report` shows whether there is a pulse in "
+            "there at all.",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    widths = [e.t_end_s - e.t_start_s for e in events]
+    axles = [len(e.axles) for e in events]
+    _echo_kv(
+        [
+            ("median width", f"{statistics.median(widths) * 1e3:,.0f} ms"),
+            ("width range", f"{min(widths) * 1e3:,.0f} - {max(widths) * 1e3:,.0f} ms"),
+            ("axles per event", f"median {statistics.median(axles):.0f}, max {max(axles)}"),
+        ]
+    )
+
+    if show:
+        typer.secho("events", bold=True)
+        typer.echo(f"  {'t_peak_s':>10}  {'width_ms':>9}  {'axles':>5}  {'peak':>12}  flags")
+        for event in events[:show]:
+            flags = ",".join(
+                name
+                for name, on in (
+                    ("saturated", event.saturated),
+                    ("invalid", event.has_invalid),
+                    ("warming-up", event.warming_up),
+                )
+                if on
+            )
+            typer.echo(
+                f"  {event.t_peak_s:10.3f}  "
+                f"{(event.t_end_s - event.t_start_s) * 1e3:9.1f}  "
+                f"{len(event.axles):5d}  {event.peak:12.4g}  {flags}"
+            )
+        if len(events) > show:
+            typer.echo(f"  ... {len(events) - show} more")
 
 
 @app.command("gap-report")

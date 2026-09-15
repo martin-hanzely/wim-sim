@@ -461,3 +461,37 @@ def test_cutoff_above_nyquist_is_rejected() -> None:
             sample_rate_hz=FS,
             profile=_profile(),
         )
+
+
+def test_a_negative_going_sensor_can_be_inverted_in_the_preprocessor() -> None:
+    """Which way a crossing goes is a property of the wiring -- which leg of the bridge, which way
+    the gauge is bonded -- not of the algorithm.
+
+    Measured on `20260209_cintron1/Tenzo1`: the vehicle at t=15.2 s pulls the compensated signal
+    *down* by 7.1 microstrain. The detector opens on a rise above the zero line, by design and
+    correctly: a detector needs one definition of "above". So with the recording as exported it
+    finds nothing, at any threshold, with any filter. Inverted, it finds the crossing.
+    """
+    from wimsim.core.config import PreprocessConfig
+    from wimsim.edge.preprocess import Preprocessor
+
+    n = 4000
+    block = _block(np.full(n, 0.5) - 0.2 * np.exp(-0.5 * ((np.arange(n) - 3000) / 60.0) ** 2))
+
+    upright = Preprocessor(PreprocessConfig(), sample_rate_hz=FS).process(block)
+    inverted = Preprocessor(PreprocessConfig(invert=True), sample_rate_hz=FS).process(block)
+
+    assert upright.compensated_value.min() < -0.1, "the test signal does not dip"
+    assert inverted.compensated_value.max() > 0.1
+    assert inverted.compensated_value == pytest.approx(-upright.compensated_value)
+
+
+def test_inversion_leaves_the_raw_value_alone() -> None:
+    """`raw_value` is what the station reported and is carried for provenance. Flipping it would
+    make the stored sample disagree with the recording it came from."""
+    from wimsim.core.config import PreprocessConfig
+    from wimsim.edge.preprocess import Preprocessor
+
+    block = _block(np.full(2000, 0.5))
+    out = Preprocessor(PreprocessConfig(invert=True), sample_rate_hz=FS).process(block)
+    assert out.raw_value == pytest.approx(block.raw_value)
