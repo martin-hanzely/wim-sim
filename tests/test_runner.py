@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 
+import pandas as pd
 import pytest
 
 from wimsim.experiments.runner import (
@@ -265,3 +266,79 @@ def test_the_results_schema_does_not_depend_on_how_many_runs_succeeded(tmp_path)
     assert list(good.columns) == list(bad.columns)
     assert bad["mae_kg"].isna().all()
     assert good["mae_kg"].notna().all()
+
+
+def test_a_scenario_can_be_given_overrides_of_its_own() -> None:
+    """Scenarios in one sweep differ in length by three hundred times -- S1 ships at 15 minutes and
+    S2 at 72 hours -- so a single global `overrides` list cannot give both a sensible duration.
+
+    Without this, `ladder` scored S1 on two passes: 62 crossings, 60 of them spent on the
+    calibration window. A row built on two passes sits in the table looking exactly like a row
+    built on four thousand.
+    """
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S1_nominal", "S2_thermal_cycle"],
+        estimators=["static_affine"],
+        seeds=[1],
+        overrides=["scenario.output.samples=none"],
+        scenario_overrides={"S1_nominal": ["scenario.duration_s=7200"]},
+    )
+    cells = {c.scenario: c for c in spec.grid()}
+
+    assert spec.overrides_for("S1_nominal") == [
+        "scenario.output.samples=none",
+        "scenario.duration_s=7200",
+    ], "the scenario's own overrides must come last, so they win"
+    assert spec.overrides_for("S2_thermal_cycle") == ["scenario.output.samples=none"]
+    assert set(cells) == {"S1_nominal", "S2_thermal_cycle"}
+
+
+def test_overrides_for_a_scenario_that_is_not_in_the_sweep_are_refused() -> None:
+    """A typo here is a setting that silently does nothing, which is the same failure the unknown-
+    key check on the YAML exists to prevent."""
+    with pytest.raises(ValueError, match="not in this sweep"):
+        ExperimentSpec(
+            experiment_id="t",
+            scenarios=["S1_nominal"],
+            estimators=["static_affine"],
+            seeds=[1],
+            scenario_overrides={"S9_typo": ["scenario.duration_s=7200"]},
+        )
+
+
+def test_the_table_says_how_many_passes_each_row_is_a_mean_over() -> None:
+    """A row scored on two passes and a row scored on four thousand are the same width in a
+    markdown table, and every summary statistic in them -- MAE, bias, coverage -- reads the same.
+    `ladder` produced exactly that: S1 ships at 15 minutes, so 60 of its 62 crossings went to the
+    calibration window and the remaining two set the coverage to 0.5000.
+
+    Without the count in the table there is nothing on the page to distrust it by.
+    """
+    from wimsim.experiments.table import markdown_table
+
+    frame = pd.DataFrame(
+        [
+            {
+                "scenario": "S1_nominal",
+                "estimator": "static_affine",
+                "seed": 1,
+                "n_matched": 2,
+                "mae_kg": 1.09,
+                "coverage": 0.5,
+                "failed": False,
+            },
+            {
+                "scenario": "S6_combined",
+                "estimator": "static_affine",
+                "seed": 1,
+                "n_matched": 4210,
+                "mae_kg": 180.4,
+                "coverage": 0.94,
+                "failed": False,
+            },
+        ]
+    )
+    table = markdown_table(frame, experiment_id="t", git_commit="0" * 40)
+    assert "| 2 |" in table
+    assert "| 4210 |" in table

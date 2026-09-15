@@ -30,7 +30,7 @@ from __future__ import annotations
 import itertools
 import json
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -141,6 +141,14 @@ class ExperimentSpec:
     """Scenario overrides, applied to every run: ``scenario.duration_s=600``."""
     edge_overrides: Sequence[str] = field(default_factory=tuple)
     """Pipeline overrides, applied to every run: ``edge.control.enabled=true``."""
+    scenario_overrides: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    """Extra scenario overrides for one scenario only, applied after :attr:`overrides`.
+
+    The scenarios in one sweep differ in length by three hundred times -- S1 ships at 15 minutes
+    and S2 at 72 hours -- so a single global list cannot give both a sensible duration. Without
+    this, `ladder` scored S1 on two passes: 62 crossings, 60 of them spent on the calibration
+    window, and the resulting row sat in the table looking exactly like a row built on thousands.
+    """
     calibration_passes: int | None = None
     reference_every_n: int | None = None
     fault_horizon_s: float = 1800.0
@@ -154,12 +162,22 @@ class ExperimentSpec:
         ):
             if not values:
                 raise ValueError(f"{name} is empty, so the grid has no cells")
+        stray = sorted(set(self.scenario_overrides) - set(self.scenarios))
+        if stray:
+            raise ValueError(
+                f"scenario_overrides names {stray}, not in this sweep's scenarios "
+                f"{sorted(self.scenarios)}; a typo here is a setting that silently does nothing."
+            )
         unknown = [e for e in self.estimators if e not in ESTIMATORS]
         if unknown:
             raise ValueError(
                 f"unknown estimators {unknown}; the registry holds {sorted(ESTIMATORS)}. Refused "
                 "before the sweep starts rather than after the first hour of it."
             )
+
+    def overrides_for(self, scenario: str) -> list[str]:
+        """The overrides one scenario runs with. Its own come last, so they win."""
+        return [*self.overrides, *self.scenario_overrides.get(scenario, ())]
 
     def grid(self) -> Iterator[RunSpec]:
         """Every cell, in a stable order."""
@@ -182,6 +200,7 @@ class ExperimentSpec:
             "seeds": list(self.seeds),
             "edge_config": self.edge_config,
             "overrides": list(self.overrides),
+            "scenario_overrides": {k: list(v) for k, v in self.scenario_overrides.items()},
             "edge_overrides": list(self.edge_overrides),
             "calibration_passes": self.calibration_passes,
             "reference_every_n": self.reference_every_n,
@@ -338,7 +357,9 @@ def _execute(spec: ExperimentSpec, cell: RunSpec):
     from wimsim.experiments.offline import load_run
     from wimsim.signal.writer import write_run
 
-    cfg = load_run_config(cell.scenario, overrides=list(spec.overrides), seed=cell.seed)
+    cfg = load_run_config(
+        cell.scenario, overrides=spec.overrides_for(cell.scenario), seed=cell.seed
+    )
     edge_cfg = _edge_for(spec, cell)
 
     # The run directory is a temporary: a sweep of forty cells does not need forty truth logs on
@@ -362,7 +383,7 @@ def _config_hash_of(spec: ExperimentSpec, cell: RunSpec) -> str:
     """The scenario hash, even for a cell that failed -- so the failure is attributable."""
     try:
         return load_run_config(
-            cell.scenario, overrides=list(spec.overrides), seed=cell.seed
+            cell.scenario, overrides=spec.overrides_for(cell.scenario), seed=cell.seed
         ).config_hash()
     except Exception:  # pragma: no cover - a config that will not even load
         return "unknown"

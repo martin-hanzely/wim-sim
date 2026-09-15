@@ -31,6 +31,11 @@ COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("scenario", "scenario", "{}"),
     ("estimator", "estimator", "{}"),
     ("seed", "seed", "{:.0f}"),
+    # How many passes the row is a mean over. First of the numbers because everything to its right
+    # is only as good as it is: `ladder` scored S1 on two passes -- 60 of its 62 crossings went to
+    # the calibration window -- and a coverage of 0.5000 from two passes reads exactly like a
+    # coverage of 0.5000 from four thousand unless the count is on the page.
+    ("n_matched", "scored", "{:.0f}"),
     ("mae_kg", "MAE kg", "{:.2f}"),
     ("mape", "MAPE %", "{:.3%}"),
     ("bias_kg", "bias kg", "{:+.2f}"),
@@ -45,6 +50,11 @@ COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("false_alarms_per_hour", "FA/h", "{:.2f}"),
     ("reconverge_s", "reconv s", "{:.0f}"),
 )
+
+
+#: How many leading columns say *what the run was* rather than how it went. A failed row keeps
+#: these and spends the rest on its error.
+_IDENTITY = 3
 
 
 def _cell(value: Any, spec: str) -> str:
@@ -76,11 +86,11 @@ def _rows(frame: pd.DataFrame) -> list[list[str]]:
     out: list[list[str]] = []
     for row in ordered.to_dict("records"):
         if row.get("failed"):
-            cells = [_cell(row.get(name), spec) for name, _h, spec in COLUMNS[:3]]
+            cells = [_cell(row.get(name), spec) for name, _h, spec in COLUMNS[:_IDENTITY]]
             # The error text, spanning the rest: a failed run has no numbers, and printing dashes
-            # across fourteen columns hides *why* far more effectively than saying it once.
+            # across a dozen columns hides *why* far more effectively than saying it once.
             cells.append(f"**failed** -- {_one_line(row.get('error'))}")
-            cells += ["" for _ in COLUMNS[4:]]
+            cells += ["" for _ in COLUMNS[_IDENTITY + 1 :]]
             out.append(cells)
             continue
         out.append([_cell(row.get(name), spec) for name, _h, spec in COLUMNS])
@@ -111,6 +121,8 @@ def markdown_table(
 
     lines += [
         "",
+        "`scored` is how many matched passes the row's statistics are a mean over; a short "
+        "scenario can spend most of its crossings on the calibration window and leave very few. "
         "`floor` is the dynamic load error the vehicles brought with them: the part no calibration "
         "can remove, so an MAE below it would be a coincidence rather than a result. `FA/h` is "
         "false alarms per hour of simulated operation. `reconv s` is the time from the first "

@@ -37,10 +37,18 @@ edge_overrides:
 # so readiness takes warmup * reference_every_n passes -- see docs/controller.md.
 reference_every_n: 10
 
-# The scenarios ship at 6 to 72 hours. Left at their shipped lengths: shortening them would change
-# what they are for, and S2's whole point is a 72-hour thermal cycle.
+# The scenarios ship at 6 to 72 hours, except S1 at 15 minutes. Left at their shipped lengths:
+# shortening them would change what they are for, and S2's whole point is a 72-hour thermal cycle.
 overrides:
   - scenario.output.samples=none
+
+# S1 is the exception, and it has to be. At 900 s it produces 62 crossings, 60 of which go to the
+# calibration window -- so the row was a mean over two passes, with a coverage of 0.5000 that meant
+# one of them was covered. Six hours puts it in the same range as the rest of the sweep without
+# changing what S1 *is*: it carries no drift, no faults and no dynamics at any length.
+scenario_overrides:
+  S1_nominal:
+    - scenario.duration_s=21600.0
 
 calibration_passes: 60
 
