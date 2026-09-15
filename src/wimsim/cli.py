@@ -532,10 +532,10 @@ def pipelines() -> None:
         try:
             edge = load_edge_config(path.stem)
         except Exception as exc:
-            typer.secho(f"  {path.stem:<12} BROKEN: {type(exc).__name__}", fg=typer.colors.RED)
+            typer.secho(f"  {path.stem:<17} BROKEN: {type(exc).__name__}", fg=typer.colors.RED)
             continue
         typer.echo(
-            f"  {path.stem:<12} {edge.estimate.feature:<5} {edge.preprocess.filter:<13}"
+            f"  {path.stem:<17} {edge.estimate.feature:<5} {edge.preprocess.filter:<13}"
             f" {edge.estimate.estimator:<14} {edge.description[:44]}"
         )
 

@@ -100,6 +100,18 @@ wimsim verify-determinism .determinism/a .determinism/b
 # what the real drives must look like, fixed before they arrive
 wimsim real-data-schema
 wimsim validate-real-data data/real/EXAMPLE
+
+# Phase 6 checkpoint: every estimator across every scenario, three seeds each.
+# --dry-run prints the grid and what it costs without running anything.
+wimsim experiment ladder --dry-run
+wimsim experiment ladder            # -> data/results/ladder/{results.parquet,md,tex,figures/}
+
+# the real recordings. `detect` stops before estimation, because detection is the one part of
+# the pipeline a recording can drive end to end -- everything past it needs a truth log.
+wimsim detect S8_replay_real --edge cintron_platform   --set scenario.source.replay.run_dir=data/real/20260209_cintron1   --set scenario.source.replay.channel=Tenzo1
+
+# where the simulator and the real sensor disagree, and the --set lines that close the gap
+wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1
 ```
 
 Or via `make`: `make sim`, `make test`, `make checkpoint`, `make determinism`.
@@ -112,9 +124,9 @@ wimsim generate S4_step_fault --out data/synthetic/short \
   --set scenario.duration_s=3600 --set station.sensor.k0=1.8e-4 --seed 7
 ```
 
-> **Provenance needs a commit.** `git init` has been run but nothing is committed, so every run
-> reports `git: not a checkout (dirty)`. Make the first commit and provenance starts identifying the
-> code that produced each artifact. Runs from a dirty tree stay marked as such, deliberately — see
+> **Provenance needs a clean tree.** Every artifact records the commit that produced it, and runs
+> from a dirty tree are marked as such — a results table from a dirty tree says so on its face,
+> because a commit that does not identify the code is worse than no commit at all. See
 > [`docs/determinism.md`](docs/determinism.md).
 
 ## Repository layout
@@ -140,7 +152,7 @@ data/real/            the real test drives land here (EXAMPLE/ shows the require
 data/synthetic/       generated runs
 data/results/         experiment outputs
 scripts/              operational checks that need the stack up
-docs/                 signal-model.md, observability.md, real-data-schema.md
+docs/                 signal-model.md, observability.md, experiments.md, sim-to-real.md
 ```
 
 ## Documentation
@@ -167,4 +179,7 @@ docs/                 signal-model.md, observability.md, real-data-schema.md
 - [`docs/sim-to-real.md`](docs/sim-to-real.md) -- what the eight real recordings say about the
   model. The headline: the hardware is a structural strain sensor, not the contact-force sensor
   the buildspec assumes, and speed *is* observable from its two gauges.
+- [`docs/experiments.md`](docs/experiments.md) -- phase 6: the runner, the results table, the
+  figures, the sim-to-real gap report, and the three separate reasons the default pipeline detected
+  nothing at all on the real recordings.
 - [`docs/determinism.md`](docs/determinism.md) -- how reproducibility is actually enforced.
