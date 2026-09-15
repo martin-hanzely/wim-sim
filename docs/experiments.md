@@ -61,6 +61,108 @@ Two things came out of that. `scenario_overrides` lets S1 run for six hours with
 column -- first among the numbers, because everything to its right is only as good as it is. A row
 built on two passes and a row built on four thousand are otherwise the same width on the page.
 
+## The checkpoint: all estimators, all scenarios
+
+`wimsim experiment ladder` -- 7 scenarios x 3 estimators x 3 seeds, 63 runs, 0 failed, 75 minutes,
+one reference vehicle in ten, the controller enabled throughout. Full table and figures in
+`data/results/ladder/`; commit `d05a9451`, clean tree. Means over the three seeds:
+
+| scenario | estimator | scored | MAE kg | x floor | bias kg | coverage |
+|---|---|---|---|---|---|---|
+| S1_nominal | static_affine | 1392 | 0.98 | -- | -0.14 | 0.958 |
+| | rls | 1392 | 0.97 | -- | -0.06 | 0.957 |
+| | kalman | 1392 | 0.97 | -- | -0.03 | 0.927 |
+| S2_thermal_cycle | static_affine | 12951 | 136.66 | 1.01 | **-24.66** | 0.937 |
+| | rls | 12951 | 137.03 | 1.01 | +0.96 | 0.946 |
+| | kalman | 12951 | 138.24 | 1.02 | +2.38 | 0.950 |
+| S3_zero_drift_walk | static_affine | 4751 | 132.63 | 1.00 | -14.77 | 0.939 |
+| | rls | 4751 | 133.74 | 1.01 | +1.28 | 0.944 |
+| | kalman | 4751 | 135.05 | 1.02 | +3.87 | 0.941 |
+| S4_step_fault | static_affine | 3465 | 182.57 | **1.40** | +16.48 | 0.907 |
+| | rls | 3465 | 153.29 | 1.17 | -10.79 | 0.939 |
+| | **kalman** | 3465 | **147.42** | **1.13** | -8.79 | 0.940 |
+| S5_outage | static_affine | 1388 | 127.70 | 1.01 | -19.58 | 0.922 |
+| | rls | 1388 | 127.24 | 1.00 | -15.41 | 0.934 |
+| | kalman | 1388 | 129.48 | 1.02 | -13.03 | 0.902 |
+| S6_combined | static_affine | 5041 | 715.35 | 3.82 | -59.98 | 0.913 |
+| | **rls** | 5041 | **667.21** | **3.56** | -41.45 | 0.914 |
+| | kalman | 5041 | 724.92 | 3.87 | -3.64 | 0.895 |
+| S7_sparse_reference | static_affine | 7147 | 181.50 | 1.16 | **-96.75** | 0.887 |
+| | rls | 7147 | 159.17 | 1.02 | -24.29 | 0.937 |
+| | kalman | 7147 | 159.30 | 1.02 | -14.92 | 0.939 |
+
+`x floor` is MAE divided by the dynamic load error the vehicles brought with them. S1 has no
+dynamic load, so it has no floor to divide by.
+
+### Adaptation is worth nothing until the plant moves, and then it is worth a lot
+
+**S1 and S5 separate all three estimators by less than 3 %.** S1 has no drift and no faults; S5's
+three faults are transport and acquisition failures that never touch the scale. Nothing to adapt to,
+and adaptation costs nothing -- which is the result worth having, because an adaptive estimator that
+was *worse* under nominal conditions would be a bad trade at most sites.
+
+**Where the plant moves slowly, adaptation removes the bias but not the error.** On S2 and S3 all
+three estimators sit within 2 % of the floor and their MAE is indistinguishable. Their *bias* is not:
+static carries -24.7 kg through a 72-hour thermal cycle and -14.8 kg through a Brownian zero walk,
+while RLS and Kalman sit within 4 kg of zero. MAE is dominated by dynamic load the calibration
+cannot touch; the bias is the part it can, and it is the part that matters for a scale.
+
+**Where the plant steps, adaptation is the whole result.** S4 injects two sensitivity steps. Static
+reaches 1.40x the floor; Kalman 1.13x, RLS 1.17x. Static also takes far longer to come back: mean
+time to reconverge 4767 s against 1331 s for RLS and 953 s for Kalman, with one static run taking
+8679 s -- more than two hours.
+
+**S7 is the clearest case, and it was designed to be the hardest.** Its single fault is a 3 % gain
+loss ramped over two hours, "slow enough to hide inside population variance". It succeeds at hiding:
+the detectors catch it in 1 run of 9. Static carries **-96.7 kg** of bias through it and its coverage
+falls to 0.887 -- an interval that promises 95 % and delivers 89 %, which is the specific failure
+that makes a biased estimator dangerous rather than merely inaccurate. RLS and Kalman track it out
+continuously, at 1.02x the floor and coverage 0.937-0.939.
+
+**S6 defeats everything.** Six overlapping mechanisms put every estimator 3.6-3.9x above its floor.
+RLS is best at 3.56x and Kalman has the smallest bias at -3.6 kg, but no configuration here is
+usable, and the scenario is doing its job by saying so.
+
+### What the detectors did, and why recall is low
+
+Across the sweep, **1 of 6 calibration faults on S4 was answered inside the 30-minute horizon, 0-1 of
+6 on S6, and 0-1 of 3 on S7**. False alarms ran 0.03-0.19 per hour.
+
+That is a real limitation of one reference vehicle in ten and it should not be read as a broken
+detector. Two things are going on, and they pull in opposite directions:
+
+* **The confirmation gate is a rate problem.** `docs/controller.md` measured the sensitivity floor as
+  `confirm_sigma x 1.2533 x sigma / sqrt(passes)` -- it needs a run of reference passes to confirm,
+  and at one reference in ten those passes take ten times as long to arrive. The phase-5 checkpoint
+  that caught both S4 faults within 40 minutes ran at one reference in **two**. This sweep is the
+  measurement of what the realistic rate costs, which is what the ladder's own description says it
+  is for.
+* **The detector and an adaptive estimator are partly redundant.** The detector watches residuals,
+  and RLS and Kalman remove the drift from the residuals as it appears -- so there is less left to
+  trip on. It shows in the alarm counts: on S4, static_affine raised 6 alarms and performed 4
+  recalibrations, while Kalman raised 4 and performed **none at all** -- and Kalman was the more
+  accurate of the two by a wide margin. The adaptive estimators reached 1.13x the floor *without a
+  single discrete recalibration event*.
+
+The honest summary is that at a realistic reference rate the discrete MAPE-K loop is a backstop for
+the static estimator rather than the primary mechanism, and continuous adaptation does the work.
+Whether the loop earns its complexity at 1-in-10 is a question this table asks and does not answer;
+at 1-in-2 phase 5 showed it clearly does.
+
+### A limit of the reconvergence metric
+
+`time_to_reconverge` tracks a rolling median of |error| and calls it recovered when it returns to
+within 1.5x its pre-fault level and stays there. That is deliberately hard to game upward -- one
+lucky pass cannot move a median over forty. It is also **blind to a bias shift smaller than about
+half the error spread**: on S7 it reports static_affine reconverging in 187-327 s while that estimator
+is carrying -96.7 kg of bias, because on a spread of 158 kg a 97 kg shift does not move the median of
+|error| by 50 %.
+
+So on S7 the reconvergence column should be read as "the error never visibly departed", not as
+"the calibration recovered". The bias column is what shows the truth there. Tracking the signed
+median instead would make the metric sensitive to exactly this, and would change the definition of
+the headline control metric, so it is written down here rather than changed quietly.
+
 ## The figures
 
 Four, written to `data/results/<id>/figures/` with their captions in a `README.md` beside them,

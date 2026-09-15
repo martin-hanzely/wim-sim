@@ -44,7 +44,7 @@ These constrain every decision in this repository.
 | 3 | Infrastructure: docker-compose, MQTT publisher with persistent buffer, ingest + DLQ, TimescaleDB | **done** -- synthetic passes visible in Grafana end to end |
 | 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | **done** -- one pass traceable acquire-to-persist in Tempo; all five dashboards live |
 | 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | **done** -- on `S4_step_fault` bias falls from -136.9 kg to -9.4 kg, both injected faults detected and corrected |
-| 6 | Experiments and real data: runner, scenario suite, `ReplaySource`, sim-to-real gap report | not started |
+| 6 | Experiments and real data: runner, scenario suite, `ReplaySource`, sim-to-real gap report | **done** -- 63-run checkpoint table, 0 failed; on `S7_sparse_reference` the adaptive estimators cut bias from -96.7 kg to -15 kg, and the detector now finds real crossings on 14 of 16 channel-runs |
 
 ---
 

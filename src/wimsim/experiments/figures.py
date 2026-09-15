@@ -51,6 +51,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.ticker import FuncFormatter
 
 __all__ = [
     "FIGURES",
@@ -66,7 +67,8 @@ __all__ = [
 #: in the code that drew it, because a figure separated from its caption is a shape.
 FIGURES: dict[str, str] = {
     "accuracy": (
-        "MAE as a multiple of the dynamic floor -- the load error the vehicles brought with them, "
+        "MAE as a multiple of the dynamic floor, on a log axis -- the load error the vehicles "
+        "brought with them, "
         "which no calibration can remove. 1.0 is the floor; below it would be a coincidence rather "
         "than a result. Scenarios with no dynamic load have no floor to divide by and are absent. "
         "One marker per seed."
@@ -86,9 +88,15 @@ FIGURES: dict[str, str] = {
         "Recall against false alarms per hour of simulated operation: the trade-off an operator "
         "actually faces. Either axis alone can be made perfect by a detector that is useless in "
         "the other direction. Scenarios with no faults have undefined recall and appear on the "
-        "false-alarm axis only, at the bottom -- they are the cleanest measurement of that cost."
+        "false-alarm axis only, as ticks *below* the zero line -- undefined recall is not a "
+        "recall of zero, and a scenario with nothing to detect is the cleanest measurement of "
+        "what a false alarm costs."
     ),
 }
+
+#: Where "recall is undefined" is drawn on the detector figure: below the axis, so it cannot be
+#: read as a recall of zero.
+_UNDEFINED_ROW = -0.09
 
 #: Distinct without relying on colour alone, since these end up printed and pasted into slides.
 _MARKERS = ("o", "s", "^", "D", "v", "P")
@@ -283,7 +291,20 @@ def _draw_accuracy(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
         fontsize=7,
         color="k",
     )
-    ax.set_ylim(bottom=0.9)
+    # Log. On the shipped ladder S6 reaches 4.1x the floor and every other scenario sits between
+    # 1.00 and 1.40, so a linear axis spends four fifths of its height on the one scenario that is
+    # obviously hard and compresses the range where the estimators actually differ -- 1.13x against
+    # 1.40x on S4 is the headline result, and it is a few pixels tall.
+    ax.set_yscale("log")
+    top = max(max(v) for v in ratios.values())
+    ax.set_ylim(0.95, top * 1.15)
+    # Explicit ticks. The data spans well under one decade, where matplotlib's log locator puts
+    # almost nothing, so the axis would otherwise carry a single "1x" label and no way to read a
+    # value off it.
+    ticks = [t for t in (1.0, 1.1, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 10.0) if t <= top * 1.15]
+    ax.set_yticks(ticks)
+    ax.set_yticks([], minor=True)
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _pos: f"{v:g}x"))
     return _save(fig, path)
 
 
@@ -343,18 +364,30 @@ def _draw_detectors(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
             p[0] for k, ps in points.items() if k[1] == estimator for p in ps if p[1] is None
         ]
         ax.scatter(xs, ys, label=estimator, marker=markers[estimator], s=34, color=f"C{index}")
+        # Below the axis, not at zero. A scenario with no faults has *undefined* recall, and drawn
+        # at y=0 it is pixel-for-pixel a detector that missed everything -- the one confusion this
+        # figure exists to avoid.
         ax.scatter(
-            undefined, np.zeros(len(undefined)), marker="|", s=80, color=f"C{index}", alpha=0.6
+            undefined,
+            np.full(len(undefined), _UNDEFINED_ROW),
+            marker="|",
+            s=80,
+            color=f"C{index}",
+            alpha=0.7,
+            clip_on=False,
         )
     ax.set_xlabel("false alarms per hour")
     ax.set_ylabel("recall")
-    ax.set_ylim(-0.05, 1.05)
+    ax.set_ylim(_UNDEFINED_ROW - 0.04, 1.05)
+    ax.axhline(0.0, color="0.6", linewidth=0.8)
+    ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
     ax.grid(alpha=0.3, linewidth=0.5)
     ax.annotate(
-        "ticks at y=0: no faults to detect, so recall is undefined",
-        xy=(0.02, 0.02),
-        xycoords="axes fraction",
+        "below the line: no calibration fault in the scenario, so recall is undefined -- not zero",
+        xy=(0.02, _UNDEFINED_ROW / 2.0),
+        xycoords=("axes fraction", "data"),
         fontsize=7,
+        va="center",
     )
     ax.legend(fontsize=8, framealpha=0.9)
     return _save(fig, path)
