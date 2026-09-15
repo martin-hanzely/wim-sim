@@ -12,6 +12,7 @@ Command surface:
     wimsim recompute --from TS --profile P  re-derive stored history under another profile
     wimsim profiles FILE                   show a station's calibration history
     wimsim experiment NAME                 run a sweep and write the results table
+    wimsim gap-report REAL_DIR             where the simulator and the sensor disagree
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -1330,6 +1331,124 @@ def experiment(
         "wrote results.parquet, results.md, results.tex and manifest.json",
         fg=typer.colors.GREEN,
     )
+
+
+@app.command("gap-report")
+def gap_report_cmd(
+    real_dir: Annotated[Path, typer.Argument(help="A real recording, as `import-csv` writes it.")],
+    scenario: Annotated[
+        str, typer.Option("--scenario", help="Synthetic scenario to compare against.")
+    ] = "S1_nominal",
+    station: StationOpt = None,
+    channel: Annotated[
+        str | None, typer.Option("--channel", help="Which channel to analyse. Default: the only.")
+    ] = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Write the report here. Default: stdout.")
+    ] = None,
+    set_: SetOpt = None,
+) -> None:
+    """Compare a real recording against the simulator: noise, drift, and pulse shape.
+
+    A comparison, not a verdict. There is no pass mark: a simulator that matched a real sensor on
+    every statistic would mean the statistics were not discriminating. The output is where the two
+    differ, by how much, and the `--set` lines that move the model towards the recording.
+
+    docs/sim-to-real.md contains this analysis done by hand in phase 3. A hand-run analysis is a
+    claim about one afternoon; this is the same analysis as something that can be re-run.
+    """
+    import numpy as np
+
+    from wimsim.experiments.gap_report import (
+        GapReport,
+        compare_noise,
+        estimate_drift_rate,
+        fit_crossing,
+        fit_noise_parameters,
+    )
+    from wimsim.source import ReplaySource, SyntheticSource
+
+    try:
+        replay = ReplaySource(real_dir, channel=channel)
+        real = np.concatenate([b.raw_value for b in replay.stream_blocks()])
+    except (OSError, KeyError, ValueError) as exc:
+        typer.secho(f"cannot read {real_dir}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    meta = replay.metadata
+    fs = float(meta.sample_rate_hz)
+    duration_s = real.size / fs
+
+    # The synthetic side is generated at the *recording's* sample rate. Comparing PSDs computed on
+    # two different grids would show differences that are entirely an artefact of the grids, and
+    # `noise.white_sigma` is a per-sample quantity, so its implied PSD depends on the rate too.
+    synthetic_cfg = _resolve(
+        scenario,
+        station,
+        [
+            *(set_ or []),
+            f"station.sample_rate_hz={fs}",
+            f"scenario.duration_s={duration_s:.6f}",
+            f"scenario.block_seconds={min(duration_s, 10.0):.6f}",
+        ],
+        None,
+    )
+    synthetic = np.concatenate(
+        [b.raw_value for b in SyntheticSource(synthetic_cfg).stream_blocks()]
+    )
+
+    typer.secho(f"{real_dir.name} against {scenario}", bold=True)
+    _echo_kv(
+        [
+            ("channel", meta.sensor_id),
+            ("unit", meta.unit),
+            ("sample rate", f"{fs:,.0f} Hz"),
+            ("duration", f"{duration_s:,.1f} s"),
+            ("synthetic samples", f"{synthetic.size:,}"),
+        ]
+    )
+
+    notes: list[str] = []
+    if meta.unit != "mV/V":
+        notes.append(
+            f"**The recording is in {meta.unit} and the model's sensor units are mV/V.** Every "
+            f"amplitude below -- sigma, the 50 Hz line, the fitted overrides -- is in {meta.unit}, "
+            "so the sigma *ratio* compares two different quantities and means nothing; read it as "
+            "a reminder that the conversion is missing, not as a result. What does survive the "
+            "unit mismatch is everything dimensionless: the 50 Hz excess over its own local floor "
+            "in dB, the spectral slope, and the pulse-shape residuals. Converting would need the "
+            "bridge configuration, which this recording does not declare, and guessing it is the "
+            "class of unit error `raw_value_kind` exists to prevent."
+        )
+    notes += [str(w) for w in meta.extra.get("validation_warnings", [])]
+
+    crossing = fit_crossing(real, fs=fs)
+    notes.append(crossing.note)
+
+    if duration_s < 300:
+        notes.append(
+            f"This recording is {duration_s:.0f} s long. Every number here is a property of that "
+            "minute, not of the installation."
+        )
+
+    report = GapReport(
+        real_run=real_dir.name,
+        scenario=scenario,
+        noise=compare_noise(synthetic, real, fs=fs),
+        drift=estimate_drift_rate(real, fs=fs),
+        fit=fit_noise_parameters(real, fs=fs),
+        pulse=crossing.comparison,
+        notes=notes,
+    )
+
+    text = report.to_markdown()
+    if out is None:
+        typer.echo("")
+        typer.echo(text)
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    typer.secho(f"wrote {out}", fg=typer.colors.GREEN)
 
 
 def _publish_events(events: list, *, broker: str, station_id: str, metrics) -> None:

@@ -202,3 +202,52 @@ def test_unapplied_pipeline_faults_are_announced(tmp_path: Path) -> None:
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["faults_unapplied"] == ["link_down"]
     assert manifest["faults_applied"] == []
+
+
+# -- gap report -------------------------------------------------------------------------------
+
+
+def _example_run(repo_root: Path) -> Path:
+    example = repo_root / "data" / "real" / "EXAMPLE"
+    if not example.is_dir():
+        import pytest
+
+        pytest.skip("data/real/EXAMPLE not present in this checkout")
+    return example
+
+
+def test_gap_report_compares_a_recording_against_a_scenario(repo_root: Path) -> None:
+    result = _run("gap-report", str(_example_run(repo_root)), "--scenario", "S1_nominal")
+    assert result.exit_code == 0, _text(result)
+    out = _text(result)
+    assert "Sim-to-real gap" in out
+    assert "white sigma" in out
+    assert "--set scenario.noise.white_sigma=" in out, (
+        "the fitted parameters have to come back as lines that load"
+    )
+
+
+def test_gap_report_writes_a_file_when_asked(repo_root: Path, tmp_path: Path) -> None:
+    out = tmp_path / "nested" / "gap.md"
+    result = _run("gap-report", str(_example_run(repo_root)), "--out", str(out))
+    assert result.exit_code == 0, _text(result)
+    assert out.is_file()
+    assert "Sim-to-real gap" in out.read_text(encoding="utf-8")
+
+
+def test_gap_report_refuses_a_directory_that_is_not_a_recording(tmp_path: Path) -> None:
+    result = _run("gap-report", str(tmp_path / "nope"))
+    assert result.exit_code == 2
+    assert "cannot read" in _text(result)
+
+
+def test_gap_report_generates_its_reference_at_the_recordings_sample_rate(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """Comparing PSDs computed on two different sample grids would show differences that are
+    entirely an artefact of the grids. The synthetic side has to be generated at the recording's
+    rate, and the report should say which rate that was."""
+    out = tmp_path / "gap.md"
+    result = _run("gap-report", str(_example_run(repo_root)), "--out", str(out))
+    assert result.exit_code == 0, _text(result)
+    assert "2,000 Hz" in _text(result) or "2000 Hz" in _text(result)
