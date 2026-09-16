@@ -281,17 +281,40 @@ def test_the_rate_curves_keep_the_two_arms_apart() -> None:
     from wimsim.experiments.figures import rate_curves
 
     curves = rate_curves(_rate_frame())
-    assert ("static_affine", True) in curves
-    assert ("static_affine", False) in curves
-    assert sorted(curves[("static_affine", True)]) == [2, 10, 50]
-    assert len(curves[("static_affine", True)][2]) == 3, "three seeds, kept"
+    assert ("S4_step_fault", "static_affine", True) in curves
+    assert ("S4_step_fault", "static_affine", False) in curves
+    assert sorted(curves[("S4_step_fault", "static_affine", True)]) == [2, 10, 50]
+    assert len(curves[("S4_step_fault", "static_affine", True)][2]) == 3, "three seeds, kept"
+
+
+def test_the_rate_curves_keep_the_scenarios_apart() -> None:
+    """Regression, seen on the first real sweep: the curves were keyed on estimator and arm only,
+    so S4 and S7 were pooled into one median. Their floors differ -- static_affine sits at 1.41x on
+    S4 and 1.16x on S7 -- and the pooled line came out at 1.27x, which describes neither.
+
+    A median over two scenarios is not a property of either of them.
+    """
+    from wimsim.experiments.figures import rate_curves
+
+    frame = _rate_frame()
+    other = frame.copy()
+    other["scenario"] = "S7_sparse_reference"
+    other["mae_kg"] = other["mae_kg"] * 0.5
+    curves = rate_curves(pd.concat([frame, other], ignore_index=True))
+
+    s4 = curves[("S4_step_fault", "kalman", True)][2]
+    s7 = curves[("S7_sparse_reference", "kalman", True)][2]
+    assert s4 != pytest.approx(s7)
+    assert {k[0] for k in curves} == {"S4_step_fault", "S7_sparse_reference"}
 
 
 def test_the_rate_curves_are_expressed_against_the_floor() -> None:
     from wimsim.experiments.figures import rate_curves
 
     curves = rate_curves(_rate_frame())
-    assert curves[("kalman", True)][2] == pytest.approx([1.0 + s / 130.0 for s in (1, 2, 3)])
+    assert curves[("S4_step_fault", "kalman", True)][2] == pytest.approx(
+        [1.0 + s / 130.0 for s in (1, 2, 3)]
+    )
 
 
 def test_a_frame_with_no_control_column_still_draws_one_curve_per_estimator() -> None:
@@ -300,4 +323,4 @@ def test_a_frame_with_no_control_column_still_draws_one_curve_per_estimator() ->
 
     frame = _rate_frame().drop(columns=["control_enabled"])
     curves = rate_curves(frame)
-    assert {k[1] for k in curves} == {None}
+    assert {k[2] for k in curves} == {None}

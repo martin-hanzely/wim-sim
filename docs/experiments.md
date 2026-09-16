@@ -149,6 +149,81 @@ the static estimator rather than the primary mechanism, and continuous adaptatio
 Whether the loop earns its complexity at 1-in-10 is a question this table asks and does not answer;
 at 1-in-2 phase 5 showed it clearly does.
 
+### The crossover: how often a reference vehicle has to arrive
+
+The checkpoint above ended on a question it could not answer. `wimsim experiment reference_rate`
+answers it: 180 runs, 0 failed, 135 minutes, commit `b0e98778`, clean tree. Five rates from one
+vehicle in two to one in fifty, **each run twice on a byte-identical stream** with the control loop
+enabled and disabled.
+
+`static_affine` on `S4_step_fault` is the purest test, because static has no other adaptation
+mechanism — anything it recovers, the loop recovered:
+
+| reference rate | loop off | loop on | what the loop is worth | bias off → on | recalibrations |
+|---|---|---|---|---|---|
+| 1 in 2 | 1.412× floor | **1.199×** | **15.1 %** | −140.5 → +32.6 kg | 3 |
+| 1 in 5 | 1.412× | 1.364× | 3.4 % | −140.5 → +56.7 kg | 3 |
+| 1 in 10 | 1.412× | 1.396× | 1.1 % | −140.5 → +16.5 kg | 4 |
+| 1 in 20 | 1.412× | 1.406× | 0.4 % | −140.5 → −138.1 kg | 1 |
+| 1 in 50 | 1.412× | **1.412×** | **0 %** | −140.5 → −140.5 kg | **0** |
+
+**The loop's value collapses between one reference in five and one in ten, and is exactly zero by
+one in fifty**, where it never fires at all. That is the answer, and it is sharper than expected:
+not a gentle decline but most of the benefit gone within one step of the phase-5 rate.
+
+Detection follows the same curve. Faults answered inside the 30-minute horizon, out of six (two
+faults × three seeds), with the loop on:
+
+| | 1 in 2 | 1 in 5 | 1 in 10 | 1 in 20 | 1 in 50 |
+|---|---|---|---|---|---|
+| static_affine | 4 | 4 | 1 | 0 | 0 |
+| rls | 4 | 3 | 1 | 0 | 0 |
+| kalman | 4 | 3 | 1 | 0 | 0 |
+
+This is the confirmation gate behaving exactly as `docs/controller.md` predicted it would. Its
+sensitivity floor is `confirm_sigma × 1.2533 × σ / √passes`, so it needs a *run* of reference passes
+to confirm — and at one in fifty they arrive fifty times more slowly than the faults do.
+
+**The adaptive estimators barely use the loop at all.** On S4 at one in two, Kalman is at 1.063×
+the floor with the loop and 1.063× without it — identical to three decimal places, with zero
+recalibrations either way. What the loop buys them is *bias*, and only at middling rates: RLS at one
+in ten goes from −29.5 kg to −10.8 kg with it enabled. Their MAE is set by how often they get a
+reference to fit, not by whether a detector is watching.
+
+So the honest statement of the controller's value is narrower than phase 5's checkpoint implied, and
+it is a statement about sites rather than about algorithms:
+
+> The discrete MAPE-K loop earns its complexity where reference vehicles are **frequent** — roughly
+> one in five or better. Past one in ten it is insurance: it fires rarely, catches little, and the
+> accuracy is being produced by whichever estimator is underneath. A site that cannot supply
+> references at that rate should deploy an adaptive estimator and not expect the loop to save it.
+
+### An interval that quietly stops being an interval
+
+The sweep turned up something nobody asked it for. On S4 with the loop on, as references get rarer:
+
+| estimator | coverage at 1 in 2 | at 1 in 50 | interval width at 1 in 50 | bias at 1 in 50 |
+|---|---|---|---|---|
+| kalman | 0.951 | **0.758** | 916 kg | −41.7 kg |
+| rls | 0.948 | 0.971 | 1089 kg | −92.4 kg |
+| static_affine | 0.917 | 0.961 | 1112 kg | −140.5 kg |
+
+**Kalman has by far the smallest bias at one in fifty and by far the worst coverage.** An interval
+promising 95 % and delivering 76 % is the specific failure mode that makes a confident estimator
+more dangerous than an inaccurate one, and the point estimate gives no warning of it — MAE at that
+rate is 1.186× the floor, the best of the three.
+
+The mechanism is visible in the widths. The conformal interval reads its quantile off residuals
+actually seen, and at one in fifty there are only **71 reference observations in a sixteen-hour
+run**. RLS and static have large residuals throughout, so their intervals widen and over-cover.
+Kalman's residuals stay small because it tracks — so its calibration set is tight, and when drift
+does arrive the interval it produces is too narrow for it. `min_calibration` is 19, so the guard
+never trips; the set is large enough to compute a quantile and too small and too stale for that
+quantile to mean anything.
+
+That is a hypothesis with the widths behind it, not an established result. It is the next thing this
+sweep says to measure, and it belongs to the uncertainty layer rather than the control loop.
+
 ### A limit of the reconvergence metric
 
 `time_to_reconverge` tracks a rolling median of |error| and calls it recovered when it returns to

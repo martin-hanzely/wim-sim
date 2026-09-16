@@ -225,14 +225,18 @@ def detector_points(frame: pd.DataFrame) -> dict[_Key, list[tuple[float, float |
     return out
 
 
-_RateKey = tuple[str, bool | None]
+_RateKey = tuple[str, str, bool | None]
 
 
 def rate_curves(frame: pd.DataFrame) -> dict[_RateKey, dict[int, list[float]]]:
-    """``(estimator, controller on?) -> reference rate -> MAE/floor, one value per seed``.
+    """``(scenario, estimator, controller on?) -> reference rate -> MAE/floor, one per seed``.
 
     The two arms are kept apart because the gap between them *is* the question. Averaging the
     controller-on and controller-off runs together would answer one nobody asked.
+
+    Scenarios are kept apart for a reason found on the first real sweep, where they were not:
+    S4 and S7 were pooled into one median, and since static_affine sits at 1.41x its floor on S4
+    and 1.16x on S7, the pooled line came out at 1.27x -- a number describing neither.
     """
     usable = _usable(frame)
     if "reference_every_n" not in usable:
@@ -248,27 +252,26 @@ def rate_curves(frame: pd.DataFrame) -> dict[_RateKey, dict[int, list[float]]]:
         else pd.Series([None] * len(usable), index=usable.index)
     )
     out: dict[_RateKey, dict[int, list[float]]] = {}
-    for estimator in sorted(dict.fromkeys(usable["estimator"])):
-        for arm in sorted(dict.fromkeys(arms), key=lambda a: (a is None, not a)):
-            sel = (
-                usable[(usable["estimator"] == estimator) & (arms == arm)]
-                if arm is not None
-                else usable[usable["estimator"] == estimator]
-            )
-            if sel.empty:
-                continue
-            by_rate: dict[int, list[float]] = {}
-            for rate in sorted(dict.fromkeys(sel["reference_every_n"])):
-                rows = sel[sel["reference_every_n"] == rate].sort_values("seed")
-                vals = [
-                    float(m) / float(f)
-                    for m, f in zip(rows["mae_kg"], rows["dynamic_floor_kg"], strict=True)
-                    if pd.notna(m) and f > 0
-                ]
-                if vals:
-                    by_rate[int(rate)] = vals
-            if by_rate:
-                out[(estimator, arm)] = by_rate
+    scenarios = list(dict.fromkeys(usable["scenario"]))
+    for scenario in scenarios:
+        for estimator in sorted(dict.fromkeys(usable["estimator"])):
+            for arm in sorted(dict.fromkeys(arms), key=lambda a: (a is None, not a)):
+                same = (usable["scenario"] == scenario) & (usable["estimator"] == estimator)
+                sel = usable[same & (arms == arm)] if arm is not None else usable[same]
+                if sel.empty:
+                    continue
+                by_rate: dict[int, list[float]] = {}
+                for rate in sorted(dict.fromkeys(sel["reference_every_n"])):
+                    rows = sel[sel["reference_every_n"] == rate].sort_values("seed")
+                    vals = [
+                        float(m) / float(f)
+                        for m, f in zip(rows["mae_kg"], rows["dynamic_floor_kg"], strict=True)
+                        if pd.notna(m) and f > 0
+                    ]
+                    if vals:
+                        by_rate[int(rate)] = vals
+                if by_rate:
+                    out[(scenario, estimator, arm)] = by_rate
     return out
 
 
@@ -455,34 +458,55 @@ def _draw_reference_rate(frame: pd.DataFrame, title: str, path: Path) -> Path | 
         # support. `ladder` runs at a single rate.
         return None
 
-    fig, ax = plt.subplots(figsize=(7.0, 4.2))
-    ax.set_title(title)
-    estimators = sorted({e for e, _a in curves})
+    scenarios = list(dict.fromkeys(k[0] for k in curves))
+    fig, axes = plt.subplots(
+        1, len(scenarios), figsize=(4.6 * len(scenarios) + 1.0, 4.2), sharey=True, squeeze=False
+    )
+    fig.suptitle(title)
+    estimators = sorted({e for _s, e, _a in curves})
     markers = dict(zip(estimators, _MARKERS, strict=False))
-    for index, estimator in enumerate(estimators):
-        for arm in (True, False, None):
-            key = (estimator, arm)
-            if key not in curves:
-                continue
-            by_rate = curves[key]
-            xs = sorted(by_rate)
-            med = [float(np.median(by_rate[r])) for r in xs]
-            style = "--" if arm is False else "-"
-            label = estimator + ("" if arm is None else ("  loop on" if arm else "  loop off"))
-            ax.plot(xs, med, style, color=f"C{index}", linewidth=1.6, label=label, zorder=3)
-            for r in xs:
-                ax.scatter(
-                    [r] * len(by_rate[r]),
-                    by_rate[r],
-                    marker=markers[estimator],
-                    s=18,
-                    color=f"C{index}",
-                    alpha=0.45,
-                    zorder=2,
-                )
 
-    ax.axhline(1.0, color="k", linestyle=":", linewidth=1.0, zorder=1)
-    ax.annotate(
+    for ax, scenario in zip(axes[0], scenarios, strict=True):
+        for index, estimator in enumerate(estimators):
+            for arm in (True, False, None):
+                by_rate = curves.get((scenario, estimator, arm))
+                if not by_rate:
+                    continue
+                xs = sorted(by_rate)
+                med = [float(np.median(by_rate[r])) for r in xs]
+                label = estimator + ("" if arm is None else ("  loop on" if arm else "  loop off"))
+                ax.plot(
+                    xs,
+                    med,
+                    "--" if arm is False else "-",
+                    color=f"C{index}",
+                    linewidth=1.6,
+                    label=label,
+                    zorder=3,
+                )
+                for r in xs:
+                    ax.scatter(
+                        [r] * len(by_rate[r]),
+                        by_rate[r],
+                        marker=markers[estimator],
+                        s=16,
+                        color=f"C{index}",
+                        alpha=0.4,
+                        zorder=2,
+                    )
+        ax.axhline(1.0, color="k", linestyle=":", linewidth=1.0, zorder=1)
+        ax.set_title(scenario, fontsize=9)
+        # Log, because the rates span 25x and the interesting behaviour is at the dense end. Minor
+        # ticks off: matplotlib labels them "3 x 10^0" and they collide with the "1 in N" majors.
+        ax.set_xscale("log")
+        ax.set_xticks(rates)
+        ax.set_xticks([], minor=True)
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"1 in {v:g}"))
+        ax.set_xlabel("how often a reference vehicle arrives")
+        ax.grid(alpha=0.3, linewidth=0.5)
+
+    axes[0][0].set_ylabel("MAE / dynamic floor")
+    axes[0][0].annotate(
         "the floor",
         xy=(0.01, 1.0),
         xycoords=("axes fraction", "data"),
@@ -490,16 +514,8 @@ def _draw_reference_rate(frame: pd.DataFrame, title: str, path: Path) -> Path | 
         textcoords="offset points",
         fontsize=7,
     )
-    # Log, because the rates span 25x and the interesting behaviour is at the dense end. Minor
-    # ticks off: matplotlib labels them "3 x 10^0" and they collide with the "1 in N" majors.
-    ax.set_xscale("log")
-    ax.set_xticks(rates)
-    ax.set_xticks([], minor=True)
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"1 in {v:g}"))
-    ax.set_xlabel("how often a reference vehicle arrives")
-    ax.set_ylabel("MAE / dynamic floor")
-    ax.grid(alpha=0.3, linewidth=0.5)
-    ax.legend(fontsize=7, framealpha=0.9, ncol=2)
+    axes[0][-1].legend(fontsize=7, framealpha=0.9, ncol=2)
+    fig.tight_layout()
     return _save(fig, path)
 
 
