@@ -59,6 +59,7 @@ __all__ = [
     "accuracy_ratios",
     "coverage_rows",
     "detector_points",
+    "rate_curves",
     "reconvergence_rows",
     "write_figures",
 ]
@@ -83,6 +84,12 @@ FIGURES: dict[str, str] = {
         "stayed there. Scenarios with no faults are absent rather than drawn at zero. Runs that "
         "never reconverged are counted in the label rather than dropped, because dropping them "
         "makes a system that never recovers look identical to one that was not measured."
+    ),
+    "reference_rate": (
+        "MAE as a multiple of the dynamic floor against how often a reference vehicle arrives, "
+        "with the control loop on (solid) and off (dashed) over the identical stream. The gap "
+        "between a pair of lines is what the loop is worth at that rate; where they meet, it is "
+        "worth nothing and the estimator is doing the work alone. One marker per seed."
     ),
     "detectors": (
         "Recall against false alarms per hour of simulated operation: the trade-off an operator "
@@ -215,6 +222,53 @@ def detector_points(frame: pd.DataFrame) -> dict[_Key, list[tuple[float, float |
         ]
         if points:
             out[key] = points
+    return out
+
+
+_RateKey = tuple[str, bool | None]
+
+
+def rate_curves(frame: pd.DataFrame) -> dict[_RateKey, dict[int, list[float]]]:
+    """``(estimator, controller on?) -> reference rate -> MAE/floor, one value per seed``.
+
+    The two arms are kept apart because the gap between them *is* the question. Averaging the
+    controller-on and controller-off runs together would answer one nobody asked.
+    """
+    usable = _usable(frame)
+    if "reference_every_n" not in usable:
+        return {}
+    usable = usable[usable["dynamic_floor_kg"].fillna(0.0) > 0.0]
+    usable = usable[usable["reference_every_n"].notna()]
+    if usable.empty:
+        return {}
+
+    arms = (
+        usable["control_enabled"]
+        if "control_enabled" in usable
+        else pd.Series([None] * len(usable), index=usable.index)
+    )
+    out: dict[_RateKey, dict[int, list[float]]] = {}
+    for estimator in sorted(dict.fromkeys(usable["estimator"])):
+        for arm in sorted(dict.fromkeys(arms), key=lambda a: (a is None, not a)):
+            sel = (
+                usable[(usable["estimator"] == estimator) & (arms == arm)]
+                if arm is not None
+                else usable[usable["estimator"] == estimator]
+            )
+            if sel.empty:
+                continue
+            by_rate: dict[int, list[float]] = {}
+            for rate in sorted(dict.fromkeys(sel["reference_every_n"])):
+                rows = sel[sel["reference_every_n"] == rate].sort_values("seed")
+                vals = [
+                    float(m) / float(f)
+                    for m, f in zip(rows["mae_kg"], rows["dynamic_floor_kg"], strict=True)
+                    if pd.notna(m) and f > 0
+                ]
+                if vals:
+                    by_rate[int(rate)] = vals
+            if by_rate:
+                out[(estimator, arm)] = by_rate
     return out
 
 
@@ -393,8 +447,65 @@ def _draw_detectors(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
     return _save(fig, path)
 
 
+def _draw_reference_rate(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    curves = rate_curves(frame)
+    rates = sorted({r for c in curves.values() for r in c})
+    if len(rates) < 2:
+        # A one-point curve is not a trend, and drawing it invites exactly the reading it cannot
+        # support. `ladder` runs at a single rate.
+        return None
+
+    fig, ax = plt.subplots(figsize=(7.0, 4.2))
+    ax.set_title(title)
+    estimators = sorted({e for e, _a in curves})
+    markers = dict(zip(estimators, _MARKERS, strict=False))
+    for index, estimator in enumerate(estimators):
+        for arm in (True, False, None):
+            key = (estimator, arm)
+            if key not in curves:
+                continue
+            by_rate = curves[key]
+            xs = sorted(by_rate)
+            med = [float(np.median(by_rate[r])) for r in xs]
+            style = "--" if arm is False else "-"
+            label = estimator + ("" if arm is None else ("  loop on" if arm else "  loop off"))
+            ax.plot(xs, med, style, color=f"C{index}", linewidth=1.6, label=label, zorder=3)
+            for r in xs:
+                ax.scatter(
+                    [r] * len(by_rate[r]),
+                    by_rate[r],
+                    marker=markers[estimator],
+                    s=18,
+                    color=f"C{index}",
+                    alpha=0.45,
+                    zorder=2,
+                )
+
+    ax.axhline(1.0, color="k", linestyle=":", linewidth=1.0, zorder=1)
+    ax.annotate(
+        "the floor",
+        xy=(0.01, 1.0),
+        xycoords=("axes fraction", "data"),
+        xytext=(0, 3),
+        textcoords="offset points",
+        fontsize=7,
+    )
+    # Log, because the rates span 25x and the interesting behaviour is at the dense end. Minor
+    # ticks off: matplotlib labels them "3 x 10^0" and they collide with the "1 in N" majors.
+    ax.set_xscale("log")
+    ax.set_xticks(rates)
+    ax.set_xticks([], minor=True)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"1 in {v:g}"))
+    ax.set_xlabel("how often a reference vehicle arrives")
+    ax.set_ylabel("MAE / dynamic floor")
+    ax.grid(alpha=0.3, linewidth=0.5)
+    ax.legend(fontsize=7, framealpha=0.9, ncol=2)
+    return _save(fig, path)
+
+
 _DRAW = {
     "accuracy": _draw_accuracy,
+    "reference_rate": _draw_reference_rate,
     "coverage": _draw_coverage,
     "reconvergence": _draw_reconvergence,
     "detectors": _draw_detectors,

@@ -73,10 +73,21 @@ def _frame(**overrides) -> pd.DataFrame:
 # -- what gets written ----------------------------------------------------------------------------
 
 
-def test_every_named_figure_is_written(tmp_path: Path) -> None:
+def test_every_figure_the_frame_supports_is_written(tmp_path: Path) -> None:
+    """Not every named figure is drawable from every sweep -- `reference_rate` needs a sweep that
+    varies the rate, and an axis with nothing on it is not written at all. What must hold is that
+    nothing drawable is skipped.
+    """
     written = write_figures(_frame(), out_dir=tmp_path, experiment_id="t")
-    assert {p.name for p in written if p.suffix == ".png"} == {f"{n}.png" for n in FIGURES}
+    assert {p.name for p in written if p.suffix == ".png"} == {
+        f"{n}.png" for n in FIGURES if n != "reference_rate"
+    }
     assert all(p.is_file() and p.stat().st_size > 0 for p in written)
+
+
+def test_a_rate_sweep_draws_every_figure_including_the_rate_one(tmp_path: Path) -> None:
+    written = write_figures(_rate_frame(), out_dir=tmp_path, experiment_id="t")
+    assert {f"{n}.png" for n in FIGURES} <= {p.name for p in written}
 
 
 def test_the_figures_land_under_the_results_directory(tmp_path: Path) -> None:
@@ -211,3 +222,82 @@ def test_a_scenario_with_no_faults_has_no_recall_and_is_still_plotted_for_its_fa
     points = detector_points(frame)
     assert ("S1_nominal", "rls") in points
     assert all(recall is None for _fa, recall in points[("S1_nominal", "rls")])
+
+
+# -- the reference-rate figure --------------------------------------------------------------------
+
+
+def _rate_frame(**overrides) -> pd.DataFrame:
+    """A rate sweep: accuracy degrades as references get rarer, and faster with the loop off."""
+    rows = []
+    for rate in (2, 10, 50):
+        for control in (True, False):
+            for estimator in ("static_affine", "kalman"):
+                for seed in (1, 2, 3):
+                    penalty = (rate / 2) ** 0.5 * (1.0 if control else 1.6)
+                    rows.append(
+                        {
+                            "scenario": "S4_step_fault",
+                            "estimator": estimator,
+                            "seed": seed,
+                            "reference_every_n": rate,
+                            "control_enabled": control,
+                            "n_matched": 3000,
+                            "mae_kg": 130.0 * penalty + seed,
+                            "dynamic_floor_kg": 130.0,
+                            "coverage": 0.94,
+                            "mean_interval_width_kg": 900.0,
+                            "recall": 0.5,
+                            "false_alarms_per_hour": 0.1,
+                            "detected": 1,
+                            "missed": 1,
+                            "recalibrations": 3 if control else 0,
+                            "reconverge_s": 900.0,
+                            "reconverged": True,
+                            "reconverge_measurable": True,
+                            "failed": False,
+                            "error": None,
+                        }
+                    )
+    frame = pd.DataFrame(rows)
+    for key, value in overrides.items():
+        frame[key] = value
+    return frame
+
+
+def test_the_rate_figure_is_drawn_only_when_the_rate_actually_varies(tmp_path: Path) -> None:
+    """`ladder` runs at a single rate. A one-point curve is not a trend, and drawing it would
+    invite exactly the reading it cannot support."""
+    written = write_figures(_frame(), out_dir=tmp_path, experiment_id="t")
+    assert not any(p.stem == "reference_rate" for p in written)
+
+    written = write_figures(_rate_frame(), out_dir=tmp_path / "r", experiment_id="t")
+    assert any(p.stem == "reference_rate" for p in written)
+
+
+def test_the_rate_curves_keep_the_two_arms_apart() -> None:
+    """The whole question is the gap between them. Averaging the controller-on and controller-off
+    runs together would answer a question nobody asked."""
+    from wimsim.experiments.figures import rate_curves
+
+    curves = rate_curves(_rate_frame())
+    assert ("static_affine", True) in curves
+    assert ("static_affine", False) in curves
+    assert sorted(curves[("static_affine", True)]) == [2, 10, 50]
+    assert len(curves[("static_affine", True)][2]) == 3, "three seeds, kept"
+
+
+def test_the_rate_curves_are_expressed_against_the_floor() -> None:
+    from wimsim.experiments.figures import rate_curves
+
+    curves = rate_curves(_rate_frame())
+    assert curves[("kalman", True)][2] == pytest.approx([1.0 + s / 130.0 for s in (1, 2, 3)])
+
+
+def test_a_frame_with_no_control_column_still_draws_one_curve_per_estimator() -> None:
+    """An older sweep has no arm axis. It should still produce a rate figure rather than nothing."""
+    from wimsim.experiments.figures import rate_curves
+
+    frame = _rate_frame().drop(columns=["control_enabled"])
+    curves = rate_curves(frame)
+    assert {k[1] for k in curves} == {None}
