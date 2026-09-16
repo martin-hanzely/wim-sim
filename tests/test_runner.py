@@ -395,3 +395,148 @@ def test_a_scenario_mixing_both_counts_only_the_calibration_half() -> None:
     cfg = load_run_config("S6_combined")
     assert len(cfg.scenario.faults) == 6
     assert len(_fault_times_us(cfg, truth)) == 2
+
+
+# -- the reference rate as an axis ---------------------------------------------------------------
+
+
+def test_the_reference_rate_can_be_swept() -> None:
+    """The ladder asked a question it could not answer: at one reference vehicle in ten the
+    discrete MAPE-K loop is a backstop -- Kalman recalibrated zero times on S4 and was still the
+    most accurate arm -- while phase 5 at one-in-two showed the loop clearly earning its keep.
+
+    The crossover is the central claim of the product and it was unmeasurable, because the
+    reference rate was a scalar setting rather than an axis.
+    """
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S4_step_fault"],
+        estimators=["kalman"],
+        seeds=[1],
+        reference_rates=[2, 10, 50],
+    )
+    cells = list(spec.grid())
+    assert [c.reference_every_n for c in cells] == [2, 10, 50]
+    assert len({c.run_id for c in cells}) == 3, "each cell needs its own id"
+    assert all("ref" in c.run_id for c in cells)
+
+
+def test_a_sweep_that_does_not_vary_the_rate_keeps_its_run_ids() -> None:
+    """`ladder` names a single rate. Its ids should not grow a suffix that distinguishes nothing --
+    a run id names what separates a cell from its neighbours."""
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S4_step_fault"],
+        estimators=["kalman"],
+        seeds=[1, 2],
+        reference_every_n=10,
+    )
+    cells = list(spec.grid())
+    assert [c.run_id for c in cells] == [
+        "S4_step_fault__kalman__seed1",
+        "S4_step_fault__kalman__seed2",
+    ]
+    assert all(c.reference_every_n == 10 for c in cells)
+
+
+def test_the_scalar_still_works_when_no_axis_is_given() -> None:
+    spec = ExperimentSpec(
+        experiment_id="t", scenarios=["S1_nominal"], estimators=["rls"], seeds=[1]
+    )
+    assert [c.reference_every_n for c in spec.grid()] == [None]
+
+
+def test_naming_both_the_axis_and_the_scalar_is_refused() -> None:
+    """Two settings for one thing, one of them silently ignored, is the failure the unknown-key
+    check exists to prevent -- it just arrives by a different route."""
+    with pytest.raises(ValueError, match="reference_every_n"):
+        ExperimentSpec(
+            experiment_id="t",
+            scenarios=["S1_nominal"],
+            estimators=["rls"],
+            seeds=[1],
+            reference_every_n=10,
+            reference_rates=[2, 10],
+        )
+
+
+def test_a_reference_rate_must_be_a_positive_integer() -> None:
+    with pytest.raises(ValueError, match="reference_rates"):
+        ExperimentSpec(
+            experiment_id="t",
+            scenarios=["S1_nominal"],
+            estimators=["rls"],
+            seeds=[1],
+            reference_rates=[10, 0],
+        )
+
+
+def test_each_cell_runs_at_its_own_rate() -> None:
+    """The axis is worthless if the rate does not reach the pipeline. This is the wiring that the
+    phase-5 bug -- an adaptive estimator rebuilt from state, so `update()` never reached the
+    emitted events -- is the reason to test rather than assume."""
+    from wimsim.experiments.runner import _edge_for
+
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S4_step_fault"],
+        estimators=["kalman"],
+        seeds=[1],
+        reference_rates=[2, 25],
+    )
+    rates = [_edge_for(spec, cell).control.reference_every_n for cell in spec.grid()]
+    assert rates == [2, 25]
+
+
+def test_the_controller_can_be_swept_against_its_own_counterfactual() -> None:
+    """ "Does the loop earn its keep at this reference rate" is a two-arm question, and the arm is
+    the identical stream with the controller off. The README calls that "the arm every claim about
+    the controller has to be measured against"; phase 5 measured S4 both ways by hand.
+
+    Without it the rate sweep shows how accuracy varies with reference rate but not how much of
+    that accuracy came from the loop -- which is the thing being asked.
+    """
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S4_step_fault"],
+        estimators=["static_affine"],
+        seeds=[1],
+        reference_rates=[2, 10],
+        control_arms=[True, False],
+    )
+    cells = list(spec.grid())
+    assert len(cells) == 4
+    assert [(c.reference_every_n, c.control) for c in cells] == [
+        (2, True),
+        (2, False),
+        (10, True),
+        (10, False),
+    ]
+    assert {c.run_id for c in cells} == {
+        "S4_step_fault__static_affine__seed1__ref2__control",
+        "S4_step_fault__static_affine__seed1__ref2__open",
+        "S4_step_fault__static_affine__seed1__ref10__control",
+        "S4_step_fault__static_affine__seed1__ref10__open",
+    }
+
+
+def test_a_single_arm_sweep_keeps_its_run_ids() -> None:
+    spec = ExperimentSpec(
+        experiment_id="t", scenarios=["S1_nominal"], estimators=["rls"], seeds=[1]
+    )
+    cells = list(spec.grid())
+    assert [c.run_id for c in cells] == ["S1_nominal__rls__seed1"]
+    assert cells[0].control is None, "None leaves the edge config's own setting alone"
+
+
+def test_each_arm_reaches_the_pipeline() -> None:
+    from wimsim.experiments.runner import _edge_for
+
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S4_step_fault"],
+        estimators=["rls"],
+        seeds=[1],
+        control_arms=[True, False],
+    )
+    assert [_edge_for(spec, c).control.enabled for c in spec.grid()] == [True, False]

@@ -1,0 +1,45 @@
+# How often does a reference vehicle have to arrive before the control loop stops being the
+# mechanism and starts being insurance?
+#
+# This is the question the `ladder` checkpoint asked and could not answer. At one reference in ten
+# the discrete MAPE-K loop behaves as a backstop: on S4_step_fault the Kalman arm performed ZERO
+# recalibrations and was still the most accurate of the three, at 1.13x the dynamic floor against
+# static_affine's 1.40x. The phase-5 checkpoint, at one reference in TWO, showed the loop clearly
+# earning its keep -- bias on the same scenario fell from -136.9 kg to -9.4 kg with it enabled.
+#
+# Both of those are true. Between them is a crossover, and it is the central claim of the whole
+# controller: a site that cannot supply reference vehicles often enough does not get self-
+# calibration, it gets an estimator that happens to have a detector attached.
+#
+# TWO ARMS, NOT ONE. Every cell runs twice on a byte-identical stream, with the controller enabled
+# and disabled. The rate axis alone would show how accuracy varies with reference rate; it would
+# not show how much of that accuracy came from the LOOP rather than from the estimator having more
+# references to fit. Phase 5 established that any claim about the controller is measured against
+# the same run with it off, and doing that by hand is what this sweep exists to stop.
+
+experiment_id: reference_rate
+description: >
+  The reference rate swept from one vehicle in two to one in fifty, each rate run with the
+  controller on and off over the identical stream, on the two scenarios where calibration actually
+  moves: an abrupt sensitivity step and a slow ramp designed to hide inside population variance.
+
+scenarios:
+  - S4_step_fault          # two abrupt sensitivity steps -- what the detector is built for
+  - S7_sparse_reference    # a 3 % gain loss ramped over two hours -- what it is worst at
+
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3]
+
+# 2 is the phase-5 checkpoint rate, 10 the ladder's. 50 is a site that weighs one vehicle an hour
+# at this traffic density -- generous by the standards of a real installation, which is the point.
+reference_rates: [2, 5, 10, 20, 50]
+
+control_arms: [true, false]
+
+edge_config: default
+
+overrides:
+  - scenario.output.samples=none
+
+calibration_passes: 60
+fault_horizon_s: 1800.0

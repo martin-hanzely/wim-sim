@@ -134,6 +134,10 @@ class RunSpec:
     estimator: str
     seed: int
     run_id: str
+    reference_every_n: int | None = None
+    """How often a reference vehicle arrives, for this cell. ``None`` leaves the edge config's own."""
+    control: bool | None = None
+    """Whether the MAPE-K loop runs. ``None`` leaves the edge config's own setting."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +164,26 @@ class ExperimentSpec:
     """
     calibration_passes: int | None = None
     reference_every_n: int | None = None
+    """One rate for the whole sweep. Use :attr:`reference_rates` to sweep it instead."""
+    reference_rates: Sequence[int] = field(default_factory=tuple)
+    """The reference rate as a fourth axis.
+
+    The `ladder` checkpoint asked a question it could not answer. At one reference vehicle in ten
+    the discrete MAPE-K loop behaves as a backstop -- on `S4_step_fault` the Kalman arm performed
+    *zero* recalibrations and was still the most accurate of the three -- while the phase-5
+    checkpoint at one-in-two showed the loop clearly earning its keep. Somewhere between those two
+    rates the discrete loop stops being the mechanism and starts being insurance, and that
+    crossover is the central claim of the whole controller. It was unmeasurable while the rate was
+    a scalar setting.
+    """
+    control_arms: Sequence[bool] = field(default_factory=tuple)
+    """The controller on and off, as an axis, over the identical stream.
+
+    "Does the loop earn its keep at this reference rate" is a two-arm question. The README calls
+    the controller-off run "the arm every claim about the controller has to be measured against",
+    and phase 5 ran S4 both ways by hand to make its headline claim. Without it a rate sweep shows
+    how accuracy varies with reference rate but not how much of that accuracy came from the loop.
+    """
     fault_horizon_s: float = 1800.0
     """How long after an injected fault an alarm still counts as having detected it."""
 
@@ -177,6 +201,16 @@ class ExperimentSpec:
                 f"scenario_overrides names {stray}, not in this sweep's scenarios "
                 f"{sorted(self.scenarios)}; a typo here is a setting that silently does nothing."
             )
+        if self.reference_rates and self.reference_every_n is not None:
+            raise ValueError(
+                "both reference_every_n and reference_rates are set; one of them would be "
+                "silently ignored. Name the axis or the scalar, not both."
+            )
+        bad = [r for r in self.reference_rates if not isinstance(r, int) or r < 1]
+        if bad:
+            raise ValueError(f"reference_rates must be positive integers; got {bad}")
+        if len(set(self.control_arms)) != len(self.control_arms):
+            raise ValueError(f"control_arms repeats an arm: {list(self.control_arms)}")
         unknown = [e for e in self.estimators if e not in ESTIMATORS]
         if unknown:
             raise ValueError(
@@ -190,14 +224,26 @@ class ExperimentSpec:
 
     def grid(self) -> Iterator[RunSpec]:
         """Every cell, in a stable order."""
-        for scenario, estimator, seed in itertools.product(
-            self.scenarios, self.estimators, self.seeds
+        rates: tuple[int | None, ...] = tuple(self.reference_rates) or (self.reference_every_n,)
+        arms: tuple[bool | None, ...] = tuple(self.control_arms) or (None,)
+        # A suffix appears only where the axis actually varies: a run id should name what separates
+        # a cell from its neighbours, and `__ref10` on every row of `ladder` names nothing.
+        label_rate, label_arm = len(rates) > 1, len(arms) > 1
+        for scenario, estimator, seed, rate, arm in itertools.product(
+            self.scenarios, self.estimators, self.seeds, rates, arms
         ):
+            run_id = f"{scenario}__{estimator}__seed{seed}"
+            if label_rate:
+                run_id += f"__ref{rate}"
+            if label_arm:
+                run_id += "__control" if arm else "__open"
             yield RunSpec(
                 scenario=scenario,
                 estimator=estimator,
                 seed=seed,
-                run_id=f"{scenario}__{estimator}__seed{seed}",
+                run_id=run_id,
+                reference_every_n=rate,
+                control=arm,
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -213,6 +259,8 @@ class ExperimentSpec:
             "edge_overrides": list(self.edge_overrides),
             "calibration_passes": self.calibration_passes,
             "reference_every_n": self.reference_every_n,
+            "reference_rates": list(self.reference_rates),
+            "control_arms": list(self.control_arms),
             "fault_horizon_s": self.fault_horizon_s,
         }
 
@@ -385,8 +433,10 @@ def _execute(spec: ExperimentSpec, cell: RunSpec):
 
 def _edge_for(spec: ExperimentSpec, cell: RunSpec):
     overrides = [*spec.edge_overrides, f"edge.estimate.estimator={cell.estimator}"]
-    if spec.reference_every_n is not None:
-        overrides.append(f"edge.control.reference_every_n={spec.reference_every_n}")
+    if cell.reference_every_n is not None:
+        overrides.append(f"edge.control.reference_every_n={cell.reference_every_n}")
+    if cell.control is not None:
+        overrides.append(f"edge.control.enabled={str(cell.control).lower()}")
     return load_edge_config(spec.edge_config, overrides=overrides)
 
 

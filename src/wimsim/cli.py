@@ -1285,6 +1285,18 @@ def experiment(
             ("scenarios", ", ".join(spec.scenarios)),
             ("estimators", ", ".join(spec.estimators)),
             ("seeds", ", ".join(str(s) for s in spec.seeds)),
+            # Named only when they are axes. A sweep summary that omits an axis misreports what is
+            # about to run for two hours.
+            *(
+                [("reference rates", ", ".join(str(r) for r in spec.reference_rates))]
+                if spec.reference_rates
+                else []
+            ),
+            *(
+                [("controller", ", ".join("on" if a else "off" for a in spec.control_arms))]
+                if spec.control_arms
+                else []
+            ),
             ("runs", len(cells)),
             ("edge config", spec.edge_config),
         ]
