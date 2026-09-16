@@ -278,6 +278,28 @@ def load_experiment(path: Path | str) -> ExperimentSpec:
     return ExperimentSpec(**payload)
 
 
+#: Appended to as each cell finishes, and deleted once the sweep writes its real output. Its
+#: PRESENCE therefore means a sweep did not finish -- a stale one left behind would be a lie.
+PARTIAL_LOG = "rows.partial.jsonl"
+
+
+def _append_partial(out_dir: Path, row: dict[str, Any]) -> None:
+    """Record one finished cell immediately.
+
+    A sweep that writes nothing until its last cell loses everything if it is interrupted, which is
+    not hypothetical: the first reference-rate run was killed at cell 30 of 180, after 99 minutes,
+    and left an empty directory.
+
+    Failures here are swallowed on purpose. This is a progress log; taking down an otherwise fine
+    two-hour sweep because one row would not serialise is the opposite of what it is for.
+    """
+    try:
+        with (out_dir / PARTIAL_LOG).open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except OSError:  # pragma: no cover - a full or read-only disk
+        pass
+
+
 @dataclass
 class ExperimentResult:
     out_dir: Path
@@ -313,7 +335,9 @@ def run_experiment(
     for index, cell in enumerate(cells, start=1):
         if progress is not None:
             progress(index, len(cells), cell)
-        rows.append(_run_one(spec, cell, provenance))
+        row = _run_one(spec, cell, provenance)
+        rows.append(row)
+        _append_partial(out, row)
 
     finished = datetime.now(tz=UTC)
     frame = pd.DataFrame(rows, columns=list(_ROW_TEMPLATE))
@@ -352,6 +376,9 @@ def run_experiment(
     )
     write_table(result, spec)
     write_figures(result.frame, out_dir=result.out_dir, experiment_id=spec.experiment_id)
+    # The real output exists now, so the progress log has served its purpose and must go: left
+    # behind, it would claim the sweep had been interrupted.
+    (out / PARTIAL_LOG).unlink(missing_ok=True)
     return result
 
 

@@ -540,3 +540,45 @@ def test_each_arm_reaches_the_pipeline() -> None:
         control_arms=[True, False],
     )
     assert [_edge_for(spec, c).control.enabled for c in spec.grid()] == [True, False]
+
+
+def test_a_sweep_records_each_cell_as_it_finishes(tiny_spec, tmp_path) -> None:
+    """A 180-run sweep that writes nothing until the last cell loses everything if it is
+    interrupted -- which is not hypothetical: the first reference-rate run was killed at cell 30
+    of 180 after 99 minutes and left an empty directory.
+
+    Each row is appended as it completes, so an interrupted sweep can be inspected and its
+    remaining cells re-run rather than the whole thing repeated.
+    """
+    result = run_experiment(tiny_spec, out_dir=tmp_path / "results")
+    assert (result.out_dir / "results.parquet").is_file()
+    assert not (result.out_dir / "rows.partial.jsonl").exists(), (
+        "a finished sweep must not leave a partial log behind -- its presence is the signal that "
+        "a sweep did NOT finish, and a stale one would be a lie"
+    )
+
+
+def test_the_partial_log_survives_an_interrupted_sweep(tmp_path) -> None:
+    """The point of the log is the case where the sweep never reaches its own writer."""
+    import json
+
+    from wimsim.experiments.runner import _append_partial
+
+    out = tmp_path / "results"
+    out.mkdir()
+    _append_partial(out, {"run_id": "a", "mae_kg": 1.0})
+    _append_partial(out, {"run_id": "b", "mae_kg": 2.0})
+
+    lines = (out / "rows.partial.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert [json.loads(line)["run_id"] for line in lines] == ["a", "b"]
+
+
+def test_the_partial_log_tolerates_a_row_that_will_not_serialise(tmp_path) -> None:
+    """A crash inside the progress log would take down a sweep that was otherwise fine, which is
+    the opposite of what it is for."""
+    from wimsim.experiments.runner import _append_partial
+
+    out = tmp_path / "results"
+    out.mkdir()
+    _append_partial(out, {"run_id": "a", "when": object()})
+    assert (out / "rows.partial.jsonl").is_file()
