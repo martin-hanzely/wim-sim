@@ -108,9 +108,17 @@ while RLS and Kalman sit within 4 kg of zero. MAE is dominated by dynamic load t
 cannot touch; the bias is the part it can, and it is the part that matters for a scale.
 
 **Where the plant steps, adaptation is the whole result.** S4 injects two sensitivity steps. Static
-reaches 1.40x the floor; Kalman 1.13x, RLS 1.17x. Static also takes far longer to come back: mean
-time to reconverge 4767 s against 1331 s for RLS and 953 s for Kalman, with one static run taking
-8679 s -- more than two hours.
+reaches 1.40x the floor; Kalman 1.13x, RLS 1.17x. Static also takes far longer to come back. All
+three departed and reconverged on all three seeds; mean time from the first fault:
+
+| | seed 1 | seed 2 | seed 3 | mean |
+|---|---|---|---|---|
+| kalman | 3406 s | 1744 s | 4996 s | **3382 s** |
+| rls | 3919 s | 8651 s | 7923 s | 6831 s |
+| static_affine | 12409 s | 9677 s | 11180 s | **11089 s** |
+
+Static takes **3.3x** as long as Kalman to get the calibration back, and better than three hours of
+it on every seed.
 
 **S7 is the clearest case, and it was designed to be the hardest.** Its single fault is a 3 % gain
 loss ramped over two hours, "slow enough to hide inside population variance". It succeeds at hiding:
@@ -118,6 +126,12 @@ the detectors catch it in 1 run of 9. Static carries **-96.7 kg** of bias throug
 falls to 0.887 -- an interval that promises 95 % and delivers 89 %, which is the specific failure
 that makes a biased estimator dangerous rather than merely inaccurate. RLS and Kalman track it out
 continuously, at 1.02x the floor and coverage 0.937-0.939.
+
+The reconvergence column says the same thing in a different and sharper way. **On two of its three
+seeds, the Kalman arm's error never departed its pre-fault band at all** -- there was no excursion
+to recover from, because the filter absorbed a two-hour ramp as it happened. Static departed on all
+three and got back on two. "Never departed" is the outcome a control metric should report for an
+estimator that simply kept up, and it is not a fast recovery.
 
 **S6 defeats everything.** Six overlapping mechanisms put every estimator 3.6-3.9x above its floor.
 RLS is best at 3.56x and Kalman has the smallest bias at -3.6 kg, but no configuration here is
@@ -224,19 +238,52 @@ quantile to mean anything.
 That is a hypothesis with the widths behind it, not an established result. It is the next thing this
 sweep says to measure, and it belongs to the uncertainty layer rather than the control loop.
 
-### A limit of the reconvergence metric
+### What "reconverged" means, and what it cost to define
 
-`time_to_reconverge` tracks a rolling median of |error| and calls it recovered when it returns to
-within 1.5x its pre-fault level and stays there. That is deliberately hard to game upward -- one
-lucky pass cannot move a median over forty. It is also **blind to a bias shift smaller than about
-half the error spread**: on S7 it reports static_affine reconverging in 187-327 s while that estimator
-is carrying -96.7 kg of bias, because on a spread of 158 kg a 97 kg shift does not move the median of
-|error| by 50 %.
+The headline control metric was wrong twice, and both errors were found by using it rather than by
+reading it.
 
-So on S7 the reconvergence column should be read as "the error never visibly departed", not as
-"the calibration recovered". The bias column is what shows the truth there. Tracking the signed
-median instead would make the metric sensitive to exactly this, and would change the definition of
-the headline control metric, so it is written down here rather than changed quietly.
+**It tracked the median of ``|error|``.** A calibration fault is a systematic *shift*, and the
+median of the absolute error barely moves when a wide symmetric distribution slides sideways. On S7
+it reported static_affine reconverging in 187-327 s while that estimator carried -96.7 kg of bias on
+a 158 kg spread. The calibration had not recovered at all; the statistic could not see it. It is now
+the **signed** median.
+
+**It did not require the error to depart.** Fixing the statistic did not fix S7, because the
+statistic was never the problem there. S7 ramps its fault over two hours, reconvergence is timed
+from the fault's start, and 187 s in the error has not moved -- so the first window was trivially
+back at baseline and the metric announced recovery from a disturbance that had not arrived.
+Recovery now requires a departure first, and a departure has to be **sustained** for the same number
+of windows a recovery does: a rolling median crosses a three-sigma band by chance somewhere in a few
+hundred overlapping windows, so "went outside once" measures how long the run was rather than what
+the plant did.
+
+Every number moved, and all in the same direction:
+
+| | old | corrected |
+|---|---|---|
+| S4 static_affine | 3758 s | 12409 s |
+| S4 kalman | 870 s | 3406 s |
+| S7 static_affine | 187 s | 5104 s |
+| S7 kalman | 187 s | **never departed** |
+
+The threshold is now the controller's own. Recovery means the signed median has come back inside
+`tolerance_sigma` standard errors of its pre-fault value -- the same test
+`RecalibrationController._displaced` applies when the loop decides that drift has *occurred*. The
+metric and the loop agree on what "moved" means instead of each carrying a private definition, and
+the default `tolerance_sigma` matches the loop's `confirm_sigma`.
+
+**The resolution limit is stated rather than discovered.** The smallest bias the metric can see is
+
+    tolerance_sigma x 1.2533 x sigma / sqrt(window)
+
+about **0.59 sigma** at the defaults, tightening with the square root of the window. Resolving a
+smaller shift costs passes and buys a coarser recovery *time* in exchange; that trade is the design.
+A test pins the formula and checks that the implementation applies it.
+
+Three outcomes are now reportable and none of them is a missing value: **reconverged**, **departed
+but never came back**, and **never departed**. The last is not a fast recovery and must not be
+averaged with one.
 
 ## The figures
 
