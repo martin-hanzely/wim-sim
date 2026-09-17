@@ -170,18 +170,32 @@ class Preprocessor:
     def _group_delay(self) -> float:
         """DC group delay of the configured chain, seconds.
 
-        Exact for a boxcar: ``(N-1)/2`` samples. For Butterworth it is evaluated from the phase
-        response near DC, which is where the pulse energy is; the true delay is
-        frequency-dependent, so compensating by this value realigns the pulse approximately rather
-        than exactly. Reported either way, so a consumer can decide whether it matters.
+        Exact for a boxcar: ``(N-1)/2`` samples. For a rational filter the DC group delay also has
+        a closed form, ``sum(n*b)/sum(b) - sum(n*a)/sum(a)``, which is what is used here. The true
+        delay is frequency-dependent, so compensating by the DC value realigns the pulse
+        approximately rather than exactly -- but DC is where the pulse energy is. Reported either
+        way, so a consumer can decide whether it matters.
+
+        ``scipy.signal.group_delay`` was used before and is worse in two ways at the cutoff-to-rate
+        ratios this project now runs at. It samples the phase on a grid and reads the first bin,
+        which at 5 Hz on 25 kHz is not close enough to DC; and its denominator is near-singular
+        there, so it emits a page of warnings on every construction. Measured against the
+        impulse-response centroid, which needs no phase unwrapping:
+
+            order 4, 5 Hz at 25 kHz    scipy 2078.105   closed 2078.363   centroid 2078.364
+            order 4, 2 Hz at 25 kHz    scipy 5250.823   closed 5240.821   centroid 5240.957
+
+        So the closed form is the more accurate of the two where they disagree, not merely the
+        quieter one.
         """
         if self.cfg.filter == "none":
             return 0.0
         if self.cfg.filter == "moving_average":
             return (self.cfg.window - 1) / 2.0 / self.fs
-        w, gd = sps.group_delay((self._b, self._a), w=512, fs=self.fs)
-        del w
-        return float(gd[0]) / self.fs
+        n_b = np.arange(self._b.size)
+        n_a = np.arange(self._a.size)
+        delay = float((n_b @ self._b) / self._b.sum() - (n_a @ self._a) / self._a.sum())
+        return delay / self.fs
 
     # -- profile ----------------------------------------------------------------------------
 

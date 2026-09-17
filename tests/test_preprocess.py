@@ -495,3 +495,52 @@ def test_inversion_leaves_the_raw_value_alone() -> None:
     block = _block(np.full(2000, 0.5))
     out = Preprocessor(PreprocessConfig(invert=True), sample_rate_hz=FS).process(block)
     assert out.raw_value == pytest.approx(block.raw_value)
+
+
+def test_the_group_delay_is_exact_rather_than_sampled() -> None:
+    """`scipy.signal.group_delay` evaluates the phase on a frequency grid and reads the first bin.
+    At a low cutoff-to-rate ratio that bin is not close enough to DC, and the near-singular
+    denominator makes it warn loudly on the way:
+
+        UserWarning: The filter's denominator is extremely small at frequencies [...]
+
+    The DC group delay has a closed form for any rational filter --
+    `sum(n*b)/sum(b) - sum(n*a)/sum(a)` -- which is exact, silent, and costs nothing.
+
+    Measured against the impulse-response centroid, which needs no phase unwrapping:
+
+        order 4, 5 Hz at 25 kHz    scipy 2078.105   closed 2078.363   centroid 2078.364
+        order 4, 2 Hz at 25 kHz    scipy 5250.823   closed 5240.821   centroid 5240.957
+
+    So this is not only quieter, it is the more accurate of the two where they disagree.
+    """
+    import warnings
+
+    from scipy import signal as sps
+
+    from wimsim.core.config import PreprocessConfig
+    from wimsim.edge.preprocess import Preprocessor
+
+    fs = 25_000.0
+    cfg = PreprocessConfig(filter="butterworth", cutoff_hz=5.0, order=4)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning fails the test
+        pre = Preprocessor(cfg, sample_rate_hz=fs)
+
+    b, a = sps.butter(4, 5.0 / (fs / 2), btype="low")
+    impulse = sps.lfilter(b, a, np.concatenate([[1.0], np.zeros(2_000_000)]))
+    centroid = float(np.sum(np.arange(impulse.size) * impulse) / np.sum(impulse)) / fs
+
+    assert pre.group_delay_s == pytest.approx(centroid, rel=1e-4)
+    assert pre.group_delay_s == pytest.approx(0.0831, abs=1e-4)
+
+
+def test_a_moving_average_keeps_its_exact_group_delay() -> None:
+    """A boxcar's is (N-1)/2 samples exactly, and the closed form must agree rather than replace
+    it with something approximate."""
+    from wimsim.core.config import PreprocessConfig
+    from wimsim.edge.preprocess import Preprocessor
+
+    pre = Preprocessor(PreprocessConfig(filter="moving_average", window=9), sample_rate_hz=FS)
+    assert pre.group_delay_s == pytest.approx(4.0 / FS)
