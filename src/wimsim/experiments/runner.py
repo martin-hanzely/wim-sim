@@ -103,6 +103,8 @@ _ROW_TEMPLATE: dict[str, Any] = {
     "bias_kg": None,
     "dynamic_floor_kg": None,
     "coverage": None,
+    "coverage_expected": None,
+    "n_interval_fallback": None,
     "mean_interval_width_kg": None,
     "axle_count_accuracy": None,
     # the control loop

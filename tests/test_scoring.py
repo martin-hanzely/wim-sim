@@ -43,7 +43,18 @@ def _truth(n: int = 5, *, start: float = 1.0, spacing: float = 10.0, mass: float
 class _Ev:
     """Minimal stand-in for MeasurementEvent: scoring only touches these fields."""
 
-    def __init__(self, ts_start, ts_peak, ts_end, mass, lo=None, hi=None, axles=3):
+    def __init__(
+        self,
+        ts_start,
+        ts_peak,
+        ts_end,
+        mass,
+        lo=None,
+        hi=None,
+        axles=3,
+        interval_source="conformal_relative",
+    ):
+        self.interval_source = interval_source
         self.event_id = f"e{ts_peak}"
         self.ts_start = int(ts_start * 1e6)
         self.ts_peak = int(ts_peak * 1e6)
@@ -234,3 +245,91 @@ def test_result_serialises_to_json_friendly_types() -> None:
 
     result = score_events(_events_for(_truth()), _truth())
     json.dumps(result.to_dict())
+
+
+# -- coverage is only meaningful within one interval construction ---------------------------------
+
+
+def _mixed(truth, *, n_fallback: int):
+    """Events whose first `n_fallback` carry a uselessly narrow analytic band, the rest a wide
+    conformal one -- the shape a sparse-reference run actually produces."""
+    out = []
+    for i, r in enumerate(truth.itertuples()):
+        fallback = i < n_fallback
+        out.append(
+            _Ev(
+                r.t_entry_s,
+                r.t_peak_s,
+                r.t_exit_s,
+                r.true_mass_kg + 300.0,
+                lo=r.true_mass_kg + 299.0 if fallback else r.true_mass_kg - 2000.0,
+                hi=r.true_mass_kg + 301.0 if fallback else r.true_mass_kg + 2000.0,
+                interval_source="kalman_analytic" if fallback else "conformal_relative",
+            )
+        )
+    return out
+
+
+def test_coverage_is_reported_per_interval_source() -> None:
+    """A run can emit intervals from more than one construction, and pooling them produces a number
+    that describes neither.
+
+    Measured on `S4_step_fault` with Kalman at one reference in fifty. `uncertainty.method` is
+    `conformal`, but conformal needs 19 scored references before it can claim a 95 % quantile, and
+    at that rate they take four hours to arrive. For those four hours every event silently carries
+    the estimator's own analytic band -- which for the Kalman filter is the construction phase 5
+    measured at coverage 0.0065 and chose conformal specifically to avoid:
+
+        hours 0-2    coverage 0.004   mean width    11 kg
+        hours 2-4    coverage 0.010   mean width     2 kg
+        hours 4-16   coverage 0.914+  mean width  1435-1791 kg
+
+    The headline 0.741 averages a broken quarter with a working three quarters.
+    """
+    truth = _truth(8)
+    result = score_events(_mixed(truth, n_fallback=4), truth)
+
+    assert set(result.coverage_by_source) == {"kalman_analytic", "conformal_relative"}
+    n_bad, cov_bad = result.coverage_by_source["kalman_analytic"]
+    n_good, cov_good = result.coverage_by_source["conformal_relative"]
+    assert (n_bad, n_good) == (4, 4)
+    assert cov_bad == 0.0
+    assert cov_good == 1.0
+    assert result.coverage == pytest.approx(0.5), "the pooled figure still describes neither"
+
+
+def test_a_single_source_run_reports_one_entry() -> None:
+    """The common case must not grow a structure that has to be unpacked to mean anything."""
+    truth = _truth(6)
+    result = score_events(_events_for(truth), truth)
+    assert list(result.coverage_by_source) == ["conformal_relative"]
+    assert result.n_interval_fallback == 0
+
+
+def test_the_fallback_count_names_intervals_the_config_did_not_ask_for() -> None:
+    """`interval_source` already recorded which construction produced each band. What was missing
+    was anyone comparing it against the construction that was configured."""
+    truth = _truth(10)
+    result = score_events(_mixed(truth, n_fallback=3), truth, expected_interval_source="conformal")
+
+    assert result.n_interval_fallback == 3
+    assert result.n_interval_expected == 7
+    assert result.coverage_expected == pytest.approx(1.0)
+    assert result.coverage == pytest.approx(0.7)
+
+
+def test_with_no_expectation_stated_nothing_is_called_a_fallback() -> None:
+    """Scoring does not get to invent a preference the configuration never expressed."""
+    truth = _truth(4)
+    result = score_events(_mixed(truth, n_fallback=4), truth)
+    assert result.n_interval_fallback == 0
+    assert result.coverage_expected is None
+
+
+def test_the_breakdown_survives_serialisation() -> None:
+    truth = _truth(8)
+    payload = score_events(
+        _mixed(truth, n_fallback=4), truth, expected_interval_source="conformal"
+    ).to_dict()
+    assert payload["n_interval_fallback"] == 4
+    assert "kalman_analytic" in payload["coverage_by_source"]

@@ -46,6 +46,7 @@ class _Scoreable(Protocol):
     mass_kg: float
     mass_ci_low: float
     mass_ci_high: float
+    interval_source: str
 
 
 def _nan_mean(values: np.ndarray) -> float:
@@ -74,10 +75,32 @@ class ScoreResult:
 
     coverage: float
     """Empirical fraction of intervals containing the truth. Buildspec section 6 calls this the
-    single most persuasive number for a small-real-data paper, so it is computed from the start."""
+    single most persuasive number for a small-real-data paper, so it is computed from the start.
+
+    Pooled over every interval in the run, which is only meaningful when they all came from the
+    same construction. See :attr:`coverage_by_source`."""
     mean_interval_width_kg: float
 
     axle_count_accuracy: float
+
+    coverage_by_source: dict[str, tuple[int, float]] = field(default_factory=dict)
+    """``interval_source -> (n, coverage)``.
+
+    A run can emit intervals from more than one construction, and pooling them describes none of
+    them. Measured on ``S4_step_fault`` with Kalman at one reference in fifty: ``uncertainty.method``
+    is ``conformal``, conformal needs 19 scored references before it can claim a 95 % quantile, and
+    at that rate they take four hours to arrive. Until then every event silently carries the
+    estimator's own analytic band -- which for the Kalman filter is the construction phase 5
+    measured at coverage 0.0065 and chose conformal specifically to avoid. Coverage ran 0.004 for
+    four hours and 0.914-1.000 for the remaining twelve; the headline 0.741 was the average of a
+    broken quarter and a working three quarters."""
+
+    n_interval_fallback: int = 0
+    """Intervals that did NOT come from the configured construction. Zero unless the caller states
+    what it configured -- scoring does not get to invent a preference."""
+    n_interval_expected: int = 0
+    coverage_expected: float | None = None
+    """Coverage over the intervals the configuration actually asked for."""
     per_class: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @property
@@ -105,6 +128,10 @@ class ScoreResult:
             "dynamic_floor_kg": self.dynamic_floor_kg,
             "coverage": self.coverage,
             "mean_interval_width_kg": self.mean_interval_width_kg,
+            "coverage_by_source": {k: list(v) for k, v in self.coverage_by_source.items()},
+            "n_interval_fallback": self.n_interval_fallback,
+            "n_interval_expected": self.n_interval_expected,
+            "coverage_expected": self.coverage_expected,
             "axle_count_accuracy": self.axle_count_accuracy,
             "per_class": self.per_class,
         }
@@ -165,6 +192,7 @@ def match_events(
                     "mass_kg": float(ev.mass_kg),
                     "mass_ci_low": float(ev.mass_ci_low),
                     "mass_ci_high": float(ev.mass_ci_high),
+                    "interval_source": getattr(ev, "interval_source", None) or "unknown",
                     "event_axle_count": getattr(ev, "axle_count", None),
                     "quality_flag": getattr(ev, "quality_flag", "ok"),
                     "match_dt_s": dt_s,
@@ -185,8 +213,17 @@ def score_events(
     truth: pd.DataFrame,
     *,
     tolerance_s: float = 0.25,
+    expected_interval_source: str | None = None,
 ) -> ScoreResult:
-    """Match, then measure. Undefined statistics come back as NaN, never as zero."""
+    """Match, then measure. Undefined statistics come back as NaN, never as zero.
+
+    ``expected_interval_source`` is the construction the pipeline was *configured* to use, as a
+    prefix -- ``"conformal"`` matches ``conformal_relative`` and ``conformal_absolute``. Given it,
+    the result separates the intervals that came from it from the ones that did not, because a
+    fallback band and a configured band are different instruments and averaging their coverage
+    describes neither. Omitted, nothing is called a fallback: scoring does not get to invent a
+    preference the configuration never expressed.
+    """
     matched, missed, spurious = match_events(events, truth, tolerance_s=tolerance_s)
 
     if matched.empty:
@@ -216,6 +253,20 @@ def score_events(
     covered = (matched["mass_ci_low"].to_numpy() <= static) & (
         static <= matched["mass_ci_high"].to_numpy()
     )
+    sources = matched.get(
+        "interval_source", pd.Series(["unknown"] * len(matched), index=matched.index)
+    ).to_numpy()
+    by_source = {
+        str(name): (int((sources == name).sum()), float(covered[sources == name].mean()))
+        for name in dict.fromkeys(sources)
+    }
+    if expected_interval_source is None:
+        n_fallback, n_expected, coverage_expected = 0, 0, None
+    else:
+        wanted = np.array([str(x).startswith(expected_interval_source) for x in sources])
+        n_expected = int(wanted.sum())
+        n_fallback = int((~wanted).sum())
+        coverage_expected = float(covered[wanted].mean()) if n_expected else None
     widths = matched["mass_ci_high"].to_numpy() - matched["mass_ci_low"].to_numpy()
 
     axle_truth = matched.get("axle_count")
@@ -250,6 +301,10 @@ def score_events(
         dynamic_floor_kg=_nan_mean(np.abs(applied - static)),
         coverage=float(np.mean(covered)),
         mean_interval_width_kg=float(np.mean(widths)),
+        coverage_by_source=by_source,
+        n_interval_fallback=n_fallback,
+        n_interval_expected=n_expected,
+        coverage_expected=coverage_expected,
         axle_count_accuracy=axle_accuracy,
         per_class=per_class,
     )

@@ -151,7 +151,12 @@ def run_offline(
         edge_config=edge_cfg,
         profile=profile,
         events=events,
-        score=score_events(scored_events, held_out, tolerance_s=match_tolerance_s),
+        score=score_events(
+            scored_events,
+            held_out,
+            tolerance_s=match_tolerance_s,
+            expected_interval_source=edge_cfg.uncertainty.method,
+        ),
         stats=pipeline.stats(),
         calibration_passes=n_cal,
     )

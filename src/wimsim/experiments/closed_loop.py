@@ -297,7 +297,14 @@ def run_closed_loop(
                 conformal.reset()
 
     held_out = truth[truth["t_entry_s"] > _cutoff_s(truth, detected, n_cal)].reset_index(drop=True)
-    result.score = score_events(result.events[n_cal:], held_out, tolerance_s=match_tolerance_s)
+    result.score = score_events(
+        result.events[n_cal:],
+        held_out,
+        tolerance_s=match_tolerance_s,
+        # So the score can separate the intervals this run was configured to produce from
+        # the ones it fell back to while the configured construction was not yet ready.
+        expected_interval_source=edge_cfg.uncertainty.method,
+    )
     result.stats = pipeline.stats()
     if controller is not None:
         result.stats.update({f"controller_{k}": v for k, v in controller.to_dict().items()})
