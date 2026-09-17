@@ -14,6 +14,7 @@ Command surface:
     wimsim experiment NAME                 run a sweep and write the results table
     wimsim detect SCENARIO                 what the detector finds, synthetic or replayed
     wimsim gap-report REAL_DIR             where the simulator and the sensor disagree
+    wimsim write-estimated-reference DIR   reference masses from inference, NOT a weighing
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -1454,6 +1455,101 @@ def detect(
             )
         if len(events) > show:
             typer.echo(f"  ... {len(events) - show} more")
+
+
+@app.command("write-estimated-reference")
+def write_estimated_reference_cmd(
+    real_dir: Annotated[Path, typer.Argument(help="A real recording under data/real/.")],
+    vehicle: Annotated[str, typer.Option("--vehicle", help="Which car crossed: fabia | citroen.")],
+    channel: Annotated[str, typer.Option("--channel", help="Channel to detect on.")] = "Tenzo2",
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config.")] = (
+        "cintron_platform"
+    ),
+) -> None:
+    """Write a `reference.csv` from INFERRED wheel loads. This is not a weighing.
+
+    No vehicle at ST-CINTRON-1 has been weighed and the rig is gone, so `S8_replay_real` has never
+    been scorable. This detects the crossings, classifies each as a front or a rear wheel from the
+    bimodal peak amplitude, and writes the masses `docs/sim-to-real.md` infers for them.
+
+    What it costs is real and is stated in every row and in a sidecar beside the file: principle 1
+    says ground truth is an output and never an estimator input, and here an estimate stands where
+    the pipeline expects a measurement. Scoring against it measures whether the pipeline reproduces
+    *the inference*, not whether it weighs vehicles.
+
+    Refuses to overwrite a `reference.csv` with no sidecar beside it -- an estimated file can always
+    be regenerated and a measured one cannot.
+    """
+    from wimsim.core.config import RunConfig, load_edge_config, load_run_config
+    from wimsim.edge.pipeline import OfflinePipeline
+    from wimsim.experiments.offline import _bootstrap_profile, _provenance_for
+    from wimsim.source import build_source
+    from wimsim.source.estimated_reference import VEHICLES, write_estimated_reference
+
+    if vehicle not in VEHICLES:
+        typer.secho(
+            f"unknown vehicle {vehicle!r}; known: {sorted(VEHICLES)}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(2)
+
+    tree = load_run_config("S8_replay_real").model_dump(mode="json")
+    tree["scenario"]["source"] = {
+        "kind": "replay",
+        "replay": {
+            "run_dir": str(real_dir),
+            "channel": channel,
+            "rate": "accelerated",
+            "speed_multiplier": None,
+        },
+    }
+    try:
+        cfg = RunConfig.model_validate(tree)
+        edge_cfg = load_edge_config(edge)
+        source = build_source(cfg)
+    except (OSError, KeyError, ValueError) as exc:
+        typer.secho(f"cannot read {real_dir}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    pipeline = OfflinePipeline(
+        edge_cfg,
+        source=source,
+        profile=_bootstrap_profile(edge_cfg),
+        provenance=_provenance_for(cfg),
+    )
+    crossings = [
+        (e.t_peak_s, e.peak)
+        for e in pipeline.detect_only()
+        if 0.3 < (e.t_end_s - e.t_start_s) < 3.0
+    ]
+    if not crossings:
+        typer.secho(
+            f"no crossings detected in {real_dir.name} on {channel}; nothing to write.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(1)
+
+    try:
+        n = write_estimated_reference(real_dir, crossings, vehicle=vehicle)
+    except (FileExistsError, ValueError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    spec = VEHICLES[vehicle]
+    typer.secho(f"{real_dir.name}: wrote {n} ESTIMATED reference rows", fg=typer.colors.YELLOW)
+    _echo_kv(
+        [
+            ("vehicle", spec.name),
+            ("front wheel", f"{spec.front_kg:.0f} kg  (inferred, not weighed)"),
+            ("rear wheel", f"{spec.rear_kg:.0f} kg  (inferred, not weighed)"),
+            ("axle split at", f"{spec.axle_cut_strain:.3g} strain"),
+            ("sidecar", "reference.ESTIMATED.md"),
+        ]
+    )
+    typer.secho(
+        "These are not measurements. Scoring against them measures whether the pipeline "
+        "reproduces the inference.",
+        fg=typer.colors.YELLOW,
+    )
 
 
 @app.command("gap-report")
