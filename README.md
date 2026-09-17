@@ -112,6 +112,10 @@ wimsim detect S8_replay_real --edge cintron_platform   --set scenario.source.rep
 
 # where the simulator and the real sensor disagree, and the --set lines that close the gap
 wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1
+
+# reference masses from INFERENCE, not from a weighbridge. Every row says so, and so does
+# the sidecar it writes beside them.
+wimsim write-estimated-reference data/real/20260209_cintron1 --vehicle citroen
 ```
 
 Or via `make`: `make sim`, `make test`, `make checkpoint`, `make determinism`.

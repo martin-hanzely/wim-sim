@@ -227,16 +227,55 @@ promising 95 % and delivering 76 % is the specific failure mode that makes a con
 more dangerous than an inaccurate one, and the point estimate gives no warning of it — MAE at that
 rate is 1.186× the floor, the best of the three.
 
-The mechanism is visible in the widths. The conformal interval reads its quantile off residuals
-actually seen, and at one in fifty there are only **71 reference observations in a sixteen-hour
-run**. RLS and static have large residuals throughout, so their intervals widen and over-cover.
-Kalman's residuals stay small because it tracks — so its calibration set is tight, and when drift
-does arrive the interval it produces is too narrow for it. `min_calibration` is 19, so the guard
-never trips; the set is large enough to compute a quantile and too small and too stale for that
-quantile to mean anything.
+**The first explanation offered here was wrong.** It read the narrow width as a small, stale
+conformal calibration set: 71 references in a sixteen-hour run, tight residuals because the filter
+tracks, so an interval too narrow for the drift when it came. That was a hypothesis with a plausible
+mechanism and it did not survive being checked.
 
-That is a hypothesis with the widths behind it, not an established result. It is the next thing this
-sweep says to measure, and it belongs to the uncertainty layer rather than the control loop.
+Splitting the coverage by `interval_source` — a field the events have carried since phase 5 — says
+what actually happened:
+
+| 1 in 50 | n | coverage |
+|---|---|---|
+| `conformal_relative` | 2551 | **1.000** |
+| `kalman_analytic` | 841 | **0.007** |
+| pooled | 3392 | 0.754 |
+
+| 1 in 2 | n | coverage |
+|---|---|---|
+| `conformal_relative` | 3392 | 0.952 |
+
+The conformal interval is not the problem and never was; if anything it is *too conservative* when
+references are sparse. **841 of 3392 events carried a band from a construction the configuration did
+not ask for.**
+
+`uncertainty.method` is `conformal`, but conformal needs 19 scored references before it can claim a
+95 % quantile, and at one in fifty they take four hours to arrive. Until then `_conformal_interval`
+returns `None` and the pipeline silently falls back to the estimator's own analytic band — which for
+the Kalman filter is the construction phase 5 measured at **coverage 0.0065** and chose conformal
+specifically to avoid. Visible in the time profile:
+
+| hours | coverage | mean width |
+|---|---|---|
+| 0–2 | 0.004 | 11 kg |
+| 2–4 | 0.010 | 2 kg |
+| 4–16 | 0.914–1.000 | 1435–1791 kg |
+
+An interval two kilograms wide on a twenty-tonne vehicle. The system had a documented catastrophic
+failure mode, picked a default to avoid it, and then fell back to it whenever the default was not
+ready — and pooling the coverage of two different instruments into one number is what hid a
+four-hour hole in a sixteen-hour run.
+
+`ScoreResult.coverage_by_source` now reports n and coverage per construction, and
+`score_events(..., expected_interval_source=...)` separates configured intervals from fallbacks.
+Omitted, nothing is called a fallback: scoring does not get to invent a preference the configuration
+never expressed.
+
+**What to do about the fallback is still open**, and it is a decision about the uncertainty layer
+rather than the control loop: refuse to emit a mass until the configured construction is ready, widen
+the fallback to something defensible, or give the Kalman filter an analytic band that is not its own
+covariance. The covariance band is wrong for a knowable reason — `R` is sensor noise, and the
+dominant error is vehicle dynamics, which the filter is never told about.
 
 ### What "reconverged" means, and what it cost to define
 
@@ -405,12 +444,36 @@ the same time and the same width, that `wimsim gap-report` fits by a completely 
 independent methods agreeing that there is nothing in a recording is a more useful result than
 either alone.
 
+## Estimated reference masses
+
+No vehicle at this site has been weighed and the rig is gone, so `S8_replay_real` was never
+scorable. `wimsim write-estimated-reference` closes that gap the only way left — by inference:
+
+```bash
+wimsim write-estimated-reference data/real/20260209_cintron1 --vehicle citroen
+```
+
+It detects the crossings, classifies each as a front or a rear wheel from the bimodal peak
+amplitude, and writes the wheel loads derived in `docs/sim-to-real.md`. Over the corpus: **7 of 8
+recordings got reference rows**, 1 to 6 each, and all 8 still satisfy the real-data schema.
+`20260209_fabia2` has no crossings — which is what `gap-report` independently concludes about it.
+
+**This is an estimate standing where the pipeline expects a measurement, and that is a real cost.**
+Principle 1 says ground truth is an output and never an estimator input; here the input was itself
+derived from the signal. Scoring against this file measures whether the pipeline reproduces *the
+inference*, not whether it weighs vehicles, and nothing derived from it is a metrological claim.
+
+So the warning travels with the data rather than living in a document beside it: every row's
+description begins `ESTIMATED, not weighed`, a `reference.ESTIMATED.md` sidecar records the whole
+derivation, and the writer **refuses to overwrite a `reference.csv` that has no sidecar beside it** —
+an estimated file can always be regenerated and a measured one cannot, and that asymmetry decides
+which way the default falls.
+
 ## What is still missing
 
-**No real vehicle has been weighed, so nothing here produces a kilogram from the real sensor.** Every
-pipeline entry point past detection bootstraps its calibration from a truth log, and a recording has
-none. `wimsim run` and `wimsim control` on a replay scenario will fail for want of one, and that
-failure is correct: the alternative is a mass emitted under a calibration nobody fitted.
+**No real vehicle has been weighed.** The file above is an inference, not a measurement, and one
+weighbridge ticket for either car would replace it outright. Every pipeline entry point past
+detection also bootstraps its calibration from a truth log, which a recording does not have.
 
 This is the same conclusion `docs/sim-to-real.md` reached in phase 3, and the list at the end of that
 document -- gauge separation in metres, one weighed vehicle, a recording at road speed, the bridge
