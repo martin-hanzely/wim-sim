@@ -20,6 +20,8 @@ the control-theoretic contribution the buildspec asks to be made visible.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -445,22 +447,33 @@ def test_a_barely_fed_filter_reports_a_band_from_its_covariance_alone() -> None:
     assert band.mass_ci_high > band.mass_ci_low
 
 
-def test_the_band_is_the_empirical_spread_once_there_is_one() -> None:
-    """And the analytic one only until then, so a fresh filter still produces an interval."""
+def test_a_profile_saved_before_this_existed_still_produces_a_band() -> None:
+    """The analytic construction is now a compatibility path and nothing else.
+
+    A filter cannot predict before it has been fitted or updated, and both of those now set the
+    empirical term -- so the only way to reach the covariance-only band is to restore a profile
+    written before this change, whose `residual_sd` is null. It must still produce an interval
+    rather than failing, and it must name itself honestly so a reader knows which construction
+    they are looking at.
+    """
     est = KalmanCalibration()
     est.fit(_observations(n=40, noise=1e-4))
-    assert est.predict(2.0e-4 * 15000.0 + 0.05, 20.0).interval_source == "kalman_analytic"
+    old_state = replace(est.state(), residual_sd=None)
 
-    # More than `_RESIDUAL_WARMUP`: a fresh filter's first prediction errors describe its prior,
-    # not the plant, and are deliberately not folded in.
-    for i in range(20):
-        m = 8000.0 + 1000.0 * i
-        est.update(
-            ReferenceObservation(
-                ts_us=SECOND * (1000 + i),
-                feature=2.0e-4 * m + 0.05,
-                temp_c=20.0,
-                reference_mass_kg=m,
-            )
-        )
-    assert est.predict(2.0e-4 * 15000.0 + 0.05, 20.0).interval_source == "kalman_residual"
+    restored = KalmanCalibration.from_state(old_state)
+    band = restored.predict(2.0e-4 * 15000.0 + 0.05, 20.0)
+    assert band.interval_source == "kalman_analytic"
+    assert band.mass_ci_high > band.mass_ci_low
+
+
+def test_a_batch_fit_seeds_the_interval_as_well_as_the_state() -> None:
+    """Otherwise a fitted filter still waits out the residual warm-up before it can price a band,
+    and at one reference in fifty that is five hundred passes -- two hours of emitting the analytic
+    band this term exists to replace. Measured: fallback coverage 0.354 at that rate with the
+    warm-up alone, against 0.93 for the estimators that price on residuals."""
+    est = KalmanCalibration()
+    est.fit(_observations(n=40, noise=1e-4))
+
+    band = est.predict(2.0e-4 * 15000.0 + 0.05, 20.0)
+    assert band.interval_source == "kalman_residual"
+    assert band.mass_ci_high > band.mass_ci_low

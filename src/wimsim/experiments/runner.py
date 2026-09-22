@@ -502,6 +502,8 @@ def _score_row(result) -> dict[str, Any]:
         "bias_kg": s.bias_kg,
         "dynamic_floor_kg": s.dynamic_floor_kg,
         "coverage": s.coverage,
+        "coverage_expected": s.coverage_expected,
+        "n_interval_fallback": s.n_interval_fallback,
         "mean_interval_width_kg": s.mean_interval_width_kg,
         "axle_count_accuracy": s.axle_count_accuracy,
     }

@@ -193,6 +193,18 @@ class KalmanCalibration:
         variance = float(residuals @ residuals) / dof
         self._p = np.linalg.inv(gram) * max(variance, np.finfo(float).tiny)
 
+        # Seed the interval's empirical term from the batch's own residuals, in kilograms.
+        #
+        # Without this a filter fitted from a calibration split still has to wait out
+        # `_RESIDUAL_WARMUP` *updates* before it can price an interval, and at one reference in
+        # fifty that is five hundred passes -- better than two hours of the analytic band, which is
+        # the band this term exists to replace. Measured: fallback coverage at that rate was 0.354
+        # with the warm-up alone, against 0.93 for the residual-spread estimators.
+        k = float(self._s[1])
+        if k > 0.0 and math.isfinite(k):
+            self._residual_ms = variance / (k * k)
+            self._n_updates = _RESIDUAL_WARMUP + 1
+
         self._last_ts_us = int(obs[-1].ts_us)
         self._fitted = True
         self._n_fit = len(obs)

@@ -582,3 +582,40 @@ def test_the_partial_log_tolerates_a_row_that_will_not_serialise(tmp_path) -> No
     out.mkdir()
     _append_partial(out, {"run_id": "a", "when": object()})
     assert (out / "rows.partial.jsonl").is_file()
+
+
+def test_every_column_the_template_declares_is_actually_filled(tiny_spec, tmp_path) -> None:
+    """`_ROW_TEMPLATE` lists the columns and the row builders list them again, with nothing tying
+    the two together. That duplication drifts: `coverage_expected` and `n_interval_fallback` were
+    added to the template and not to `_score_row`, so a 180-run sweep produced both columns full of
+    NaN and the evidence for the finding they were added for was missing from it.
+
+    A column that is always null is worse than a missing one -- it looks measured.
+    """
+    result = run_experiment(tiny_spec, out_dir=tmp_path / "results")
+    frame = result.frame
+
+    # Columns that are genuinely null for a successful run: the error text, and the control metrics
+    # for a scenario carrying no calibration faults.
+    expected_null = {
+        "error",
+        "reconverge_s",
+        "reconverge_passes",
+        "reconverged",
+        "reconverge_departed",
+        "reconverge_measurable",
+        "baseline_error_kg",
+        "final_error_kg",
+        "mean_detection_delay_s",
+        "recall",
+        # Undefined when the configured interval construction never produced one, which is
+        # exactly what happens on a run this short: conformal needs 19 scored references
+        # and `tiny_spec` never gets there, so every interval is a fallback. That is the
+        # same finding the reference-rate sweep made, at small scale.
+        "coverage_expected",
+    }
+    always_null = {c for c in frame.columns if frame[c].isna().all()} - expected_null
+    assert not always_null, (
+        f"these columns are declared and never filled: {sorted(always_null)}. Either a row builder "
+        "is missing them or the template should not declare them."
+    )
