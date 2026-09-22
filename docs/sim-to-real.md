@@ -283,6 +283,12 @@ answer.
 recordings establish that the sensor responds to load repeatably and discriminates two vehicles by
 44 %; turning that into kilograms needs one known mass.
 
+**The channel ratio is vehicle-independent, and that is now measured.** 2.98 +/- 0.37 on the
+Citroen and 2.78 +/- 0.34 on the Fabia is one ratio within the noise. One gauge is transverse to the
+other, so a vehicle sitting differently on the plate would move it; it does not. The two cars load
+the platform the same way, which removes a geometric explanation for the per-vehicle bias split that
+`wimsim score-corpus` found. See `docs/experiments.md`.
+
 **The two-sensor question has changed shape.** It was scoped as "speed from the inter-gauge delay,
 then genuinely speed-normalised area". Section 3 withdraws the delay, so that work has no basis.
 What the pair does offer is two views of the same load at a fixed ratio of 2.4–3.0 — useful for

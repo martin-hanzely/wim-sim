@@ -539,6 +539,64 @@ systematic error in that inference appears here as a systematic error in the pip
 cannot be told apart from inside. `data/real/EXAMPLE` is reported as skipped rather than dropped —
 it carries a `reference.csv` but its channel is `S1`.
 
+## Watching two channels against each other
+
+Every drift detector in `calibration/` watches the residual against a known mass, so all of them
+need reference vehicles — and [the crossover](#the-crossover-how-often-a-reference-vehicle-has-to-arrive)
+measured what that costs when references are scarce. A two-channel installation has a signal that is
+free: the gauges are two views of the same load and sit at a fixed amplitude ratio, and nothing about
+that needs to know what the vehicle weighed.
+
+```bash
+wimsim check-channels data/real
+```
+
+On the corpus, 20 paired crossings:
+
+| | |
+|---|---|
+| baseline ratio | 2.971 |
+| robust sigma | 0.395 |
+| resolution | ~40 % single-channel change |
+| alarmed | no — largest excursion z = 2.04 |
+
+### It settles one thing about the vehicle split
+
+The ratio is the same for both cars — **2.98 ± 0.37 on the Citroën, 2.78 ± 0.34 on the Fabia**, one
+ratio within the noise. One gauge is transverse to the other, so a vehicle sitting differently on the
+plate — a different track width, a different line across it — would move the ratio. It does not.
+
+That narrows [the ambiguity leave-one-out left open](#the-pooled-bias-is-a-lie-and-the-folds-are-what-say-so).
+The two vehicles load the platform *the same way*; what differs is magnitude. A geometric explanation
+for the per-vehicle bias split is therefore unlikely, and an error in the Citroën's inferred mass is
+the better candidate. Not proof — the ratio is mass-independent by construction, so it can rule out a
+positional difference and can say nothing at all about a wrong mass — but it removes one of the two
+explanations.
+
+### What it cannot do
+
+**It detects without diagnosing.** A ratio that moves means one channel moved; two channels give one
+equation, so which one is not recoverable. Naming the faulty gauge needs a third signal or a
+reference vehicle.
+
+**It is blind to anything common to both** — a platform losing stiffness, a temperature moving both
+gauges, one supply feeding both amplifiers. It complements the residual detectors rather than
+replacing them: it sees the single-channel faults they are worst at and misses the common-mode ones
+they see best.
+
+**Its resolution is the scatter**, which is 12 % of the ratio's own value. At three sigmas a
+single-channel change must reach roughly 36 % before three consecutive crossings fall outside.
+A gauge half dead, a bond failing, a channel unplugged — yes. A 10 % drift — no. Lowering the
+threshold does not help, because the scatter is the floor.
+
+Two things measurement forced. A single crossing eventually falls outside a 4σ band on its own — a
+MAD over forty points carries about a tenth of its own value in uncertainty, so the effective
+threshold wanders, and a healthy pair tripped inside 400 crossings. Requiring three consecutive
+crossings outside costs two crossings of latency, removes the false alarms, and lets the threshold
+come down from 4σ to 3σ — improving resolution from ~48 % to ~36 %. And a departure is never folded
+into the baseline, confirmed or not: without that, a 50 % sensitivity loss walked the baseline from
+2.96 to 1.42 and the alarm never latched.
+
 ## What is still missing
 
 **No real vehicle has been weighed**, and the leave-one-out result above is the sharpest argument

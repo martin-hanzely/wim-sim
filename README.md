@@ -120,6 +120,9 @@ wimsim write-estimated-reference data/real/20260209_cintron1 --vehicle citroen
 # score one recording, then the corpus with a whole recording held out each time
 wimsim score-real data/real/20260209_cintron5
 wimsim score-corpus data/real
+
+# watch the two gauges against each other -- the one fault check needing no reference vehicle
+wimsim check-channels data/real
 ```
 
 Or via `make`: `make sim`, `make test`, `make checkpoint`, `make determinism`.
