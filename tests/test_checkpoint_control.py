@@ -259,22 +259,27 @@ def test_the_kalman_arm_supplies_the_covariance_panel(step_fault_run) -> None:
 
 
 @pytest.mark.slow
-def test_the_kalman_analytic_interval_is_overconfident_and_conformal_repairs_it(
+def test_the_kalman_interval_prices_the_error_the_filter_is_not_told_about(
     step_fault_run,
 ) -> None:
-    """The clearest result phase 5 produced, and it is a warning about an interval rather than a
-    claim about an estimator.
+    """Phase 5's clearest result was a warning about an interval, and this is its repair.
 
-    The Kalman filter's analytic band is its state covariance propagated through the inversion,
-    plus ``R/k^2``. ``R`` is the *sensor* noise variance -- and on a weigh-in-motion scale the
-    dominant error is not sensor noise, it is the vehicle's own dynamics, which the filter was
-    never told about. So it prices only the noise it knows and reports a band of a couple of
-    kilograms where the truth is several hundred. Measured on the full 16-hour S4: 2.3 kg wide,
-    empirical coverage 0.0065 against a nominal 0.95.
+    The filter's band used to be its state covariance propagated through the inversion, plus
+    ``R/k^2``. Both terms are sensor-side, and on a weigh-in-motion scale the dominant error is the
+    vehicle's own dynamics, which the filter is never told about. It priced only the noise it knew
+    and reported a couple of kilograms where the truth was several hundred: measured on the full
+    16-hour S4, **2.3 kg wide at empirical coverage 0.0065** against a nominal 0.95. A confident
+    wrong mass is far more dangerous than a wrong one.
 
-    That is a far more dangerous failure than a wrong mass, because it is a confident wrong mass.
-    Conformal is told nothing and reads the quantile off what actually happened, which is why it
-    lands on nominal for both estimators.
+    Conformal was made the default to avoid it. The reference-rate sweep then found what that
+    actually bought: conformal needs 19 scored references before it can claim a quantile, and at
+    one reference in fifty those take four hours to arrive, during which the pipeline fell back to
+    this construction. 841 of 3392 events on one run carried it, at coverage 0.007, and the pooled
+    figure of 0.754 hid the hole.
+
+    So the construction itself is fixed rather than routed around: the band is now the empirical
+    prediction-error spread, which contains everything the measurement model does not. The analytic
+    terms remain only until the first residuals arrive, so a fresh filter still produces a band.
     """
     cfg, truth, _ = step_fault_run
 
@@ -302,14 +307,15 @@ def test_the_kalman_analytic_interval_is_overconfident_and_conformal_repairs_it(
     analytic = arm("kalman", "analytic")
     conformal = arm("kalman", "conformal", "relative")
 
-    assert analytic.score.coverage < 0.2, (
-        "the Kalman analytic interval was not overconfident here, so this test is no longer "
-        "measuring what it claims to"
+    # It used to be < 0.2 here, and 0.0065 on the full-length run.
+    assert analytic.score.coverage > 0.85, (
+        "the Kalman band is back to pricing only the noise it knows about"
     )
-    assert analytic.score.mean_interval_width_kg < 0.2 * analytic.score.dynamic_floor_kg
+    # ...and wide enough to be about the error that actually occurs, rather than about `R`.
+    assert analytic.score.mean_interval_width_kg > analytic.score.dynamic_floor_kg
 
     assert conformal.score.coverage > 0.9
-    # The mass is untouched: only the band changed.
+    # The mass is untouched by either: only the band changed.
     assert conformal.score.mae_kg == pytest.approx(analytic.score.mae_kg, rel=1e-9)
 
 

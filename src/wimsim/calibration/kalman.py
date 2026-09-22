@@ -82,6 +82,14 @@ _N_STATES = 2  # [q, k]
 #: measurements overwhelm it in a few updates and nothing looks wrong; with a noisy one the prior
 #: wins and the gain is shrunk most of the way to zero. The dilution test in tests/test_kalman.py
 #: is what caught it, because that test is the one that deliberately uses a very noisy feature.
+#: Updates a fresh filter must see before its prediction errors say anything about the plant
+#: rather than about its own prior.
+_RESIDUAL_WARMUP = 10
+
+#: EWMA weight on the residual mean square. The same value RLS uses, for the same reason: the
+#: spread has to follow a plant that moves without being rewritten by one unusual vehicle.
+_RESIDUAL_MEMORY = 0.98
+
 _DEFAULT_P0 = (1.0, 1.0e-2)
 
 #: Assumed drift, as standard deviation per second. Defaults are deliberately small -- a plant that
@@ -132,6 +140,14 @@ class KalmanCalibration:
 
         self._s = np.array(initial_state, dtype=np.float64)  # [q, k]
         self._p = np.diag(np.array(initial_covariance, dtype=np.float64) ** 2)
+        #: Exponentially weighted mean square of the mass residual, in kg^2. The interval's
+        #: empirical term -- everything the measurement model does not contain, which is
+        #: dominated by the vehicle's own bounce. None until a reference has been seen.
+        self._residual_ms: float | None = None
+        #: Updates seen since construction. Only used to hold the residual estimate back
+        #: while the filter is still converging; `_update_count` is persisted state and this
+        #: deliberately is not, because a reloaded profile has already converged.
+        self._n_updates = 0
 
         self._temp_coeff = float(temp_coeff)
         self._t_ref_c = float(t_ref_c)
@@ -209,6 +225,8 @@ class KalmanCalibration:
         est._fitted = state.fitted
         est._n_fit = state.n_fit
         est._update_count = state.update_count
+        est._n_updates = _RESIDUAL_WARMUP + 1
+        est._residual_ms = None if state.residual_sd is None else float(state.residual_sd) ** 2
         return est
 
     # -- the interface ----------------------------------------------------------------------
@@ -240,6 +258,28 @@ class KalmanCalibration:
         # Delta method: J = [dm/dq, dm/dk], plus the measurement noise itself through dm/dx.
         jacobian = np.array([-1.0 / k, -mass / k], dtype=np.float64)
         variance = float(jacobian @ self._p @ jacobian) + self.measurement_noise / (k * k)
+
+        # ...or, once there are residuals to read, the error the filter is never told about --
+        # which is the one that dominates and the reason this band was unusable.
+        #
+        # The two terms above are both sensor-side: how well the two parameters are known, and how
+        # noisy a single reading is. The largest error in weigh-in-motion is the vehicle's own
+        # bounce -- about 141 kg on the shipped scenarios -- and no part of the measurement model
+        # contains it. Phase 5 measured what that costs: coverage 0.0065, a band two kilograms wide
+        # on a twenty-tonne vehicle. Conformal was made the default to avoid it, and the
+        # reference-rate sweep then found the pipeline falling back to this construction for four
+        # hours at a stretch whenever conformal was not yet calibrated -- a default chosen to avoid
+        # a known failure quietly reinstating it.
+        #
+        # The empirical residual REPLACES both terms rather than adding to them. It is a prediction
+        # error measured against the prior state, so it already contains the measurement noise and
+        # the parameter uncertainty; adding them again double-counts, and the first version of this
+        # did exactly that and over-covered at 1.000. RLS has always priced its interval this way.
+        if self._residual_ms is not None:
+            variance = self._residual_ms
+            source = "kalman_residual"
+        else:
+            source = "kalman_analytic"
         half = self._z * math.sqrt(max(variance, 0.0))
 
         return MassEstimate(
@@ -247,7 +287,7 @@ class KalmanCalibration:
             mass_ci_low=mass - half,
             mass_ci_high=mass + half,
             coverage_target=self._coverage_target,
-            interval_source="kalman_analytic",
+            interval_source=source,
         )
 
     def update(self, observation: ReferenceObservation) -> EstimatorState:
@@ -277,6 +317,26 @@ class KalmanCalibration:
         self._p = i_kh @ self._p @ i_kh.T + np.outer(gain, gain) * r
         self._p = 0.5 * (self._p + self._p.T)
 
+        # The residual in KILOGRAMS, not in feature units: the interval is in kilograms and the
+        # innovation above is a feature error, so it is divided by the gain.
+        #
+        # Not before `_RESIDUAL_WARMUP` updates. A filter starting from a weak prior makes enormous
+        # prediction errors for its first few observations, and those are a fact about the prior
+        # rather than about the plant. Folded in, they survive far longer than they look like they
+        # should: at a memory of 0.98 the first residual still carries 3e-4 of its weight after 400
+        # updates, and on a converged filter whose true spread was 0.5 kg that left the estimate at
+        # 603 kg and the coverage at 1.000.
+        self._n_updates += 1
+        k_now = float(self._s[1])
+        if self._n_updates > _RESIDUAL_WARMUP and k_now > 0.0 and math.isfinite(k_now):
+            error_kg = innovation / k_now
+            square = error_kg * error_kg
+            self._residual_ms = (
+                square
+                if self._residual_ms is None
+                else _RESIDUAL_MEMORY * self._residual_ms + (1.0 - _RESIDUAL_MEMORY) * square
+            )
+
         self._update_count += 1
         self._fitted = True
         return self.state()
@@ -294,7 +354,9 @@ class KalmanCalibration:
             bias=bias,
             temp_coeff=self._temp_coeff,
             t_ref_c=self._t_ref_c,
-            residual_sd=None,  # the interval comes from the covariance, not from a residual spread
+            residual_sd=(
+                None if self._residual_ms is None else math.sqrt(max(self._residual_ms, 0.0))
+            ),
             coverage_target=self._coverage_target,
             update_count=self._update_count,
             fitted=self._fitted,

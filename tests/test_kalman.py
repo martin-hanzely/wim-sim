@@ -278,7 +278,12 @@ def test_the_interval_is_narrowest_near_the_loads_it_was_calibrated_on() -> None
     q, k = est.state().sensor_bias, est.state().sensor_gain
     inside = est.predict(q + k * 1500.0, 20.0).width
     outside = est.predict(q + k * 40000.0, 20.0).width
-    assert outside > 5.0 * inside
+    # Was `outside > 5 * inside`, asserting the band widens away from the calibrated loads. That
+    # property belonged to the covariance-only construction and is gone with it: the interval is
+    # now the empirical prediction-error spread, which is one number for the whole filter and does
+    # not know which load it is being asked about. RLS's band has always behaved this way. What
+    # remains true, and is what the interval is for, is that it is wide enough to cover.
+    assert outside == pytest.approx(inside, rel=0.2)
 
 
 def test_once_converged_the_interval_is_dominated_by_the_sensor_noise_floor() -> None:
@@ -317,7 +322,7 @@ def test_the_interval_brackets_the_estimate_and_names_its_provenance() -> None:
     est = _converged()
     estimate = est.predict(0.35, 20.0)
     assert estimate.mass_ci_low <= estimate.mass_kg <= estimate.mass_ci_high
-    assert estimate.interval_source == "kalman_analytic"
+    assert estimate.interval_source in {"kalman_analytic", "kalman_residual"}
 
 
 def test_empirical_coverage_is_near_nominal_on_the_model_it_assumes() -> None:
@@ -370,3 +375,92 @@ def test_a_non_positive_measurement_noise_is_refused() -> None:
     """R = 0 asserts the sensor is perfect, which makes the gain infinite on the first update."""
     with pytest.raises(ValueError, match="measurement_noise"):
         KalmanCalibration(measurement_noise=0.0)
+
+
+# -- the analytic band -----------------------------------------------------------------------------
+
+
+def test_the_analytic_band_includes_the_error_the_filter_is_not_told_about() -> None:
+    """The reason this estimator's interval was unusable.
+
+    Its variance was the parameter covariance through the delta method, plus `R / k^2`. Both are
+    sensor-side. The dominant error in weigh-in-motion is the vehicle's own bounce -- about 141 kg
+    on the shipped scenarios -- and the filter is never told about it, so the band it produced was
+    two kilograms wide on a twenty-tonne vehicle. Phase 5 measured coverage 0.0065 and made
+    conformal the default to avoid it; the reference-rate sweep then found the pipeline falling
+    back to it for four hours whenever conformal was not yet calibrated.
+
+    An empirical residual term fixes the construction rather than routing around it.
+    """
+    rng = np.random.default_rng(0)
+    est = KalmanCalibration()
+    masses = rng.uniform(2000.0, 30000.0, 300)
+    # A plant the filter can track, plus 140 kg of dynamic load it cannot.
+    for i, m in enumerate(masses):
+        feature = 2.0e-4 * m + 0.05 + float(rng.normal(0.0, 140.0)) * 2.0e-4
+        est.update(
+            ReferenceObservation(
+                ts_us=SECOND * i, feature=feature, temp_c=20.0, reference_mass_kg=float(m)
+            )
+        )
+
+    band = est.predict(2.0e-4 * 15000.0 + 0.05, 20.0)
+    half = (band.mass_ci_high - band.mass_ci_low) / 2.0
+    assert half > 100.0, f"a band of +-{half:.1f} kg cannot cover a 140 kg dynamic spread"
+    assert band.interval_source == "kalman_residual"
+
+
+def test_the_band_still_narrows_as_the_parameters_are_pinned_down() -> None:
+    """The covariance term has to survive: it is what makes the interval wide while the filter is
+    still learning and narrow once it is not."""
+    rng = np.random.default_rng(1)
+    est = KalmanCalibration()
+    widths = []
+    for i, m in enumerate(rng.uniform(2000.0, 30000.0, 200)):
+        est.update(
+            ReferenceObservation(
+                ts_us=SECOND * i,
+                feature=2.0e-4 * m + 0.05,
+                temp_c=20.0,
+                reference_mass_kg=float(m),
+            )
+        )
+        if i in (5, 199):
+            b = est.predict(2.0e-4 * 15000.0 + 0.05, 20.0)
+            widths.append(b.mass_ci_high - b.mass_ci_low)
+    assert widths[1] < widths[0]
+
+
+def test_a_barely_fed_filter_reports_a_band_from_its_covariance_alone() -> None:
+    """With almost no residuals seen there is little empirical spread to add, and the covariance
+    term carries the interval. It must not collapse to zero width on the way."""
+    est = KalmanCalibration()
+    for i, m in enumerate((8000.0, 12000.0)):
+        est.update(
+            ReferenceObservation(
+                ts_us=SECOND * i, feature=2.0e-4 * m + 0.05, temp_c=20.0, reference_mass_kg=m
+            )
+        )
+    band = est.predict(2.0e-4 * 15000.0 + 0.05, 20.0)
+    assert band.mass_ci_high > band.mass_ci_low
+
+
+def test_the_band_is_the_empirical_spread_once_there_is_one() -> None:
+    """And the analytic one only until then, so a fresh filter still produces an interval."""
+    est = KalmanCalibration()
+    est.fit(_observations(n=40, noise=1e-4))
+    assert est.predict(2.0e-4 * 15000.0 + 0.05, 20.0).interval_source == "kalman_analytic"
+
+    # More than `_RESIDUAL_WARMUP`: a fresh filter's first prediction errors describe its prior,
+    # not the plant, and are deliberately not folded in.
+    for i in range(20):
+        m = 8000.0 + 1000.0 * i
+        est.update(
+            ReferenceObservation(
+                ts_us=SECOND * (1000 + i),
+                feature=2.0e-4 * m + 0.05,
+                temp_c=20.0,
+                reference_mass_kg=m,
+            )
+        )
+    assert est.predict(2.0e-4 * 15000.0 + 0.05, 20.0).interval_source == "kalman_residual"
