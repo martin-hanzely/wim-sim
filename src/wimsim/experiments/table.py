@@ -23,7 +23,7 @@ from typing import Any
 
 import pandas as pd
 
-__all__ = ["latex_table", "markdown_table", "write_table"]
+__all__ = ["detector_table", "latex_table", "markdown_table", "write_table"]
 
 #: Column -> (heading, format). Ordered as a reader wants them: what the run was, then how accurate
 #: it was, then what the control loop did, then what it cost.
@@ -185,3 +185,102 @@ def write_table(result: Any, spec: Any) -> None:
         latex_table(frame, experiment_id=spec.experiment_id, git_commit=result.git_commit),
         encoding="utf-8",
     )
+
+
+def _median_iqr(values: pd.Series, spec: str = "{:.2f}") -> str:
+    """``median [q1, q3]`` over the finite values, or ``--`` if there are none.
+
+    Medians rather than means throughout this table: detection delay over a handful of faults is a
+    small, skewed sample, and one run that never detected drags a mean somewhere no run went.
+    """
+    finite = values.dropna()
+    if finite.empty:
+        return "--"
+    q1, med, q3 = (float(finite.quantile(q)) for q in (0.25, 0.5, 0.75))
+    return f"{spec.format(med)} [{spec.format(q1)}, {spec.format(q3)}]"
+
+
+#: Column -> (heading, format) for the per-detector table. Recall first because it is the question,
+#: false alarms beside it because either one alone can be made perfect by a useless detector.
+_DETECTOR_COLUMNS = (
+    ("recall", "detection recall (IQR)", "{:.3f}"),
+    ("false_alarms_per_hour", "false alarms/h (IQR)", "{:.2f}"),
+    ("mean_detection_delay_s", "detection delay s (IQR)", "{:.0f}"),
+)
+
+
+def detector_table(
+    frame: pd.DataFrame, *, experiment_id: str, git_commit: str, by: str = "edge_config"
+) -> str:
+    """One row per scenario and detector arm: recall, false alarms, delay, each with its spread.
+
+    Keyed on the detector arm as well as the scenario, because the sweep's whole purpose is that
+    the arms differ; pooled on scenario alone the five arms become one row describing the ensemble
+    under a heading that claims to compare them.
+
+    Recall over a scenario with no injected fault is *undefined*, not zero, and is printed that way.
+    A detector cannot miss what was never there, and a table that writes 0.000 into that cell says
+    the opposite of what happened.
+    """
+    if by not in frame.columns or frame[by].nunique(dropna=False) < 2:
+        raise ValueError(
+            f"this frame carries one detector arm ({by!r} does not vary), so a per-detector "
+            "comparison cannot be made from it. Run `configs/experiments/detectors.yaml`."
+        )
+
+    failed_mask = (
+        frame["failed"].fillna(False).astype(bool)
+        if "failed" in frame
+        else pd.Series(False, index=frame.index)
+    )
+    usable = frame[~failed_mask]
+
+    lines = [
+        f"# Detectors: {experiment_id}",
+        "",
+        f"Commit `{git_commit}`. {len(frame)} runs"
+        + (
+            f", {int(failed_mask.sum())} failed and excluded from the medians."
+            if failed_mask.any()
+            else "."
+        ),
+        "",
+        "Median across seeds with the interquartile range beside it. `runs` is how many runs each "
+        "cell is a median over -- a median over five seeds and a median over one look identical "
+        "otherwise.",
+        "",
+        "| scenario | detector | runs | faults hit | missed | "
+        + " | ".join(h for _c, h, _f in _DETECTOR_COLUMNS)
+        + " |",
+        "| --- | --- | ---: | ---: | ---: | "
+        + " | ".join("---:" for _ in _DETECTOR_COLUMNS)
+        + " |",
+    ]
+
+    for scenario in dict.fromkeys(usable["scenario"]):
+        for arm in sorted(dict.fromkeys(usable[by])):
+            cell = usable[(usable["scenario"] == scenario) & (usable[by] == arm)]
+            if cell.empty:
+                continue
+            hit = int(cell["detected"].fillna(0).sum())
+            missed = int(cell["missed"].fillna(0).sum())
+            values = []
+            for column, _heading, spec in _DETECTOR_COLUMNS:
+                if column == "recall" and hit + missed == 0:
+                    # No fault was injected in this scenario, so there was nothing to recall.
+                    values.append("undefined (no faults)")
+                else:
+                    values.append(_median_iqr(cell[column], spec))
+            lines.append(
+                f"| {scenario} | {arm} | {len(cell)} | {hit} | {missed} | "
+                + " | ".join(values)
+                + " |"
+            )
+
+    lines += [
+        "",
+        "Recall and false alarms are read together or not at all: a detector that alarms on every "
+        "window has perfect recall, and one that never alarms has no false alarms.",
+        "",
+    ]
+    return "\n".join(lines)

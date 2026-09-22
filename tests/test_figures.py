@@ -33,6 +33,7 @@ from wimsim.experiments.figures import (
     accuracy_ratios,
     coverage_rows,
     detector_points,
+    recal_points,
     reconvergence_rows,
     write_figures,
 )
@@ -80,7 +81,7 @@ def test_every_figure_the_frame_supports_is_written(tmp_path: Path) -> None:
     """
     written = write_figures(_frame(), out_dir=tmp_path, experiment_id="t")
     assert {p.name for p in written if p.suffix == ".png"} == {
-        f"{n}.png" for n in FIGURES if n != "reference_rate"
+        f"{n}.png" for n in FIGURES if n not in ("reference_rate", "recal_tradeoff")
     }
     assert all(p.is_file() and p.stat().st_size > 0 for p in written)
 
@@ -324,3 +325,100 @@ def test_a_frame_with_no_control_column_still_draws_one_curve_per_estimator() ->
     frame = _rate_frame().drop(columns=["control_enabled"])
     curves = rate_curves(frame)
     assert {k[2] for k in curves} == {None}
+
+
+# -- the recalibration/coverage trade ---------------------------------------------------------
+
+
+def _recal_frame(**overrides) -> pd.DataFrame:
+    """A `recal_coverage`-shaped frame: confirm_sigma is the knob, recalibrations the consequence.
+
+    Lower confirm_sigma confirms drift more readily, so more recalibrations, so more of the run
+    spent on the estimator's fallback band while conformal warms back up.
+    """
+    rows = []
+    for edge, sigma, recals in (
+        ("recal_s15", 1.5, 9),
+        ("recal_s30", 3.0, 4),
+        ("recal_s60", 6.0, 1),
+    ):
+        for estimator in ("static_affine", "rls"):
+            for seed in (1, 2, 3):
+                rows.append(
+                    {
+                        "scenario": "S4_step_fault",
+                        "estimator": estimator,
+                        "seed": seed,
+                        "edge_config": edge,
+                        "confirm_sigma": sigma,
+                        "recalibrations": recals + (seed - 2),
+                        "n_events": 400,
+                        "n_matched": 400,
+                        "n_interval_fallback": 30 * recals,
+                        "coverage": 0.95 - 0.02 * recals,
+                        "coverage_expected": 0.95,
+                        "mae_kg": 200.0 - 5.0 * recals,
+                        "dynamic_floor_kg": 141.0,
+                        "reconverged": True,
+                        "reconverge_measurable": True,
+                        "reconverge_s": 400.0,
+                        "false_alarms_per_hour": 0.2,
+                        "recall": 1.0,
+                        "mean_interval_width_kg": 900.0,
+                        "failed": False,
+                    }
+                    | overrides
+                )
+    return pd.DataFrame(rows)
+
+
+def test_the_trade_is_drawn_against_measured_recalibrations_not_the_knob_that_caused_them() -> None:
+    """`confirm_sigma` is what was set; recalibrations are what happened. Two estimators at the
+    same sigma need not recalibrate the same number of times, and plotting the knob would draw
+    them as one point."""
+    points = recal_points(_recal_frame())
+
+    xs = sorted(p.recalibrations for p in points[("S4_step_fault", "rls")])
+    assert xs == [0, 1, 2, 3, 4, 5, 8, 9, 10]
+    assert all(isinstance(p.recalibrations, int) for p in points[("S4_step_fault", "rls")])
+
+
+def test_the_fallback_share_is_a_fraction_of_events_rather_than_a_count() -> None:
+    """A count is not comparable between runs of different length, and the sweeps do not all run
+    the same number of vehicles."""
+    points = {p.recalibrations: p for p in recal_points(_recal_frame())[("S4_step_fault", "rls")]}
+
+    assert points[9].fallback_share == pytest.approx(270 / 400)
+    assert points[1].fallback_share == pytest.approx(30 / 400)
+
+
+def test_both_halves_of_the_trade_are_carried_on_the_same_point() -> None:
+    """The claim is that recalibration buys mass accuracy and costs interval validity. A point
+    carrying only one of the two cannot support or refute it."""
+    point = recal_points(_recal_frame())[("S4_step_fault", "rls")][0]
+
+    assert point.coverage is not None
+    assert point.mae_ratio is not None and point.mae_ratio > 0.0
+
+
+def test_a_run_with_no_coverage_is_dropped_rather_than_drawn_at_zero() -> None:
+    frame = _recal_frame()
+    frame.loc[frame.edge_config == "recal_s15", "coverage"] = float("nan")
+    points = recal_points(frame)
+
+    assert all(p.recalibrations < 8 for p in points[("S4_step_fault", "rls")])
+
+
+def test_the_figure_is_not_drawn_when_recalibration_never_varied(tmp_path: Path) -> None:
+    """On a sweep where every arm recalibrated the same number of times there is no trade to
+    show, and a vertical stripe of points invites a reading it cannot support."""
+    frame = _recal_frame()
+    frame["recalibrations"] = 3
+    written = write_figures(frame, out_dir=tmp_path, experiment_id="flat")
+
+    assert not any(p.name.startswith("recal_tradeoff") for p in written)
+
+
+def test_the_trade_figure_is_drawn_when_it_varies(tmp_path: Path) -> None:
+    written = write_figures(_recal_frame(), out_dir=tmp_path, experiment_id="recal_coverage")
+    assert any(p.name == "recal_tradeoff.png" for p in written)

@@ -33,6 +33,7 @@ never needs a generated YAML file.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import statistics
@@ -1349,6 +1350,122 @@ def experiment(
         "wrote results.parquet, results.md, results.tex and manifest.json",
         fg=typer.colors.GREEN,
     )
+
+
+@app.command()
+def compare(
+    results: Annotated[
+        Path, typer.Argument(help="A results directory written by `experiment`, or its parquet.")
+    ],
+    metric: Annotated[
+        str, typer.Option("--metric", help="Column to compare. Lower is better is assumed.")
+    ] = "mae_kg",
+    baseline: Annotated[
+        str, typer.Option("--baseline", help="Estimator the others are compared against.")
+    ] = "static_affine",
+) -> None:
+    """Paired significance tests over a finished sweep: Wilcoxon signed-rank with Holm correction.
+
+    Runs are paired by seed, because the same seed gives a byte-identical sample stream and the two
+    arms of a comparison then differ in exactly one thing. Two families are corrected separately and
+    labelled as such -- the controller's two arms, and every estimator against a baseline -- because
+    correcting them together is a different claim and should have to be asked for.
+
+    Writes `comparisons.md` and `comparisons.json` into the results directory. Three seeds cannot
+    produce a significant result however large the effect (the smallest attainable two-sided p is
+    0.25), and the table says so in place of the p-values rather than beside them.
+    """
+    import pandas as pd
+
+    from wimsim.experiments.compare import write_comparison
+    from wimsim.experiments.stats import min_attainable_p
+
+    path = Path(results)
+    parquet = path if path.is_file() else path / "results.parquet"
+    if not parquet.exists():
+        typer.secho(f"no results at {parquet}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+
+    frame = pd.read_parquet(parquet)
+    if metric not in frame.columns:
+        typer.secho(
+            f"no column {metric!r}; available: {sorted(frame.columns)}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    out_dir = parquet.parent
+    try:
+        written = write_comparison(
+            frame,
+            out_dir=out_dir,
+            experiment_id=out_dir.name,
+            baseline=baseline,
+            metric=metric,
+        )
+    except ValueError as exc:
+        # An axis the pairing does not account for. Refused rather than resolved: see compare.py.
+        typer.secho(f"cannot pair these runs: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    seeds = sorted(set(frame["seed"])) if "seed" in frame else []
+    typer.secho(f"{out_dir.name}", bold=True)
+    _echo_kv([("metric", metric), ("seeds", len(seeds)), ("runs", len(frame))])
+    if len(seeds) < 6:
+        typer.secho(
+            f"{len(seeds)} seeds: the smallest attainable two-sided p is "
+            f"{min_attainable_p(len(seeds)):.3g}, so nothing here can reach 0.05.",
+            fg=typer.colors.YELLOW,
+        )
+    for path_ in written:
+        typer.secho(f"wrote {path_}", fg=typer.colors.GREEN)
+
+
+@app.command("detector-table")
+def detector_table_cmd(
+    results: Annotated[
+        Path, typer.Argument(help="A results directory written by `experiment`, or its parquet.")
+    ],
+    by: Annotated[
+        str, typer.Option("--by", help="The column that names the detector arm.")
+    ] = "edge_config",
+) -> None:
+    """One row per scenario and detector arm, from a sweep that varied the detectors.
+
+    Section IV-G describes four detectors in parallel; the shipped pipeline runs two, so every
+    detection number reported before `configs/experiments/detectors.yaml` was the behaviour of that
+    pair. This turns that sweep into `detectors.md`.
+
+    Refused on a sweep that ran one arm, because pooled on scenario alone the arms become a single
+    row describing the ensemble under a heading claiming to compare them.
+    """
+    import pandas as pd
+
+    from wimsim.experiments.table import detector_table
+
+    path = Path(results)
+    parquet = path if path.is_file() else path / "results.parquet"
+    if not parquet.exists():
+        typer.secho(f"no results at {parquet}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+
+    frame = pd.read_parquet(parquet)
+    commit = "unknown"
+    manifest = parquet.parent / "manifest.json"
+    if manifest.exists():
+        with contextlib.suppress(Exception):
+            commit = json.loads(manifest.read_text(encoding="utf-8")).get("git_commit", "unknown")
+
+    try:
+        text = detector_table(frame, experiment_id=parquet.parent.name, git_commit=commit, by=by)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    out_path = parquet.parent / "detectors.md"
+    out_path.write_text(f"{text}\n", encoding="utf-8")
+    typer.secho(f"wrote {out_path}", fg=typer.colors.GREEN)
 
 
 @app.command()

@@ -55,11 +55,13 @@ from matplotlib.ticker import FuncFormatter
 
 __all__ = [
     "FIGURES",
+    "RecalPoint",
     "Reconvergence",
     "accuracy_ratios",
     "coverage_rows",
     "detector_points",
     "rate_curves",
+    "recal_points",
     "reconvergence_rows",
     "write_figures",
 ]
@@ -90,6 +92,17 @@ FIGURES: dict[str, str] = {
         "with the control loop on (solid) and off (dashed) over the identical stream. The gap "
         "between a pair of lines is what the loop is worth at that rate; where they meet, it is "
         "worth nothing and the estimator is doing the work alone. One marker per seed."
+    ),
+    "recal_tradeoff": (
+        "What a recalibration costs. Each point is one run, placed at the number of times the loop "
+        "recalibrated in it -- the measured consequence of `confirm_sigma`, not the setting "
+        "itself. Left: delivered coverage, against its nominal target as the dashed line. Middle: "
+        "the share of events emitted on the estimator's own fallback interval rather than the "
+        "configured one, which is the mechanism -- `run_closed_loop` resets the conformal "
+        "calibration set on every profile activation, and the warm-up that follows is served by "
+        "the fallback band. Right: MAE against the dynamic floor, which is what the recalibration "
+        "was for. A figure of the left panel alone would show recalibration as pure cost and a "
+        "figure of the right alone as pure benefit."
     ),
     "detectors": (
         "Recall against false alarms per hour of simulated operation: the trade-off an operator "
@@ -220,6 +233,63 @@ def detector_points(frame: pd.DataFrame) -> dict[_Key, list[tuple[float, float |
             for fa, recall in zip(rows["false_alarms_per_hour"], rows["recall"], strict=True)
             if pd.notna(fa)
         ]
+        if points:
+            out[key] = points
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class RecalPoint:
+    """One run on the recalibration trade: what it cost and what it bought.
+
+    Both halves live on the same point on purpose. Recalibration improves the mass and reopens the
+    conformal warm-up window, and either half plotted alone reads as a verdict.
+    """
+
+    recalibrations: int
+    coverage: float
+    fallback_share: float
+    """Events emitted on the estimator's fallback interval, as a fraction of the run's events. A
+    fraction rather than a count because runs are not all the same length."""
+    mae_ratio: float | None
+    """MAE as a multiple of the dynamic floor, or ``None`` where the scenario has no floor."""
+    coverage_expected: float | None
+    """Coverage over only those events that got the configured interval -- the band's own
+    performance, with the fallback's contribution taken out."""
+
+
+def recal_points(frame: pd.DataFrame) -> dict[_Key, list[RecalPoint]]:
+    """The recalibration trade, one point per run.
+
+    Placed at the *measured* recalibration count rather than at the ``confirm_sigma`` that produced
+    it: two estimators at the same sigma need not recalibrate the same number of times, and the
+    knob is not the quantity the trade is about. Runs with no coverage to report are dropped rather
+    than drawn at zero.
+    """
+    usable = _usable(frame)
+    if "recalibrations" not in usable or "coverage" not in usable:
+        return {}
+    out: dict[_Key, list[RecalPoint]] = {}
+    for key in _keys(usable):
+        rows = usable[(usable["scenario"] == key[0]) & (usable["estimator"] == key[1])]
+        points: list[RecalPoint] = []
+        for _i, row in rows.sort_values("seed").iterrows():
+            if pd.isna(row.get("recalibrations")) or pd.isna(row.get("coverage")):
+                continue
+            events = float(row.get("n_events") or row.get("n_matched") or 0.0)
+            fallback = float(row.get("n_interval_fallback") or 0.0)
+            floor = float(row.get("dynamic_floor_kg") or 0.0)
+            mae = row.get("mae_kg")
+            expected = row.get("coverage_expected")
+            points.append(
+                RecalPoint(
+                    recalibrations=int(row["recalibrations"]),
+                    coverage=float(row["coverage"]),
+                    fallback_share=(fallback / events) if events > 0 else float("nan"),
+                    mae_ratio=(float(mae) / floor) if floor > 0 and pd.notna(mae) else None,
+                    coverage_expected=float(expected) if pd.notna(expected) else None,
+                )
+            )
         if points:
             out[key] = points
     return out
@@ -519,12 +589,88 @@ def _draw_reference_rate(frame: pd.DataFrame, title: str, path: Path) -> Path | 
     return _save(fig, path)
 
 
+def _draw_recal_tradeoff(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    points = recal_points(frame)
+    if not points:
+        return None
+    counts = {p.recalibrations for series in points.values() for p in series}
+    if len(counts) < 2:
+        # Every arm recalibrated the same number of times, so there is no trade in this sweep. A
+        # vertical stripe of points invites a reading about frequency that the data cannot support.
+        return None
+
+    _rows, target = coverage_rows(frame)
+    estimators = sorted({e for _s, e in points})
+    markers = dict(zip(estimators, _MARKERS, strict=False))
+    scenarios = list(dict.fromkeys(s for s, _e in points))
+
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2), squeeze=False)
+    fig.suptitle(title)
+    panels = (
+        ("coverage", lambda p: p.coverage, "delivered coverage"),
+        ("fallback", lambda p: p.fallback_share, "share of events on a fallback interval"),
+        ("mae", lambda p: p.mae_ratio, "MAE / dynamic floor"),
+    )
+
+    for ax, (_name, value, ylabel) in zip(axes[0], panels, strict=True):
+        for index, estimator in enumerate(estimators):
+            xs, ys = [], []
+            medians: dict[int, list[float]] = {}
+            for scenario in scenarios:
+                for p in points.get((scenario, estimator), ()):
+                    v = value(p)
+                    if v is None or not np.isfinite(v):
+                        continue
+                    xs.append(p.recalibrations)
+                    ys.append(v)
+                    medians.setdefault(p.recalibrations, []).append(v)
+            if not xs:
+                continue
+            ax.scatter(
+                xs,
+                ys,
+                marker=markers[estimator],
+                s=26,
+                color=f"C{index}",
+                alpha=0.45,
+                zorder=2,
+                label=estimator,
+            )
+            ordered = sorted(medians)
+            ax.plot(
+                ordered,
+                [float(np.median(medians[k])) for k in ordered],
+                "-",
+                color=f"C{index}",
+                linewidth=1.6,
+                zorder=3,
+            )
+        ax.set_xlabel("recalibrations in the run")
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.3, linewidth=0.5)
+
+    axes[0][0].axhline(target, color="k", linestyle="--", linewidth=1.0, zorder=1)
+    axes[0][0].annotate(
+        f"nominal {target:g}",
+        xy=(0.02, target),
+        xycoords=("axes fraction", "data"),
+        xytext=(0, 3),
+        textcoords="offset points",
+        fontsize=7,
+    )
+    axes[0][2].axhline(1.0, color="k", linestyle=":", linewidth=1.0, zorder=1)
+    axes[0][0].legend(fontsize=8, framealpha=0.9)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
 _DRAW = {
     "accuracy": _draw_accuracy,
     "reference_rate": _draw_reference_rate,
     "coverage": _draw_coverage,
     "reconvergence": _draw_reconvergence,
     "detectors": _draw_detectors,
+    "recal_tradeoff": _draw_recal_tradeoff,
 }
 
 
