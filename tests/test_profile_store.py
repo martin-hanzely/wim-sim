@@ -18,6 +18,7 @@ import pytest
 
 from wimsim.calibration import (
     ESTIMATORS,
+    AffineTemp,
     CalibrationProfile,
     EstimatorState,
     KalmanCalibration,
@@ -49,10 +50,14 @@ def test_the_registry_holds_every_estimator_the_buildspec_names() -> None:
     """Profiles name their estimator as a string, so this mapping is what makes a stored profile
     reconstructible at all. A profile naming an estimator nothing can build is a mass nobody can
     ever reproduce."""
-    assert set(ESTIMATORS) == {"static_affine", "rls", "kalman"}
+    assert set(ESTIMATORS) == {"static_affine", "rls", "kalman", "affine_temp"}
     assert ESTIMATORS["static_affine"] is StaticAffine
     assert ESTIMATORS["rls"] is RecursiveLeastSquares
     assert ESTIMATORS["kalman"] is KalmanCalibration
+    # `affine_temp` is not a buildspec estimator. It exists to test whether the manuscript's
+    # three-parameter map earns its place against the two-parameter one, and it is registered
+    # because a sweep can only reach what the registry holds.
+    assert ESTIMATORS["affine_temp"] is AffineTemp
 
 
 def test_every_registered_estimator_reports_the_name_it_is_registered_under() -> None:
@@ -231,11 +236,15 @@ def test_a_profile_from_every_estimator_round_trips_and_predicts_identically(
 
     rng = np.random.default_rng(0)
     masses = rng.uniform(1000.0, 40000.0, 60)
+    # The temperature has to vary, or `affine_temp`'s interaction column is collinear with the
+    # feature and it refuses the fit -- correctly, since a single-temperature reference set cannot
+    # identify a temperature interaction. The two-parameter estimators ignore the column entirely,
+    # so giving them a spread changes nothing about what they are being asked to round-trip.
     observations = [
         ReferenceObservation(
             ts_us=SECOND * i,
             feature=float(0.05 + 2.0e-4 * m + 1e-5 * rng.standard_normal()),
-            temp_c=20.0,
+            temp_c=20.0 + 8.0 * float(np.sin(i / 7.0)),
             reference_mass_kg=float(m),
         )
         for i, m in enumerate(masses)
