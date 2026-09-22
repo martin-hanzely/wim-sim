@@ -8,8 +8,9 @@
 # count is the only thing that changed.
 experiment_id: ladder30
 description: >
-  Static, RLS, Kalman and the three-parameter affine map across the seven scorable scenarios, at
-  thirty seeds, with the controller enabled and one reference vehicle in ten.
+  Static, RLS and Kalman across the seven scorable scenarios, at thirty seeds, with the controller
+  enabled and one reference vehicle in ten. The three-parameter map is not here: it is batch-only
+  and is tested on its own in `theta2.yaml`.
 scenarios:
   - S1_nominal
   - S2_thermal_cycle
