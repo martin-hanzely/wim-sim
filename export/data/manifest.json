@@ -1,0 +1,212 @@
+{
+  "generated_utc": "2026-09-22T20:05:41.228225+00:00",
+  "git_commit": "f40ca51840cafb7bec2f9ce25adaa5165987e5eb",
+  "git_dirty": true,
+  "python": "3.13.13",
+  "packages": {
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "scipy": "1.18.1",
+    "pyarrow": "25.0.1",
+    "matplotlib": "3.11.1",
+    "pydantic": "2.13.4"
+  },
+  "sweeps": {
+    "ladder": {
+      "purpose": "every estimator across every scorable scenario, 3 seeds, 1 reference in 10",
+      "command": "wimsim experiment ladder --out data/results/ladder",
+      "n_runs": 63,
+      "n_failed": 0,
+      "git_commit": "c1881d4f6c0f31cc50171d6c3004faa1325b5e8d",
+      "git_dirty": false,
+      "scenarios": [
+        "S1_nominal",
+        "S2_thermal_cycle",
+        "S3_zero_drift_walk",
+        "S4_step_fault",
+        "S5_outage",
+        "S6_combined",
+        "S7_sparse_reference"
+      ],
+      "estimators": [
+        "kalman",
+        "rls",
+        "static_affine"
+      ],
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "config_hashes": [
+        "0052a68ebb4dd1334f0378cfa6defa07917942ba64b15d70b6cd736642ab3e2c",
+        "1830f9600d18220efd37edc0ed15951b55aee715e2061c3ef38b60364f8b8678",
+        "19c57e97290995438510692dd0c87d401ed506ad1b05f6b88446276b5f326325",
+        "1f0eb7d0a64d2c9430bd781be2ad3a6383c85935e18ff7809210a4dbae3f4f74",
+        "24835dafebd07f6facda17ec68b148ca21bd70070201cdbfe1cf136d6c2da50a",
+        "24befa705b788e8ac92815dc24ece289db28b46d6894613726a31248a0b3f0e9",
+        "755a0aa70d2f3fe05534c8cb137d5df18ed16325d4692fc840c3daee2c8a8c92",
+        "7d29a6d7dca932314e512c265e0e559ec6cc02e548aa25349a95d1f29dbf9ef1",
+        "7f808862af70bdf5f8b721f954c967c9d3eb0d071e708e4f266d8f7901642f98",
+        "a9d23ff021d7d7330d2f7690ce6fe1a23e9face2bceffa30bb9e10eb4c70e685",
+        "ab25696964de9a9bd056c05f5021821512f6128f06fede373f779014f2fed9d8",
+        "adc80992e5ad2b0074c2ccb5fd189429c3fd11d2d51d242aa1caec078b0db1d2",
+        "b10da6cea2c796fcd510a2c7d7f3d2074f0eed008477bb57609f09be0a5cc888",
+        "b3cf8d14b3aed8b1d65ab4497dcbfb879dbda2ce1da03bb07f6401c9b4b9bd4a",
+        "c371bfebbbdb510b204e19fcaedea3c47a4e8b6d77499f04ee6ac55d13fed988",
+        "c45f068e83a0db5af8037bcec208da070545216f5240a590ba8286dfcee1b0b4",
+        "d908b1eec1d6ca010fbfed3dff58421d1657520e5136c0976972c56a507b8a71",
+        "e4f7ab87faf6982be139dc8af97757bff8d540d357c41e3d06ec298e4dd75854",
+        "e65e6377500da0315dac92d9d159e61875ec095bbab24aed7387d0c3eeb9a9db",
+        "e71247b8c58f106fad94f1fa68a340a88baac5595f00b577c8912131cd60a6c4",
+        "f100b6d8743f0beb23a874f69b02d3ff86fd69d1b80c3005bc53c22fbf24242c"
+      ],
+      "edge_config_hashes": [
+        "2dcdf9429baa9fcc847cc03bb3eb992a0574d0c81dcfbd456974ff9264223f13",
+        "535f10e6c30103272f64653e50d0578cbf5af363b23f0ecbad28905519d7af3d",
+        "f54c17346089ba805d00d389d8b7c1c3e1cdb89c6515d103c5f0f15f4eb61185"
+      ],
+      "wall_clock_s": 3698.2868528000217
+    },
+    "reference_rate": {
+      "purpose": "reference rate 1-in-2..1-in-50 x controller on/off, S4 and S7",
+      "command": "wimsim experiment reference_rate --out data/results/reference_rate",
+      "n_runs": 180,
+      "n_failed": 0,
+      "git_commit": "c1881d4f6c0f31cc50171d6c3004faa1325b5e8d",
+      "git_dirty": false,
+      "scenarios": [
+        "S4_step_fault",
+        "S7_sparse_reference"
+      ],
+      "estimators": [
+        "kalman",
+        "rls",
+        "static_affine"
+      ],
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "config_hashes": [
+        "1830f9600d18220efd37edc0ed15951b55aee715e2061c3ef38b60364f8b8678",
+        "24835dafebd07f6facda17ec68b148ca21bd70070201cdbfe1cf136d6c2da50a",
+        "755a0aa70d2f3fe05534c8cb137d5df18ed16325d4692fc840c3daee2c8a8c92",
+        "7d29a6d7dca932314e512c265e0e559ec6cc02e548aa25349a95d1f29dbf9ef1",
+        "adc80992e5ad2b0074c2ccb5fd189429c3fd11d2d51d242aa1caec078b0db1d2",
+        "b10da6cea2c796fcd510a2c7d7f3d2074f0eed008477bb57609f09be0a5cc888"
+      ],
+      "edge_config_hashes": [
+        "0b5c01cbe230ff28e575e10eca9b6a055665364dffe52df6b55b0c673384e88f",
+        "0bc04dd81546c2b970a65576230c0c6588d818de3f1897da4bbad6a0653cb1c7",
+        "0f65f8482dc7b1eecb43029be92db0ca8275dab893505ead0afcaaa453ce34be",
+        "181194422ccc23d22182aab51a0d782a283f035830d7c0858a0385b3c22748ed",
+        "1979872ac2b7d0b6194f0489ed55bb44e62dbd150002d6fe7b626723102abdfa",
+        "19fe94f3d8b1b0251c7722bcf1f4cd624ea8cff562797f105a2780901adfa303",
+        "20c168b95f956c9a1574dc4f4de92208df786357f44074977ef4f3d4913c5efc",
+        "26755ea6f5e0cd51b77de609b20227467d7f1013da387d4b09c9de8fc2cfe9c1",
+        "2be26ef7e05857fff235d1d37d23bd7e3e21b78934ff29d7f042dd27604e30c5",
+        "2dcdf9429baa9fcc847cc03bb3eb992a0574d0c81dcfbd456974ff9264223f13",
+        "3bb55daaf14484e291ecf08771b15d5e23b5288c304675b08da573effc37cdb9",
+        "456e3e2d724f4fc5761346d80ca3f47d4c0d05d0ab8871749373cb31c0c8b636",
+        "48df9ecf8d8a1c81a17fc1c701a36d73792dc0719075a02cfb458663fd39e86e",
+        "4a239b60be05a3c5745ea4e9b0c8d1b7db6213825b2ba773b35f5a84bec3f938",
+        "4a3c84b7d9660450a81518b8739bbe8a63fff1ec5f9d87118db9994b917f0ea9",
+        "4aaa8c3f03ce9dc885a57217fab5963a0f4f62bf0aeb158bd3d5dbbb953f3e3d",
+        "535f10e6c30103272f64653e50d0578cbf5af363b23f0ecbad28905519d7af3d",
+        "53905ad1bb190ad8d585f00e4738b3e65e64e19decaf3ef0a01139ccc3749b01",
+        "56203d9108e95cd648648526ced583ab00a4ffd7e7858ee55bae10009303804e",
+        "57a46a074e3e9db9bb2b9c924f46e1bd77aaf6f096dd1dc84d5303ace4e04e6d",
+        "5bea2fef1367be0cb6dde99456ea9d0dce9a13ff54fb5868acddd368f683c86b",
+        "646c528749c5764eae85b26c3feb2c7471838ee483039ed5cae2fd943b493e0c",
+        "85abb593370fc238bd1416eadb7e96e3cc314a4e0e8e98e1fb89cdb7e68146d9",
+        "a44c4e54cfe630073865d97a01cc8cd495b810ea15f15d7c189b320eae347010",
+        "b9146d0f88ed3d04575654ca0e9eb0da363cfb3b3382b3bc96f12de991a91478",
+        "c6335bbd24a8e7cb3af8e5d376ac29c401f5a183b2242974930e81df54ac6b9e",
+        "cb68bc56aaa2d1a6567706277366c82b5cb6ccc2a7de324abd77ad3cc4d3c1c0",
+        "e3f55d835eef4f326074ddd36770b46c05ea8c1f8384949f188892918002aa82",
+        "f54c17346089ba805d00d389d8b7c1c3e1cdb89c6515d103c5f0f15f4eb61185",
+        "f95b1cdbbc3c4a5540010ff41d98900a32daddf8ccb791e3a091aa9200434cde"
+      ],
+      "wall_clock_s": 6163.412796599998
+    },
+    "governance": {
+      "purpose": "controller on/off on S6_combined, the B2 comparison",
+      "command": "wimsim experiment governance --out data/results/governance",
+      "n_runs": 18,
+      "n_failed": 0,
+      "git_commit": "f40ca51840cafb7bec2f9ce25adaa5165987e5eb",
+      "git_dirty": true,
+      "scenarios": [
+        "S6_combined"
+      ],
+      "estimators": [
+        "kalman",
+        "rls",
+        "static_affine"
+      ],
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "config_hashes": [
+        "b3cf8d14b3aed8b1d65ab4497dcbfb879dbda2ce1da03bb07f6401c9b4b9bd4a",
+        "c371bfebbbdb510b204e19fcaedea3c47a4e8b6d77499f04ee6ac55d13fed988",
+        "e4f7ab87faf6982be139dc8af97757bff8d540d357c41e3d06ec298e4dd75854"
+      ],
+      "edge_config_hashes": [
+        "2dcdf9429baa9fcc847cc03bb3eb992a0574d0c81dcfbd456974ff9264223f13",
+        "3bb55daaf14484e291ecf08771b15d5e23b5288c304675b08da573effc37cdb9",
+        "4aaa8c3f03ce9dc885a57217fab5963a0f4f62bf0aeb158bd3d5dbbb953f3e3d",
+        "535f10e6c30103272f64653e50d0578cbf5af363b23f0ecbad28905519d7af3d",
+        "c6335bbd24a8e7cb3af8e5d376ac29c401f5a183b2242974930e81df54ac6b9e",
+        "f54c17346089ba805d00d389d8b7c1c3e1cdb89c6515d103c5f0f15f4eb61185"
+      ],
+      "wall_clock_s": 1990.3714359000005
+    }
+  },
+  "missing_sweeps": [],
+  "figures": [
+    "ladder__accuracy.png",
+    "ladder__coverage.png",
+    "ladder__detectors.png",
+    "ladder__reconvergence.png",
+    "reference_rate__accuracy.png",
+    "reference_rate__coverage.png",
+    "reference_rate__detectors.png",
+    "reference_rate__reconvergence.png",
+    "reference_rate__reference_rate.png",
+    "governance__accuracy.png",
+    "governance__coverage.png",
+    "governance__detectors.png",
+    "governance__reconvergence.png"
+  ],
+  "container_digest": "not applicable -- runs are local, not containerised",
+  "non_sweep_results": {
+    "real_corpus_leave_one_out_long.csv": {
+      "command": "wimsim score-corpus data/real -o <json>",
+      "commit": "f40ca51",
+      "note": "reference masses are ESTIMATED, not weighed -- see CONTRADICTIONS.md \u00a7V-D"
+    },
+    "footprint_long.csv": {
+      "command": "estimator_cost() over 2000 sequential updates, run from a script",
+      "commit": "f40ca51",
+      "host": "Intel64 Family 6 Model 154 Stepping 4 -- an x86 laptop, NOT embedded hardware",
+      "note": "\u00a7V-G hardware-in-the-loop was NOT RUN; SerialSource is a stub"
+    },
+    "channel_ratio_long.csv": {
+      "command": "wimsim check-channels data/real",
+      "commit": "f40ca51",
+      "note": "20 paired crossings; no alarm, largest excursion z = 2.04"
+    }
+  },
+  "git_dirty_explanation": "The working tree carries export/, scripts/build_export.py and configs/experiments/governance.yaml, none of which is in the simulation's import path. `git diff f40ca51 -- src/ configs/estimators/ configs/stations/ configs/scenarios/` is empty.",
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "significance_testing": "none performed anywhere in this project"
+}

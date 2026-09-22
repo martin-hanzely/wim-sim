@@ -1,0 +1,18 @@
+# B2 versus the governed loop on the stress scenario the manuscript's central claim rests on.
+#
+# `reference_rate` already covers S4 and S7 with the controller both ways. S6_combined was never
+# run with it disabled, and the claim "the governed loop beats ungoverned recursive tracking"
+# cannot be checked on the hardest scenario without that arm.
+experiment_id: governance
+description: >
+  Recursive tracking without governance (controller off) against the full MAPE-K loop, on the
+  combined-fault stress scenario, at the ladder's reference rate of one vehicle in ten.
+scenarios: [S6_combined]
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3]
+control_arms: [true, false]
+edge_config: default
+overrides: [scenario.output.samples=none]
+reference_every_n: 10
+calibration_passes: 60
+fault_horizon_s: 1800.0

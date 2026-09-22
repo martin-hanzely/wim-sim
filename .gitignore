@@ -22,3 +22,6 @@ data/real/*
 
 # local compose overrides
 .env
+
+# the co-author export: regenerable from data/results via scripts/build_export.py
+export/data/*.csv
