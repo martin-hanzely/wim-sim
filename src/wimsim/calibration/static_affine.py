@@ -134,7 +134,22 @@ class StaticAffine:
         design = np.column_stack([x, np.ones_like(x)])
         sw = np.sqrt(w)
         coeffs, *_ = np.linalg.lstsq(design * sw[:, None], m * sw, rcond=None)
-        self._gain, self._bias = float(coeffs[0]), float(coeffs[1])
+        gain, bias = float(coeffs[0]), float(coeffs[1])
+
+        # A scale whose sensitivity is negative reports heavier vehicles as lighter, and one whose
+        # sensitivity is zero reports every vehicle the same. Neither is a calibration with a
+        # problem in it; neither is a calibration. The guard above catches features that are
+        # *exactly* identical, which is not enough: on `20260209_cintron2_spat` two crossings came
+        # close enough that the slope through them was unconstrained, and the fit returned
+        # -8.027e+06 without complaint.
+        if not np.isfinite(gain) or gain <= 0.0:
+            raise ValueError(
+                f"fitted sensor gain {gain:.4g} is not positive, so this is not a calibration: a "
+                "negative gain reports heavier vehicles as lighter. The reference features "
+                f"span {spread:.4g}, which is too little to determine a slope over "
+                f"{float(m.max() - m.min()):.4g} kg of load."
+            )
+        self._gain, self._bias = gain, bias
 
         residuals = m - (self._gain * x + self._bias)
         dof = max(len(obs) - _N_PARAMS, 1)

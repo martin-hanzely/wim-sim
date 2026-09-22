@@ -256,3 +256,29 @@ def test_profile_serialises_to_plain_json() -> None:
 def test_mass_estimate_rejects_an_interval_that_does_not_bracket_the_estimate() -> None:
     with pytest.raises(ValueError, match="bracket"):
         MassEstimate(mass_kg=100.0, mass_ci_low=200.0, mass_ci_high=300.0, coverage_target=0.95)
+
+
+def test_a_non_positive_gain_is_refused() -> None:
+    """A scale whose sensitivity is negative reports heavier vehicles as lighter. That is not a
+    calibration with a sign error in it; it is not a calibration.
+
+    Found on `20260209_cintron2_spat`, the first time a real recording was scored: two reference
+    crossings whose features were nearly identical but whose masses were not, so the slope through
+    them was unconstrained. The fit returned a gain of -8.027e+06 and nothing objected. The
+    existing guard catches features that are *exactly* identical, and this pair merely came close.
+    """
+    obs = [
+        ReferenceObservation(ts_us=0, feature=1.0000, temp_c=20.0, reference_mass_kg=460.0),
+        ReferenceObservation(ts_us=1, feature=1.0001, temp_c=20.0, reference_mass_kg=326.0),
+    ]
+    with pytest.raises(ValueError, match="gain"):
+        StaticAffine().fit(obs)
+
+
+def test_an_ordinary_fit_is_untouched_by_the_guard() -> None:
+    """It must reject an impossible calibration without rejecting a merely imperfect one."""
+    obs = [
+        ReferenceObservation(ts_us=i, feature=2.0e-4 * m, temp_c=20.0, reference_mass_kg=m)
+        for i, m in enumerate((1000.0, 5000.0, 20000.0, 35000.0))
+    ]
+    assert StaticAffine().fit(obs).gain > 0

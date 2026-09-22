@@ -15,6 +15,7 @@ Command surface:
     wimsim detect SCENARIO                 what the detector finds, synthetic or replayed
     wimsim gap-report REAL_DIR             where the simulator and the sensor disagree
     wimsim write-estimated-reference DIR   reference masses from inference, NOT a weighing
+    wimsim score-real REAL_DIR             score a recording against its reference.csv
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -1529,7 +1530,9 @@ def write_estimated_reference_cmd(
         raise typer.Exit(1)
 
     try:
-        n = write_estimated_reference(real_dir, crossings, vehicle=vehicle)
+        n = write_estimated_reference(
+            real_dir, crossings, vehicle=vehicle, t0_us=source.metadata.start_time_us
+        )
     except (FileExistsError, ValueError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(2) from exc
@@ -1549,6 +1552,108 @@ def write_estimated_reference_cmd(
         "These are not measurements. Scoring against them measures whether the pipeline "
         "reproduces the inference.",
         fg=typer.colors.YELLOW,
+    )
+
+
+@app.command("score-real")
+def score_real(
+    real_dir: Annotated[Path, typer.Argument(help="A real recording under data/real/.")],
+    channel: Annotated[str, typer.Option("--channel", help="Channel to score.")] = "Tenzo2",
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config.")] = (
+        "cintron_platform"
+    ),
+    calibration_passes: Annotated[
+        int, typer.Option("--calibration-passes", help="Crossings reserved to fit the profile.")
+    ] = 2,
+    window_s: Annotated[
+        float, typer.Option("--window", help="Half-width of a reference's matching window, s.")
+    ] = 1.5,
+    tolerance_s: Annotated[
+        float, typer.Option("--tolerance", help="Event-to-reference match tolerance, s.")
+    ] = 1.0,
+) -> None:
+    """Run the pipeline over a real recording and score it against its `reference.csv`.
+
+    The first command in this project that produces kilograms from the real sensor. What it is
+    scoring against matters: a reference measurement, not ground truth. Where the reference file
+    was written by `write-estimated-reference`, the masses are an INFERENCE, and this measures
+    whether the pipeline reproduces that inference rather than whether it weighs vehicles. The
+    output says so when it finds the sidecar.
+
+    A pass used to fit the calibration is never also scored.
+    """
+    import pandas as pd
+
+    from wimsim.core.config import RunConfig, load_edge_config, load_run_config
+    from wimsim.experiments.offline import run_offline
+    from wimsim.source import build_source
+    from wimsim.source.estimated_reference import SIDECAR
+    from wimsim.source.reference import load_reference
+
+    tree = load_run_config("S8_replay_real").model_dump(mode="json")
+    tree["scenario"]["source"] = {
+        "kind": "replay",
+        "replay": {
+            "run_dir": str(real_dir),
+            "channel": channel,
+            "rate": "accelerated",
+            "speed_multiplier": None,
+        },
+    }
+    try:
+        cfg = RunConfig.model_validate(tree)
+        edge_cfg = load_edge_config(edge)
+        meta = build_source(cfg).metadata
+        reference = load_reference(real_dir, t0_us=meta.start_time_us, window_s=window_s)
+    except (OSError, KeyError, ValueError, FileNotFoundError) as exc:
+        typer.secho(f"cannot score {real_dir}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    estimated = (real_dir / SIDECAR).is_file()
+    typer.secho(f"{real_dir.name} / {channel}", bold=True)
+    if estimated:
+        typer.secho(
+            "The reference masses here are ESTIMATED, not weighed. This scores whether the "
+            "pipeline reproduces the inference, not whether it weighs vehicles.",
+            fg=typer.colors.YELLOW,
+        )
+
+    try:
+        result = run_offline(
+            cfg,
+            reference,
+            edge_cfg,
+            calibration_passes=calibration_passes,
+            match_tolerance_s=tolerance_s,
+        )
+    except ValueError as exc:
+        typer.secho(f"cannot score: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    sc = result.score
+    _echo_kv(
+        [
+            ("references", len(reference)),
+            ("detected", len(result.events)),
+            ("reserved to calibrate", result.calibration_passes),
+            ("matched and scored", sc.n_matched),
+            ("recall", f"{sc.recall:.3f}"),
+            ("MAE", f"{sc.mae_kg:,.1f} kg" if not pd.isna(sc.mae_kg) else "--"),
+            ("MAPE", f"{sc.mape:.2%}" if not pd.isna(sc.mape) else "--"),
+            ("bias", f"{sc.bias_kg:+,.1f} kg" if not pd.isna(sc.bias_kg) else "--"),
+            ("coverage", f"{sc.coverage:.3f}" if not pd.isna(sc.coverage) else "--"),
+            ("interval width", f"{sc.mean_interval_width_kg:,.0f} kg"),
+            ("sensor gain", f"{result.profile.state.sensor_gain:.4g}"),
+        ]
+    )
+    if sc.coverage_by_source:
+        typer.secho("interval by construction", bold=True)
+        for src, (n, cov) in sorted(sc.coverage_by_source.items()):
+            typer.echo(f"  {src:<24} n={n:<4d} coverage {cov:.3f}")
+    typer.secho(
+        "`dynamic_floor_kg` is NaN here on purpose: a reference records a static mass and says "
+        "nothing about what the vehicle's own bounce added.",
+        dim=True,
     )
 
 

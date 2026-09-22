@@ -30,6 +30,8 @@ from wimsim.source.estimated_reference import (
     write_estimated_reference,
 )
 
+T0 = 1_770_626_664_000_000
+
 
 def _crossings():
     """(t_peak_s, peak_strain) as `wimsim detect` reports them: front wheels heavier."""
@@ -39,7 +41,7 @@ def _crossings():
 def test_a_reference_row_is_written_for_every_crossing(tmp_path: Path) -> None:
     out = tmp_path / "20260209_cintron1"
     out.mkdir()
-    n = write_estimated_reference(out, _crossings(), vehicle="citroen")
+    n = write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
 
     assert n == 4
     rows = list(csv.DictReader((out / "reference.csv").open(encoding="utf-8")))
@@ -52,7 +54,7 @@ def test_front_and_rear_wheels_get_different_masses(tmp_path: Path) -> None:
     Giving every crossing the same mass would throw away the one distinction the data supports."""
     out = tmp_path / "run"
     out.mkdir()
-    write_estimated_reference(out, _crossings(), vehicle="citroen")
+    write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
 
     masses = sorted(
         {
@@ -69,7 +71,7 @@ def test_the_fabia_masses_are_the_documented_inference(tmp_path: Path) -> None:
     `docs/sim-to-real.md` and `configs/stations/cintron_platform.yaml`, they disagree silently."""
     out = tmp_path / "run"
     out.mkdir()
-    write_estimated_reference(out, [(1.0, 11.11e-6)], vehicle="fabia")
+    write_estimated_reference(out, [(1.0, 11.11e-6)], vehicle="fabia", t0_us=T0)
 
     row = next(csv.DictReader((out / "reference.csv").open(encoding="utf-8")))
     assert float(row["reference_mass_kg"]) == pytest.approx(FABIA_FRONT_KG, abs=1.0)
@@ -80,7 +82,7 @@ def test_every_row_says_it_is_an_estimate(tmp_path: Path) -> None:
     in a document beside them."""
     out = tmp_path / "run"
     out.mkdir()
-    write_estimated_reference(out, _crossings(), vehicle="citroen")
+    write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
 
     for row in csv.DictReader((out / "reference.csv").open(encoding="utf-8")):
         assert "ESTIMATED" in row["vehicle_description"]
@@ -90,7 +92,7 @@ def test_every_row_says_it_is_an_estimate(tmp_path: Path) -> None:
 def test_a_sidecar_records_the_whole_chain(tmp_path: Path) -> None:
     out = tmp_path / "run"
     out.mkdir()
-    write_estimated_reference(out, _crossings(), vehicle="citroen")
+    write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
 
     note = (out / "reference.ESTIMATED.md").read_text(encoding="utf-8")
     assert "operating weight" in note
@@ -106,22 +108,22 @@ def test_it_refuses_to_overwrite_a_reference_file_it_did_not_write(tmp_path: Pat
     (out / "reference.csv").write_text("pass_id,reference_mass_kg,t_approx\nx,1000,0\n", "utf-8")
 
     with pytest.raises(FileExistsError, match=r"reference\.csv"):
-        write_estimated_reference(out, _crossings(), vehicle="citroen")
+        write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
 
 
 def test_it_replaces_a_reference_file_it_did_write(tmp_path: Path) -> None:
     """Regenerating after the inference changes is the point of having a writer at all."""
     out = tmp_path / "run"
     out.mkdir()
-    write_estimated_reference(out, _crossings(), vehicle="citroen")
-    assert write_estimated_reference(out, _crossings()[:2], vehicle="citroen") == 2
+    write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
+    assert write_estimated_reference(out, _crossings()[:2], vehicle="citroen", t0_us=T0) == 2
 
 
 def test_an_unknown_vehicle_is_refused(tmp_path: Path) -> None:
     out = tmp_path / "run"
     out.mkdir()
     with pytest.raises(ValueError, match="vehicle"):
-        write_estimated_reference(out, _crossings(), vehicle="lada")
+        write_estimated_reference(out, _crossings(), vehicle="lada", t0_us=T0)
 
 
 def test_the_written_file_satisfies_the_real_data_schema(tmp_path: Path) -> None:
@@ -130,6 +132,24 @@ def test_the_written_file_satisfies_the_real_data_schema(tmp_path: Path) -> None
 
     out = tmp_path / "run"
     out.mkdir()
-    write_estimated_reference(out, _crossings(), vehicle="citroen")
+    write_estimated_reference(out, _crossings(), vehicle="citroen", t0_us=T0)
     header = next(csv.reader((out / "reference.csv").open(encoding="utf-8")))
     assert set(REQUIRED_REFERENCE_COLUMNS) <= set(header)
+
+
+def test_the_epoch_comes_from_the_recording_not_from_a_default(tmp_path: Path) -> None:
+    """Regression. `t0_us` used to default to one recording's start time, and that default was
+    applied to all eight: seven files landed 300-400 s before their own recordings began. Nothing
+    complained because nothing read them yet, and it surfaced only when `score-real` matched zero
+    references to any event.
+
+    Requiring the caller to state the epoch is what makes that impossible rather than unlikely.
+    """
+    import csv as _csv
+
+    out = tmp_path / "run"
+    out.mkdir()
+    write_estimated_reference(out, [(4.07, 14.19e-6)], vehicle="citroen", t0_us=T0)
+
+    row = next(_csv.DictReader((out / "reference.csv").open(encoding="utf-8")))
+    assert int(row["t_approx"]) == T0 + int(4.07 * 1e6)

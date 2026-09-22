@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 __all__ = [
@@ -108,12 +107,17 @@ def write_estimated_reference(
     crossings: list[tuple[float, float]],
     *,
     vehicle: str,
-    start_time: datetime | None = None,
+    t0_us: int,
 ) -> int:
     """Write ``reference.csv`` and its sidecar from detected crossings.
 
-    ``crossings`` is ``(t_peak_s, peak_strain)`` per crossing, as ``wimsim detect`` reports them.
-    Returns the number of rows written.
+    ``crossings`` is ``(t_peak_s, peak_strain)`` per crossing, as ``wimsim detect`` reports them,
+    and ``t0_us`` is the recording's own first sample timestamp. Returns the rows written.
+
+    ``t0_us`` is required rather than defaulted. It was a default once -- one recording's start time,
+    quietly applied to all eight -- and the seven files that got the wrong epoch were placed 300 to
+    400 seconds before their own recordings began. Nothing complained, because nothing read the
+    files yet; the error surfaced only when `score-real` matched zero of them.
 
     Refuses to overwrite a ``reference.csv`` that has no sidecar beside it. A measured reference
     file cannot be regenerated and an estimated one always can, and that asymmetry decides: the
@@ -132,7 +136,6 @@ def write_estimated_reference(
             "deliberately if you mean to replace it."
         )
 
-    epoch = start_time or datetime(2026, 2, 9, 8, 38, 25, tzinfo=UTC)
     # The corpus-wide cut, not a per-run one. Several recordings hold a single crossing, and one
     # point has no bimodality to read -- a midpoint computed from it would classify by rounding.
     cut = spec.axle_cut_strain
@@ -148,7 +151,7 @@ def write_estimated_reference(
                 [
                     f"est-{i:03d}",
                     f"{mass:.1f}",
-                    int((epoch.timestamp() + t_peak_s) * 1e6),
+                    int(t0_us + t_peak_s * 1e6),
                     f"ESTIMATED, not weighed -- {spec.name}, {which} wheel. {spec.note}",
                     f"{mass:.1f}",
                 ]

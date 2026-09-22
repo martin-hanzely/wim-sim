@@ -43,7 +43,7 @@ from wimsim.edge.pipeline import OfflinePipeline
 from wimsim.experiments.scoring import ScoreResult, score_events
 from wimsim.observability.metrics import Metrics
 from wimsim.observability.tracing import Tracing
-from wimsim.source import SyntheticSource
+from wimsim.source import build_source
 
 __all__ = ["OfflineResult", "load_run", "run_offline"]
 
@@ -120,7 +120,10 @@ def run_offline(
     """Detect over the whole run, fit on the calibration split, estimate, score the rest."""
     n_cal = calibration_passes or edge_cfg.estimate.bootstrap_passes
 
-    source = SyntheticSource(cfg)
+    # From the config, not hardcoded: this is the line that lets a replayed recording be
+    # scored against `reference.csv` by the same path a synthetic run is scored against its
+    # truth log. Principle 2 in the one place it had never actually reached.
+    source = build_source(cfg)
     pipeline = OfflinePipeline(
         edge_cfg,
         source=source,
