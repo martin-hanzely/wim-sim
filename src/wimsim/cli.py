@@ -16,6 +16,7 @@ Command surface:
     wimsim gap-report REAL_DIR             where the simulator and the sensor disagree
     wimsim write-estimated-reference DIR   reference masses from inference, NOT a weighing
     wimsim score-real REAL_DIR             score a recording against its reference.csv
+    wimsim score-corpus ROOT               leave-one-recording-out across the corpus
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -1655,6 +1656,113 @@ def score_real(
         "nothing about what the vehicle's own bounce added.",
         dim=True,
     )
+
+
+@app.command("score-corpus")
+def score_corpus(
+    root: Annotated[
+        Path, typer.Argument(help="Directory holding the recordings, e.g. data/real.")
+    ] = Path("data/real"),
+    channel: Annotated[str, typer.Option("--channel", help="Channel to score.")] = "Tenzo2",
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config.")] = (
+        "cintron_platform"
+    ),
+    estimator: Annotated[str, typer.Option("--estimator", help="Which estimator to fit.")] = (
+        "static_affine"
+    ),
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Write the result as JSON.")
+    ] = None,
+) -> None:
+    """Leave-one-recording-out across every recording that has a `reference.csv`.
+
+    `score-real` fits and scores inside one 60-second recording, where the calibration and the test
+    come from the same minute of the same drive-over. This fits on every other recording and
+    predicts the held-out one, which is the question actually worth asking: does a calibration
+    fitted here transfer *there*.
+
+    A whole recording is held out rather than random crossings. Crossings within a recording share
+    a vehicle, a driver, a line across the platform and a minute of thermal state, and splitting
+    them randomly leaks all of it across the fold boundary.
+    """
+    import json
+
+    from wimsim.core.config import load_edge_config
+    from wimsim.experiments.pooled import run_pooled
+    from wimsim.source.estimated_reference import SIDECAR
+    from wimsim.source.reference import REFERENCE_FILE
+
+    runs = (
+        sorted(d for d in root.iterdir() if (d / REFERENCE_FILE).is_file()) if root.is_dir() else []
+    )
+    if len(runs) < 2:
+        typer.secho(
+            f"{root} holds {len(runs)} recording(s) with a reference.csv; leave-one-out needs at "
+            "least two.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    try:
+        edge_cfg = load_edge_config(edge)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    if any((d / SIDECAR).is_file() for d in runs):
+        typer.secho(
+            "Reference masses in this corpus are ESTIMATED, not weighed. What follows measures "
+            "whether a calibration transfers between recordings, not whether it weighs vehicles.",
+            fg=typer.colors.YELLOW,
+        )
+
+    result = run_pooled(runs, edge_cfg, channel=channel, estimator=estimator)
+    if not result.folds:
+        typer.secho(
+            f"{result.n_recordings} recording(s) yielded matched crossings; nothing to cross-"
+            "validate.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    typer.secho(f"{root} / {channel} / {estimator}", bold=True)
+    _echo_kv(
+        [
+            ("recordings", result.n_recordings),
+            ("crossings matched", result.n_observations),
+            ("MAE (held out)", f"{result.mae_kg:,.1f} kg"),
+            ("MAPE (held out)", f"{result.mape:.2%}"),
+            ("bias (held out)", f"{result.bias_kg:+,.1f} kg"),
+            ("coverage (held out)", f"{result.coverage:.3f}"),
+            ("gain spread across folds", f"{result.gain_spread:.1%}"),
+        ]
+    )
+    if result.skipped:
+        typer.secho("skipped", bold=True)
+        for name, why in sorted(result.skipped.items()):
+            typer.echo(f"  {name:<24} {_one_line(why, 60)}")
+    typer.secho("per held-out recording", bold=True)
+    typer.echo(f"  {'recording':<24} {'fit':>4} {'n':>3} {'MAE kg':>8} {'MAPE':>7} {'bias kg':>9}")
+    for f in result.folds:
+        if f.error:
+            typer.echo(f"  {f.run_id:<24} {f.n_calibration:>4} {'--':>3}  {_one_line(f.error, 46)}")
+            continue
+        typer.echo(
+            f"  {f.run_id:<24} {f.n_calibration:>4} {f.n_scored:>3} {f.mae_kg:>8,.1f} "
+            f"{f.mape:>7.2%} {f.bias_kg:>+9,.1f}"
+        )
+
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
+        typer.secho(f"wrote {out}", fg=typer.colors.GREEN)
+
+
+def _one_line(text: object, limit: int = 60) -> str:
+    joined = " ".join(str(text).split())
+    return joined if len(joined) <= limit else joined[: limit - 1] + "..."
 
 
 @app.command("gap-report")
