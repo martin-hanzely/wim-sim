@@ -23,5 +23,6 @@ data/real/*
 # local compose overrides
 .env
 
-# the co-author export: regenerable from data/results via scripts/build_export.py
-export/data/*.csv
+# export/ IS tracked, CSVs included. They are NOT regenerable by someone who clones this repo --
+# data/results/ is ignored, so the parquets they are built from are not here. The export is the
+# deliverable for a reader without the runs.

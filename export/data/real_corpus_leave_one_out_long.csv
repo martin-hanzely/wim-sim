@@ -1,0 +1,48 @@
+family,held_out_recording,n_calibration,n_scored,metric,value,unit
+real_loo,20260209_cintron1,22,1,mae_kg,25.530415154323123,kg
+real_loo,20260209_cintron1,22,1,mape,0.05548883971815501,fraction
+real_loo,20260209_cintron1,22,1,bias_kg,-25.530415154323123,kg
+real_loo,20260209_cintron1,22,1,coverage,1.0,fraction
+real_loo,20260209_cintron1,22,1,mean_interval_width_kg,190.227991690542,kg
+real_loo,20260209_cintron1,22,1,fitted_gain,20743505.8014682,kg per feature unit
+real_loo,20260209_cintron2_spat,20,3,mae_kg,40.535587165848845,kg
+real_loo,20260209_cintron2_spat,20,3,mape,0.08810168912377492,fraction
+real_loo,20260209_cintron2_spat,20,3,bias_kg,-40.535587165848845,kg
+real_loo,20260209_cintron2_spat,20,3,coverage,1.0,fraction
+real_loo,20260209_cintron2_spat,20,3,mean_interval_width_kg,191.9875401670497,kg
+real_loo,20260209_cintron2_spat,20,3,fitted_gain,20240749.274744608,kg per feature unit
+real_loo,20260209_cintron3,20,3,mae_kg,69.66046995324395,kg
+real_loo,20260209_cintron3,20,3,mape,0.20677654046511562,fraction
+real_loo,20260209_cintron3,20,3,bias_kg,-69.66046995324395,kg
+real_loo,20260209_cintron3,20,3,coverage,0.6666666666666666,fraction
+real_loo,20260209_cintron3,20,3,mean_interval_width_kg,144.906377107292,kg
+real_loo,20260209_cintron3,20,3,fitted_gain,27220001.783215635,kg per feature unit
+real_loo,20260209_cintron4,19,4,mae_kg,23.401674063064036,kg
+real_loo,20260209_cintron4,19,4,mape,0.058414609565259484,fraction
+real_loo,20260209_cintron4,19,4,bias_kg,-23.401674063064036,kg
+real_loo,20260209_cintron4,19,4,coverage,1.0,fraction
+real_loo,20260209_cintron4,19,4,mean_interval_width_kg,203.35188984836168,kg
+real_loo,20260209_cintron4,19,4,fitted_gain,20965662.468149416,kg per feature unit
+real_loo,20260209_cintron5,17,6,mae_kg,19.369023432820143,kg
+real_loo,20260209_cintron5,17,6,mape,0.05273239071484678,fraction
+real_loo,20260209_cintron5,17,6,bias_kg,5.32956940364149,kg
+real_loo,20260209_cintron5,17,6,coverage,1.0,fraction
+real_loo,20260209_cintron5,17,6,mean_interval_width_kg,212.86312463508474,kg
+real_loo,20260209_cintron5,17,6,fitted_gain,20231805.06464022,kg per feature unit
+real_loo,20260209_fabia1,21,2,mae_kg,26.450273499754132,kg
+real_loo,20260209_fabia1,21,2,mape,0.08630814787507851,fraction
+real_loo,20260209_fabia1,21,2,bias_kg,26.450273499754132,kg
+real_loo,20260209_fabia1,21,2,coverage,1.0,fraction
+real_loo,20260209_fabia1,21,2,mean_interval_width_kg,192.94538362084813,kg
+real_loo,20260209_fabia1,21,2,fitted_gain,20496496.658196025,kg per feature unit
+real_loo,20260209_fabia3,19,4,mae_kg,92.25224324164996,kg
+real_loo,20260209_fabia3,19,4,mape,0.3450472593225843,fraction
+real_loo,20260209_fabia3,19,4,bias_kg,92.25224324164996,kg
+real_loo,20260209_fabia3,19,4,coverage,0.0,fraction
+real_loo,20260209_fabia3,19,4,mean_interval_width_kg,135.13749133566492,kg
+real_loo,20260209_fabia3,19,4,fitted_gain,18098617.1607906,kg per feature unit
+real_loo,POOLED,23,23,mae_kg,42.949954057690725,kg
+real_loo,POOLED,23,23,mape,0.13230354974241043,fraction
+real_loo,POOLED,23,23,bias_kg,0.18094146191736588,kg
+real_loo,POOLED,23,23,coverage,0.782608695652174,fraction
+real_loo,POOLED,23,23,gain_spread,0.5039824060252449,fraction

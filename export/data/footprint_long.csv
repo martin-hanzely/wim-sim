@@ -1,0 +1,10 @@
+family,estimator,host,metric,value,unit
+footprint,static_affine,x86 laptop (NOT a board),update_us,1.4443499999999998,us
+footprint,static_affine,x86 laptop (NOT a board),state_bytes,199,bytes
+footprint,static_affine,x86 laptop (NOT a board),n_updates,2000,count
+footprint,rls,x86 laptop (NOT a board),update_us,17.2931,us
+footprint,rls,x86 laptop (NOT a board),state_bytes,403,bytes
+footprint,rls,x86 laptop (NOT a board),n_updates,2000,count
+footprint,kalman,x86 laptop (NOT a board),update_us,24.235349999999997,us
+footprint,kalman,x86 laptop (NOT a board),state_bytes,456,bytes
+footprint,kalman,x86 laptop (NOT a board),n_updates,2000,count
