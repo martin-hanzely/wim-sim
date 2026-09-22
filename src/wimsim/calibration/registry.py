@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from wimsim.calibration.affine_temp import AffineTemp
 from wimsim.calibration.base import EstimatorState
 from wimsim.calibration.kalman import KalmanCalibration
 from wimsim.calibration.rls import RecursiveLeastSquares
@@ -24,6 +25,7 @@ __all__ = ["ESTIMATORS", "build_estimator", "estimator_from_state"]
 #: ``ResidualLearner`` is phase 6 and behind a feature flag, so it is deliberately absent.
 ESTIMATORS: dict[str, type] = {
     StaticAffine.estimator_name: StaticAffine,
+    AffineTemp.estimator_name: AffineTemp,
     RecursiveLeastSquares.estimator_name: RecursiveLeastSquares,
     KalmanCalibration.estimator_name: KalmanCalibration,
 }

@@ -1,0 +1,5 @@
+extends: default
+name: detect_ks
+description: Windowed KS alone. The only detector that sees a matched-mean, matched-variance shape change.
+drift:
+  detectors: [ks]

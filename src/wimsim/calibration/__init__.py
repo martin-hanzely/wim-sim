@@ -13,6 +13,7 @@ Phase 2 ships the baseline. ``RecursiveLeastSquares``, ``KalmanCalibration`` and
 ``ResidualLearner`` arrive in phase 5, behind the same interface.
 """
 
+from wimsim.calibration.affine_temp import AffineTemp
 from wimsim.calibration.base import (
     CalibrationEstimator,
     CalibrationProfile,
@@ -53,6 +54,7 @@ __all__ = [
     "CUSUM",
     "DETECTORS",
     "ESTIMATORS",
+    "AffineTemp",
     "CalibrationEstimator",
     "CalibrationProfile",
     "ChannelRatioMonitor",

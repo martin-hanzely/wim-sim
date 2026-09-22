@@ -50,6 +50,9 @@ noise:
   mains: {enabled: true, freq_hz: 50.0, amplitude: 8.7e-4, harmonics: [0.30, 0.12]}
 
 pulse:
+  # Written out rather than left to the model default because `--set` refuses a key that
+  # does not already exist, and the cintron_sim experiments need to switch this.
+  width_source: contact_patch
   shape: emg
   emg_tau_ratio: 0.55
   support_widths: 8.0

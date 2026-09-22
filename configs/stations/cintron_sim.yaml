@@ -1,0 +1,70 @@
+# ST-CINTRON-1 as a SYNTHETIC station: the real instrument's physics, at a sample rate the
+# simulator can afford.
+#
+# WHY THIS FILE EXISTS. Every synthetic result the project reports was produced on
+# `configs/stations/default.yaml`, which models a contact-force sensor -- millisecond axle pulses,
+# positive-going, width set by the tyre footprint. The hardware the eight recordings came from is a
+# different instrument: a strain platform whose response is the structure's influence line, ~770 ms
+# wide at the speeds tested. So no synthetic result corresponded to the hardware, which breaks the
+# sim-to-real chain structurally: the simulator was validated against recordings from an instrument
+# it was not modelling.
+#
+# WHAT DIFFERS FROM `cintron_platform.yaml`, AND WHY IT IS STILL THE SAME INSTRUMENT.
+#
+# Only the sample rate. 25 kHz is a property of the LOGGER that made the recordings, not of the
+# structure being measured. Carrying it into synthetic runs costs 50x for nothing: `S2_thermal_cycle`
+# at 25 kHz is 6.48 BILLION samples, and the whole ladder would take about 55 hours.
+#
+# 500 Hz is ample for this instrument. The influence line is 0.60 m long, so at the shipped traffic's
+# 85 km/h the pulse is 0.60 / 23.6 = 25 ms, and 500 Hz puts 13 samples across it -- with subsample
+# peak fitting, which phase 1 measured as necessary at any rate. Nothing about the physics being
+# modelled changes: k0, the influence length, the thermal constants and the noise are all copied
+# from the measured file unchanged.
+#
+# WHAT THIS IS NOT. It is not a model of the real *recordings*, which were taken at walking pace with
+# one wheel on the plate. It is the real instrument's response characteristics driven by the
+# project's own synthetic traffic, so that the scenario suite exercises the sensor the recordings
+# came from. Reading a result here as a prediction about the recordings would be wrong.
+#
+# Scenarios must also set `pulse.shape: influence_line` and `pulse.width_source: influence_length`,
+# because the pulse belongs to the SCENARIO rather than to the station. The experiment configs that
+# use this station do so in their `overrides`; running a scenario against this station without them
+# produces contact-patch pulses on an influence-line sensor, which is no instrument at all.
+
+station_id: ST-CINTRON-1-SIM
+sensor_id: Tenzo2
+description: >
+  The ST-CINTRON-1 strain platform's physics at a simulable sample rate. Identical to
+  cintron_platform.yaml except for sample_rate_hz; see the header for why that is the only
+  defensible difference.
+
+sample_rate_hz: 500.0
+lane_count: 1
+
+adc:
+  bits: 24                 # placeholder: the real export is strain, so no converter is described
+  range_min: -2.0
+  range_max: 2.0
+  unit: mV/V
+
+sensor:
+  # Copied unchanged from cintron_platform.yaml. ESTIMATED, NOT WEIGHED -- k0 descends from the
+  # Fabia's published operating weight and an axle split measured off the bimodal peak amplitudes,
+  # converted at gauge factor 2.0 and an ASSUMED quarter bridge. See docs/sim-to-real.md.
+  k0: 1.44e-8
+  alpha0_per_c: -2.0e-4
+  alpha_walk_sigma_per_sqrt_s: 0.0
+  t_ref_c: 20.0
+  contact_patch_m: 0.22    # unused: width_source is influence_length
+  influence_length_m: 0.60 # INFERRED from the ~770 ms FWHM and the inferred 0.78 m/s
+
+thermal:
+  tau_thermal_s: 1800.0
+  t_sensor_init_c: null
+
+temperature_probe:
+  enabled: true
+  lag_s: 120.0
+  offset_c: 0.0
+  noise_sigma_c: 0.01      # measured: the probes are quiet and update at ~200 Hz
+  resolution_c: 0.0

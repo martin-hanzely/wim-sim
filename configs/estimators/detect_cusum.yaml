@@ -1,0 +1,5 @@
+extends: default
+name: detect_cusum
+description: CUSUM alone, as the single-detector reference point for the comparison.
+drift:
+  detectors: [cusum]

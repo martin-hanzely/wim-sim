@@ -1,0 +1,8 @@
+# All four detectors in parallel, which is what section IV-G of the manuscript claims runs.
+# The shipped `default` runs two: cusum and page_hinkley. Every detection number the project has
+# reported is the behaviour of those two, and this is the arm that makes the claim testable.
+extends: default
+name: detect_all4
+description: CUSUM, Page-Hinkley, ADWIN and windowed KS in parallel -- the ensemble IV-G describes.
+drift:
+  detectors: [cusum, page_hinkley, adwin, ks]

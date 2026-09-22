@@ -46,6 +46,9 @@ noise:
   pink_sigma: 1.5e-4
 
 pulse:
+  # Written out rather than left to the model default because `--set` refuses a key that
+  # does not already exist, and the cintron_sim experiments need to switch this.
+  width_source: contact_patch
   shape: emg
   emg_tau_ratio: 0.55
 

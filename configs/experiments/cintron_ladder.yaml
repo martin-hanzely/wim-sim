@@ -1,0 +1,37 @@
+# The scenario suite on the instrument the recordings actually came from.
+#
+# Every synthetic result in the project was produced on `default`, a contact-force sensor. The
+# hardware is a strain platform whose response is the structure's influence line. So no synthetic
+# result corresponded to the hardware, and the sim-to-real chain was broken structurally: the
+# simulator was validated against recordings from an instrument it was not modelling.
+#
+# `cintron_sim` is that instrument at 500 Hz instead of the logger's 25 kHz -- the sample rate is a
+# property of the logger, not of the structure, and carrying it would cost 50x for nothing. The
+# `pulse` overrides are required: the pulse belongs to the scenario, so without them this would be
+# contact-patch pulses on an influence-line sensor, which is no instrument at all.
+experiment_id: cintron_ladder
+description: >
+  The seven scorable scenarios on the real instrument's physics -- influence-line response, the
+  measured k0 and influence length -- rather than on the contact-force model every other result used.
+scenarios:
+  - S1_nominal
+  - S2_thermal_cycle
+  - S3_zero_drift_walk
+  - S4_step_fault
+  - S5_outage
+  - S6_combined
+  - S7_sparse_reference
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3]
+station: cintron_sim
+edge_config: default
+edge_overrides: [edge.control.enabled=true]
+reference_every_n: 10
+overrides:
+  - scenario.output.samples=none
+  - scenario.pulse.shape=influence_line
+  - scenario.pulse.width_source=influence_length
+scenario_overrides:
+  S1_nominal: [scenario.duration_s=21600.0]
+calibration_passes: 60
+fault_horizon_s: 1800.0

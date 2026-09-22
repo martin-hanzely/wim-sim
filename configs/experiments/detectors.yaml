@@ -1,0 +1,18 @@
+# The per-detector comparison the manuscript's section IV-G assumes exists.
+#
+# All four detectors are implemented and unit-tested, but the shipped config runs TWO -- cusum and
+# page_hinkley -- so every detection number the project has reported is the behaviour of that pair.
+# This runs each alone, plus the four-in-parallel ensemble IV-G actually describes.
+experiment_id: detectors
+description: >
+  CUSUM, Page-Hinkley, ADWIN and windowed KS each alone, and all four in parallel, on the two
+  scenarios carrying calibration faults.
+scenarios: [S4_step_fault, S6_combined]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_configs: [detect_cusum, detect_ph, detect_adwin, detect_ks, detect_all4]
+edge_overrides: [edge.control.enabled=true]
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

@@ -1,0 +1,25 @@
+# Does the third parameter earn its place?
+#
+# Section III-B of the manuscript specifies `m = theta0 + theta1*s + theta2*(s*dT)` with the
+# interaction identified online. No estimator fitted such a term, so the claim was withdrawn. This
+# makes it a tested hypothesis instead.
+#
+# S2_thermal_cycle is the scenario the term exists for: 72 hours of daily thermal cycling. The
+# two-parameter map already sits within 2 % of the dynamic load floor there, which is the error no
+# calibration can remove -- so there is very little room for a third parameter to find. S3 and S6
+# are included because a term that helps only where it was designed to help is a different claim
+# from one that helps generally.
+experiment_id: theta2
+description: >
+  The three-parameter affine map against the two-parameter one, on the thermal scenario it is for
+  and on two others, at thirty seeds.
+scenarios: [S2_thermal_cycle, S3_zero_drift_walk, S6_combined]
+estimators: [static_affine, affine_temp]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+edge_config: default
+edge_overrides: [edge.control.enabled=false]
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

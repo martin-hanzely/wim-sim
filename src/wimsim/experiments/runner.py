@@ -141,6 +141,8 @@ class RunSpec:
     """How often a reference vehicle arrives, for this cell. ``None`` leaves the edge config's own."""
     control: bool | None = None
     """Whether the MAPE-K loop runs. ``None`` leaves the edge config's own setting."""
+    edge_config: str = "default"
+    """Which pipeline config this cell runs."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +155,20 @@ class ExperimentSpec:
     seeds: Sequence[int]
     description: str = ""
     edge_config: str = "default"
+    edge_configs: Sequence[str] = field(default_factory=tuple)
+    """The pipeline config as an axis.
+
+    Two things need it. The detectors live in the edge config, so a per-detector comparison is a
+    sweep over configs and nothing else -- and only two of the four are enabled by default, so every
+    detection number reported before this is the behaviour of that pair. And recalibration frequency
+    is driven by `confirm_sigma`, which is also an edge setting.
+    """
+    station: str | None = None
+    """Station to run every scenario on. None keeps whichever the scenario names.
+
+    Every sweep before this ran on `default`, the contact-force model, while the hardware
+    the real recordings came from is an influence-line strain platform -- so no synthetic
+    result corresponded to the instrument the simulator was validated against."""
     overrides: Sequence[str] = field(default_factory=tuple)
     """Scenario overrides, applied to every run: ``scenario.duration_s=600``."""
     edge_overrides: Sequence[str] = field(default_factory=tuple)
@@ -204,6 +220,11 @@ class ExperimentSpec:
                 f"scenario_overrides names {stray}, not in this sweep's scenarios "
                 f"{sorted(self.scenarios)}; a typo here is a setting that silently does nothing."
             )
+        if self.edge_configs and self.edge_config != "default":
+            raise ValueError(
+                "both edge_config and edge_configs are set; one of them would be silently ignored. "
+                "Name the axis or the scalar, not both."
+            )
         if self.reference_rates and self.reference_every_n is not None:
             raise ValueError(
                 "both reference_every_n and reference_rates are set; one of them would be "
@@ -229,17 +250,21 @@ class ExperimentSpec:
         """Every cell, in a stable order."""
         rates: tuple[int | None, ...] = tuple(self.reference_rates) or (self.reference_every_n,)
         arms: tuple[bool | None, ...] = tuple(self.control_arms) or (None,)
+        edges: tuple[str, ...] = tuple(self.edge_configs) or (self.edge_config,)
         # A suffix appears only where the axis actually varies: a run id should name what separates
         # a cell from its neighbours, and `__ref10` on every row of `ladder` names nothing.
         label_rate, label_arm = len(rates) > 1, len(arms) > 1
-        for scenario, estimator, seed, rate, arm in itertools.product(
-            self.scenarios, self.estimators, self.seeds, rates, arms
+        label_edge = len(edges) > 1
+        for scenario, estimator, seed, rate, arm, edge in itertools.product(
+            self.scenarios, self.estimators, self.seeds, rates, arms, edges
         ):
             run_id = f"{scenario}__{estimator}__seed{seed}"
             if label_rate:
                 run_id += f"__ref{rate}"
             if label_arm:
                 run_id += "__control" if arm else "__open"
+            if label_edge:
+                run_id += f"__{edge}"
             yield RunSpec(
                 scenario=scenario,
                 estimator=estimator,
@@ -247,6 +272,7 @@ class ExperimentSpec:
                 run_id=run_id,
                 reference_every_n=rate,
                 control=arm,
+                edge_config=edge,
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -257,6 +283,8 @@ class ExperimentSpec:
             "estimators": list(self.estimators),
             "seeds": list(self.seeds),
             "edge_config": self.edge_config,
+            "station": self.station,
+            "edge_configs": list(self.edge_configs),
             "overrides": list(self.overrides),
             "scenario_overrides": {k: list(v) for k, v in self.scenario_overrides.items()},
             "edge_overrides": list(self.edge_overrides),
@@ -400,7 +428,7 @@ def _run_one(spec: ExperimentSpec, cell: RunSpec, provenance) -> dict[str, Any]:
             "scenario": cell.scenario,
             "estimator": cell.estimator,
             "seed": cell.seed,
-            "edge_config": spec.edge_config,
+            "edge_config": cell.edge_config,
             "git_commit": provenance.git_commit or "unknown",
             "git_dirty": bool(provenance.git_dirty),
             "wimsim_version": __version__,
@@ -447,7 +475,10 @@ def _execute(spec: ExperimentSpec, cell: RunSpec):
     from wimsim.signal.writer import write_run
 
     cfg = load_run_config(
-        cell.scenario, overrides=spec.overrides_for(cell.scenario), seed=cell.seed
+        cell.scenario,
+        spec.station,
+        overrides=spec.overrides_for(cell.scenario),
+        seed=cell.seed,
     )
     edge_cfg = _edge_for(spec, cell)
 
@@ -467,14 +498,17 @@ def _edge_for(spec: ExperimentSpec, cell: RunSpec):
         overrides.append(f"edge.control.reference_every_n={cell.reference_every_n}")
     if cell.control is not None:
         overrides.append(f"edge.control.enabled={str(cell.control).lower()}")
-    return load_edge_config(spec.edge_config, overrides=overrides)
+    return load_edge_config(cell.edge_config, overrides=overrides)
 
 
 def _config_hash_of(spec: ExperimentSpec, cell: RunSpec) -> str:
     """The scenario hash, even for a cell that failed -- so the failure is attributable."""
     try:
         return load_run_config(
-            cell.scenario, overrides=spec.overrides_for(cell.scenario), seed=cell.seed
+            cell.scenario,
+            spec.station,
+            overrides=spec.overrides_for(cell.scenario),
+            seed=cell.seed,
         ).config_hash()
     except Exception:  # pragma: no cover - a config that will not even load
         return "unknown"

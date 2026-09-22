@@ -1,0 +1,8 @@
+# confirm_sigma = 4.0. Lower confirms drift more readily, so the loop recalibrates more often --
+# which is the knob this sweep turns. Each recalibration resets the conformal calibration set, so
+# the cost shows up as fallback intervals rather than as a worse mass.
+extends: default
+name: recal_s40
+description: Recalibration frequency arm, confirm_sigma = 4.0.
+control:
+  confirm_sigma: 4.0

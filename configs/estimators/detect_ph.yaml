@@ -1,0 +1,5 @@
+extends: default
+name: detect_ph
+description: Page-Hinkley alone.
+drift:
+  detectors: [page_hinkley]

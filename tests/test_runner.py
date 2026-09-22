@@ -619,3 +619,97 @@ def test_every_column_the_template_declares_is_actually_filled(tiny_spec, tmp_pa
         f"these columns are declared and never filled: {sorted(always_null)}. Either a row builder "
         "is missing them or the template should not declare them."
     )
+
+
+def test_a_sweep_can_name_the_station_it_runs_on() -> None:
+    """Every sweep before this ran on whichever station the scenario named, which is `default` --
+    the contact-force model. The hardware the real recordings came from is an influence-line strain
+    platform, so no synthetic result corresponded to it and the sim-to-real chain was broken
+    structurally: the simulator was validated against recordings from an instrument it was not
+    modelling.
+
+    Without a station axis that cannot be fixed, because the station is an argument to
+    `load_run_config` and the runner was never passing one.
+    """
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S1_nominal"],
+        estimators=["static_affine"],
+        seeds=[1],
+        station="cintron_sim",
+    )
+    assert spec.station == "cintron_sim"
+    assert spec.to_dict()["station"] == "cintron_sim"
+
+
+def test_the_station_reaches_the_generated_config() -> None:
+    """The axis is worthless if it does not change the instrument -- `cintron_sim` carries a k0 four
+    orders of magnitude from the default's, so a wrong station is not subtle."""
+    from wimsim.core.config import load_run_config
+
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S1_nominal"],
+        estimators=["static_affine"],
+        seeds=[1],
+        station="cintron_sim",
+    )
+    cell = next(iter(spec.grid()))
+    cfg = load_run_config(cell.scenario, spec.station, overrides=spec.overrides_for(cell.scenario))
+    assert cfg.station.station_id == "ST-CINTRON-1-SIM"
+    assert cfg.station.sensor.k0 != load_run_config(cell.scenario).station.sensor.k0
+
+
+def test_no_station_named_keeps_the_scenario_default() -> None:
+    spec = ExperimentSpec(
+        experiment_id="t", scenarios=["S1_nominal"], estimators=["rls"], seeds=[1]
+    )
+    assert spec.station is None
+
+
+def test_the_edge_config_can_be_swept() -> None:
+    """Two things need it and neither can be done otherwise: comparing detectors, which live in the
+    edge config, and sweeping recalibration frequency, which is driven by `confirm_sigma`.
+
+    The per-detector table the manuscript's section IV-G assumes exists cannot be produced without
+    this -- only two of the four detectors are enabled in the shipped config, so every detection
+    number reported so far is the behaviour of that pair.
+    """
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S4_step_fault"],
+        estimators=["rls"],
+        seeds=[1],
+        edge_configs=["detect_cusum", "detect_all4"],
+    )
+    cells = list(spec.grid())
+    assert [c.edge_config for c in cells] == ["detect_cusum", "detect_all4"]
+    assert {c.run_id for c in cells} == {
+        "S4_step_fault__rls__seed1__detect_cusum",
+        "S4_step_fault__rls__seed1__detect_all4",
+    }
+
+
+def test_a_single_edge_config_keeps_its_run_ids_and_the_scalar_still_works() -> None:
+    spec = ExperimentSpec(
+        experiment_id="t",
+        scenarios=["S1_nominal"],
+        estimators=["rls"],
+        seeds=[1],
+        edge_config="filtered",
+    )
+    cells = list(spec.grid())
+    assert [c.run_id for c in cells] == ["S1_nominal__rls__seed1"]
+    assert cells[0].edge_config == "filtered"
+
+
+def test_naming_both_the_edge_axis_and_the_scalar_is_refused() -> None:
+    with pytest.raises(ValueError, match="edge_config"):
+        ExperimentSpec(
+            experiment_id="t",
+            scenarios=["S1_nominal"],
+            estimators=["rls"],
+            seeds=[1],
+            edge_config="filtered",
+            edge_configs=["default", "filtered"],
+        )

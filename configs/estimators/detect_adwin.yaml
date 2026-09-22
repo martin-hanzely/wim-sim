@@ -1,0 +1,5 @@
+extends: default
+name: detect_adwin
+description: ADWIN alone, so a per-detector comparison has an ADWIN arm at scenario level.
+drift:
+  detectors: [adwin]
