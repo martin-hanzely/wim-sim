@@ -479,11 +479,71 @@ derivation, and the writer **refuses to overwrite a `reference.csv` that has no 
 an estimated file can always be regenerated and a measured one cannot, and that asymmetry decides
 which way the default falls.
 
+## Scoring the real corpus, honestly
+
+`wimsim score-real` fits and scores inside one recording. On this corpus that proves very little:
+60 s each, one to seven crossings, and the calibration and the test come from the same minute of the
+same drive-over. It reported MAE of 2.3 to 22.4 kg, and those numbers were optimistic.
+
+`wimsim score-corpus` holds out a whole recording, fits on the other six, and predicts it. A whole
+recording rather than random crossings, because crossings within one share a vehicle, a driver, a
+line across the platform and a minute of thermal state — a random split leaks all of that across the
+fold boundary.
+
+7 recordings, 23 matched crossings, `static_affine` on Tenzo2:
+
+| | held out |
+|---|---|
+| MAE | **42.9 kg** |
+| MAPE | **13.23 %** |
+| bias | +0.2 kg |
+| coverage | 0.783 |
+| gain spread across folds | **50.4 %** |
+
+### The pooled bias is a lie, and the folds are what say so
+
+| | |
+|---|---|
+| pooled bias | **+0.2 kg** |
+| mean \|fold bias\| | **40.5 kg** |
+
+Every fold is systematically wrong and they cancel. Broken down by vehicle, the sign splits cleanly:
+
+| | folds | mean bias |
+|---|---|---|
+| Citroën | 5 | **−30.8 kg** |
+| Fabia | 2 | **+59.4 kg** |
+
+**The two vehicles do not sit on one calibration line.** A calibration fitted mostly on Citroëns
+over-reads the Fabia by 59 kg; one fitted with the Fabia in it under-reads the Citroëns by 31.
+
+Two explanations fit, and this corpus cannot separate them. Either the platform's response genuinely
+differs between the two vehicles — different track widths, different tyre contact, a different line
+across the plate — or the Citroën's inferred mass is simply wrong, since it came from the measured
+peak ratio against the Fabia rather than from a weighing. **One weighbridge ticket distinguishes
+them**, and nothing else here will.
+
+The cross-validated fit also lands above the sensitivity inferred earlier: **3.67–5.53 × 10⁻⁸
+strain/kg** against 2.70–3.06 × 10⁻⁸. That inference assumed proportionality — mass through the
+origin — while a two-parameter fit prefers a different slope with an intercept. The intercept is not
+obviously spurious: a plate with a preload, or a zero-line the compensation does not fully remove,
+would produce one.
+
+### What this is and is not
+
+It is a measurement of whether a calibration *transfers between recordings*, which is a real
+property of the installation and one a 50 % gain spread answers clearly: not well, on 23 crossings.
+
+It is not a weighing. The reference masses are the inference in `docs/sim-to-real.md`, so a
+systematic error in that inference appears here as a systematic error in the pipeline, and the two
+cannot be told apart from inside. `data/real/EXAMPLE` is reported as skipped rather than dropped —
+it carries a `reference.csv` but its channel is `S1`.
+
 ## What is still missing
 
-**No real vehicle has been weighed.** The file above is an inference, not a measurement, and one
-weighbridge ticket for either car would replace it outright. Every pipeline entry point past
-detection also bootstraps its calibration from a truth log, which a recording does not have.
+**No real vehicle has been weighed**, and the leave-one-out result above is the sharpest argument
+yet for why that matters: the per-vehicle bias split cannot be attributed to the platform or to the
+inference without one known mass. Everything else in this section is reproducible; that is not.
 
 This is the same conclusion `docs/sim-to-real.md` reached in phase 3, and the list at the end of that
 document -- gauge separation in metres, one weighed vehicle, a recording at road speed, the bridge

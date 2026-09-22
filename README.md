@@ -116,6 +116,10 @@ wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1
 # reference masses from INFERENCE, not from a weighbridge. Every row says so, and so does
 # the sidecar it writes beside them.
 wimsim write-estimated-reference data/real/20260209_cintron1 --vehicle citroen
+
+# score one recording, then the corpus with a whole recording held out each time
+wimsim score-real data/real/20260209_cintron5
+wimsim score-corpus data/real
 ```
 
 Or via `make`: `make sim`, `make test`, `make checkpoint`, `make determinism`.
