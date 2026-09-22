@@ -17,6 +17,7 @@ Command surface:
     wimsim write-estimated-reference DIR   reference masses from inference, NOT a weighing
     wimsim score-real REAL_DIR             score a recording against its reference.csv
     wimsim score-corpus ROOT               leave-one-recording-out across the corpus
+    wimsim check-channels ROOT             watch two gauges against each other, no references
     wimsim edge-run DIR                    stream a run to the broker, traced and measured
     wimsim ingest                          broker -> TimescaleDB, with a dead-letter queue
     wimsim load-truth DIR                  load a run's truth log into the truth.* schema
@@ -1763,6 +1764,132 @@ def score_corpus(
 def _one_line(text: object, limit: int = 60) -> str:
     joined = " ".join(str(text).split())
     return joined if len(joined) <= limit else joined[: limit - 1] + "..."
+
+
+@app.command("check-channels")
+def check_channels(
+    root: Annotated[
+        Path, typer.Argument(help="Directory holding the recordings, e.g. data/real.")
+    ] = Path("data/real"),
+    channel_a: Annotated[str, typer.Option("--a", help="Reference channel.")] = "Tenzo1",
+    channel_b: Annotated[str, typer.Option("--b", help="Channel compared against it.")] = "Tenzo2",
+    edge: Annotated[str, typer.Option("--edge", "-e", help="Pipeline config.")] = (
+        "cintron_platform"
+    ),
+    threshold_sigma: Annotated[
+        float, typer.Option("--sigma", help="Robust sigmas before a crossing counts as outside.")
+    ] = 3.0,
+) -> None:
+    """Watch two gauges against each other. Needs no reference vehicle at all.
+
+    Every drift detector in `calibration/` watches the residual against a known mass, so all of them
+    need reference vehicles -- and the reference-rate sweep measured what that costs when references
+    are scarce. Two channels viewing the same load sit at a fixed amplitude ratio, and that costs
+    nothing to watch.
+
+    It detects without diagnosing: a ratio that moves means one channel moved, and two channels give
+    one equation, so which one is not recoverable from the ratio. It is also blind to anything
+    common to both -- a platform losing stiffness, a temperature moving both gauges -- so it
+    complements the residual detectors rather than replacing them.
+    """
+    import numpy as np
+
+    from wimsim.calibration import ChannelRatioMonitor
+    from wimsim.core.config import RunConfig, load_edge_config, load_run_config
+    from wimsim.edge.pipeline import OfflinePipeline
+    from wimsim.experiments.offline import _bootstrap_profile, _provenance_for
+    from wimsim.source import build_source
+
+    if not root.is_dir():
+        typer.secho(f"{root} is not a directory", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+
+    try:
+        edge_cfg = load_edge_config(edge)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.secho(f"config error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    base = load_run_config("S8_replay_real").model_dump(mode="json")
+
+    def crossings(run_dir: Path, channel: str):
+        tree = dict(base)
+        tree["scenario"] = dict(base["scenario"])
+        tree["scenario"]["source"] = {
+            "kind": "replay",
+            "replay": {
+                "run_dir": str(run_dir),
+                "channel": channel,
+                "rate": "accelerated",
+                "speed_multiplier": None,
+            },
+        }
+        cfg = RunConfig.model_validate(tree)
+        pipeline = OfflinePipeline(
+            edge_cfg,
+            source=build_source(cfg),
+            profile=_bootstrap_profile(edge_cfg),
+            provenance=_provenance_for(cfg),
+        )
+        return [
+            (e.t_peak_s, abs(e.peak))
+            for e in pipeline.detect_only()
+            if 0.3 < (e.t_end_s - e.t_start_s) < 3.0
+        ]
+
+    monitor = ChannelRatioMonitor(threshold_sigma=threshold_sigma)
+    rows: list[tuple[str, float, float]] = []
+    skipped: list[str] = []
+
+    for run_dir in sorted(d for d in root.iterdir() if d.is_dir()):
+        try:
+            a_peaks, b_peaks = crossings(run_dir, channel_a), crossings(run_dir, channel_b)
+        except (OSError, KeyError, ValueError) as exc:
+            skipped.append(f"{run_dir.name}: {exc}")
+            continue
+        if not a_peaks or not b_peaks:
+            continue
+        for t_b, peak_b in b_peaks:
+            j = int(np.argmin([abs(t_a - t_b) for t_a, _ in a_peaks]))
+            if abs(a_peaks[j][0] - t_b) > 0.5:
+                continue
+            peak_a = a_peaks[j][1]
+            monitor.observe(peak_a, peak_b)
+            rows.append((run_dir.name, peak_b / peak_a, monitor.last_z))
+
+    if not rows:
+        typer.secho(f"no paired crossings found in {root}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(1)
+
+    median, sigma = monitor.baseline()
+    typer.secho(f"{root}  {channel_b} / {channel_a}", bold=True)
+    _echo_kv(
+        [
+            ("paired crossings", len(rows)),
+            ("baseline ratio", f"{median:.3f}" if median == median else "-- (warming up)"),
+            ("robust sigma", f"{sigma:.3f}" if sigma == sigma else "--"),
+            (
+                "resolution",
+                f"~{threshold_sigma * sigma / median:.0%} single-channel change"
+                if median == median and median > 0
+                else "--",
+            ),
+            ("alarmed", "YES" if monitor.alarmed else "no"),
+        ]
+    )
+    for line in skipped:
+        typer.echo(f"  skipped  {line[:70]}")
+
+    typer.secho("per crossing", bold=True)
+    for name, ratio, z in rows:
+        flag = "  <-- outside" if z > threshold_sigma else ""
+        typer.echo(f"  {name:<26} {ratio:6.3f}  z={z:5.2f}{flag}")
+
+    typer.secho(
+        "Detects without diagnosing: two channels give one equation, so which gauge moved is not "
+        "recoverable from the ratio. Blind to anything common to both.",
+        dim=True,
+    )
 
 
 @app.command("gap-report")

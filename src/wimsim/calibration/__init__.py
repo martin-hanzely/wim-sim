@@ -20,6 +20,7 @@ from wimsim.calibration.base import (
     MassEstimate,
     ReferenceObservation,
 )
+from wimsim.calibration.channel_ratio import ChannelRatioMonitor
 from wimsim.calibration.conformal import ConformalInterval
 from wimsim.calibration.controller import (
     ARBITRATION_MODES,
@@ -54,6 +55,7 @@ __all__ = [
     "ESTIMATORS",
     "CalibrationEstimator",
     "CalibrationProfile",
+    "ChannelRatioMonitor",
     "ConformalInterval",
     "ControllerConfig",
     "ControllerEvent",
