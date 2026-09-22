@@ -65,31 +65,31 @@ built on two passes and a row built on four thousand are otherwise the same widt
 
 `wimsim experiment ladder` -- 7 scenarios x 3 estimators x 3 seeds, 63 runs, 0 failed, 75 minutes,
 one reference vehicle in ten, the controller enabled throughout. Full table and figures in
-`data/results/ladder/`; commit `d05a9451`, clean tree. Means over the three seeds:
+`data/results/ladder/`; commit `c1881d4f`, clean tree. Means over the three seeds:
 
 | scenario | estimator | scored | MAE kg | x floor | bias kg | coverage |
 |---|---|---|---|---|---|---|
 | S1_nominal | static_affine | 1392 | 0.98 | -- | -0.14 | 0.958 |
 | | rls | 1392 | 0.97 | -- | -0.06 | 0.957 |
-| | kalman | 1392 | 0.97 | -- | -0.03 | 0.927 |
+| | kalman | 1392 | 0.97 | -- | -0.03 | 0.959 |
 | S2_thermal_cycle | static_affine | 12951 | 136.66 | 1.01 | **-24.66** | 0.937 |
 | | rls | 12951 | 137.03 | 1.01 | +0.96 | 0.946 |
-| | kalman | 12951 | 138.24 | 1.02 | +2.38 | 0.950 |
+| | kalman | 12951 | 138.24 | 1.02 | +2.38 | 0.959 |
 | S3_zero_drift_walk | static_affine | 4751 | 132.63 | 1.00 | -14.77 | 0.939 |
 | | rls | 4751 | 133.74 | 1.01 | +1.28 | 0.944 |
-| | kalman | 4751 | 135.05 | 1.02 | +3.87 | 0.941 |
+| | kalman | 4751 | 135.05 | 1.02 | +3.87 | 0.965 |
 | S4_step_fault | static_affine | 3465 | 182.57 | **1.40** | +16.48 | 0.907 |
 | | rls | 3465 | 153.29 | 1.17 | -10.79 | 0.939 |
-| | **kalman** | 3465 | **147.42** | **1.13** | -8.79 | 0.940 |
+| | **kalman** | 3465 | **147.42** | **1.13** | -8.79 | 0.973 |
 | S5_outage | static_affine | 1388 | 127.70 | 1.01 | -19.58 | 0.922 |
 | | rls | 1388 | 127.24 | 1.00 | -15.41 | 0.934 |
-| | kalman | 1388 | 129.48 | 1.02 | -13.03 | 0.902 |
+| | kalman | 1388 | 129.48 | 1.02 | -13.03 | 0.985 |
 | S6_combined | static_affine | 5041 | 715.35 | 3.82 | -59.98 | 0.913 |
 | | **rls** | 5041 | **667.21** | **3.56** | -41.45 | 0.914 |
-| | kalman | 5041 | 724.92 | 3.87 | -3.64 | 0.895 |
+| | kalman | 5041 | 724.92 | 3.87 | -3.64 | 0.919 |
 | S7_sparse_reference | static_affine | 7147 | 181.50 | 1.16 | **-96.75** | 0.887 |
 | | rls | 7147 | 159.17 | 1.02 | -24.29 | 0.937 |
-| | kalman | 7147 | 159.30 | 1.02 | -14.92 | 0.939 |
+| | kalman | 7147 | 159.30 | 1.02 | -14.92 | 0.955 |
 
 `x floor` is MAE divided by the dynamic load error the vehicles brought with them. S1 has no
 dynamic load, so it has no floor to divide by.
@@ -212,70 +212,80 @@ it is a statement about sites rather than about algorithms:
 > accuracy is being produced by whichever estimator is underneath. A site that cannot supply
 > references at that rate should deploy an adaptive estimator and not expect the loop to save it.
 
-### An interval that quietly stops being an interval
+### An interval that quietly stopped being an interval, and the repair
 
-The sweep turned up something nobody asked it for. On S4 with the loop on, as references get rarer:
+The reference-rate sweep turned up something nobody asked it for. Kalman on S4 at one reference in
+fifty had the *best* MAE of the three estimators and coverage **0.754** — an interval promising 95 %
+and delivering 75 %, with no warning from the point estimate.
 
-| estimator | coverage at 1 in 2 | at 1 in 50 | interval width at 1 in 50 | bias at 1 in 50 |
-|---|---|---|---|---|
-| kalman | 0.951 | **0.758** | 916 kg | −41.7 kg |
-| rls | 0.948 | 0.971 | 1089 kg | −92.4 kg |
-| static_affine | 0.917 | 0.961 | 1112 kg | −140.5 kg |
+**The first explanation offered here was wrong.** It read the narrow band as a small, stale conformal
+calibration set. That was a plausible mechanism and it did not survive being checked. Splitting the
+coverage by `interval_source` — a field the events had carried since phase 5 — said what actually
+happened:
 
-**Kalman has by far the smallest bias at one in fifty and by far the worst coverage.** An interval
-promising 95 % and delivering 76 % is the specific failure mode that makes a confident estimator
-more dangerous than an inaccurate one, and the point estimate gives no warning of it — MAE at that
-rate is 1.186× the floor, the best of the three.
-
-**The first explanation offered here was wrong.** It read the narrow width as a small, stale
-conformal calibration set: 71 references in a sixteen-hour run, tight residuals because the filter
-tracks, so an interval too narrow for the drift when it came. That was a hypothesis with a plausible
-mechanism and it did not survive being checked.
-
-Splitting the coverage by `interval_source` — a field the events have carried since phase 5 — says
-what actually happened:
-
-| 1 in 50 | n | coverage |
+| 1 in 50, before the repair | n | coverage |
 |---|---|---|
-| `conformal_relative` | 2551 | **1.000** |
+| `conformal_relative` | 2551 | 1.000 |
 | `kalman_analytic` | 841 | **0.007** |
 | pooled | 3392 | 0.754 |
 
-| 1 in 2 | n | coverage |
+Conformal was never the problem. 841 of 3392 events carried a band from a construction the
+configuration did not ask for: `uncertainty.method` is `conformal`, conformal needs 19 scored
+references before it can claim a 95 % quantile, and at one in fifty those take four hours to arrive.
+Until then the pipeline fell back to the estimator's own analytic band — which for the Kalman filter
+is the construction phase 5 measured at coverage 0.0065 and chose conformal *specifically to avoid*.
+The system had a documented catastrophic failure mode, picked a default to avoid it, and fell back
+to it whenever the default was not ready.
+
+**So the construction was fixed rather than routed around.** The Kalman band was `J P J' + R/k²`.
+Both terms are sensor-side — how well the two parameters are known, and how noisy one reading is —
+while the dominant error in weigh-in-motion is the vehicle's own bounce, about 141 kg on these
+scenarios, which the filter is never told about. The band is now the empirical prediction-error
+spread, which contains everything the measurement model does not. It *replaces* the analytic terms
+rather than adding to them: the residual is a prediction error against the prior state, so it
+already carries the measurement noise and the parameter uncertainty.
+
+| Kalman coverage | before | after |
 |---|---|---|
-| `conformal_relative` | 3392 | 0.952 |
+| S4 at 1 in 50 | 0.754 | **0.980** |
+| S4 (ladder, 1 in 10) | 0.940 | 0.973 |
+| S5 | 0.902 | 0.985 |
+| S7 | 0.939 | 0.955 |
+| S6 | 0.895 | 0.919 |
+| phase-5 checkpoint scenario | 0.0065 | 0.897 |
 
-The conformal interval is not the problem and never was; if anything it is *too conservative* when
-references are sparse. **841 of 3392 events carried a band from a construction the configuration did
-not ask for.**
+MAE and bias are unchanged everywhere, which is the check that only the band moved.
 
-`uncertainty.method` is `conformal`, but conformal needs 19 scored references before it can claim a
-95 % quantile, and at one in fifty they take four hours to arrive. Until then `_conformal_interval`
-returns `None` and the pipeline silently falls back to the estimator's own analytic band — which for
-the Kalman filter is the construction phase 5 measured at **coverage 0.0065** and chose conformal
-specifically to avoid. Visible in the time profile:
+Two things bit on the way, both recorded in `calibration/kalman.py`. The residual has to be in
+kilograms rather than feature units. And it must not be accumulated while the filter is still
+converging — a fresh filter's first prediction errors describe its prior, not the plant, and at an
+EWMA memory of 0.98 the first one still carries 3e-4 of its weight after 400 updates, which left a
+filter whose true spread was 0.5 kg reporting 603 kg. The warm-up that fixes it then *caused* a
+second hole, because ten updates at one reference in fifty is five hundred passes; `fit()` now seeds
+the empirical term from its own batch residuals, which is information it already had and discarded.
+Fallback coverage at that rate went 0.007 → 0.354 → **0.926**, in line with the residual-spread
+estimators at 0.929 and 0.927.
 
-| hours | coverage | mean width |
+### Recalibrating costs the interval, briefly
+
+A column added for the investigation above measured something else nobody had looked at. The
+fallback count on the ladder, at one reference in ten:
+
+| estimator | recalibrations | events on a fallback interval |
 |---|---|---|
-| 0–2 | 0.004 | 11 kg |
-| 2–4 | 0.010 | 2 kg |
-| 4–16 | 0.914–1.000 | 1435–1791 kg |
+| kalman | 0 | 121 |
+| rls | 2 | 248 |
+| static_affine | 4 | **345** |
 
-An interval two kilograms wide on a twenty-tonne vehicle. The system had a documented catastrophic
-failure mode, picked a default to avoid it, and then fell back to it whenever the default was not
-ready — and pooling the coverage of two different instruments into one number is what hid a
-four-hour hole in a sixteen-hour run.
+121 is the conformal warm-up every run pays once. The rest is the loop: `run_closed_loop` calls
+`conformal.reset()` on every recalibration, because — correctly — "the old residual quantiles
+describe an estimator that no longer exists". Each recalibration therefore reopens the warm-up
+window, and the estimator that recalibrates most pays most.
 
-`ScoreResult.coverage_by_source` now reports n and coverage per construction, and
-`score_events(..., expected_interval_source=...)` separates configured intervals from fallbacks.
-Omitted, nothing is called a fallback: scoring does not get to invent a preference the configuration
-never expressed.
-
-**What to do about the fallback is still open**, and it is a decision about the uncertainty layer
-rather than the control loop: refuse to emit a mass until the configured construction is ready, widen
-the fallback to something defensible, or give the Kalman filter an analytic band that is not its own
-covariance. The covariance band is wrong for a knowable reason — `R` is sensor noise, and the
-dominant error is vehicle dynamics, which the filter is never told about.
+**Recalibrating improves the mass and degrades the interval**, temporarily and by an amount nobody
+had measured. That trade is now small, because the construction it falls back to is no longer
+catastrophic — which is the second reason the repair above was worth making rather than routing
+around.
 
 ### What "reconverged" means, and what it cost to define
 
