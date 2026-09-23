@@ -597,6 +597,65 @@ come down from 4σ to 3σ — improving resolution from ~48 % to ~36 %. And a de
 into the baseline, confirmed or not: without that, a 50 % sensitivity loss walked the baseline from
 2.96 to 1.42 and the alarm never latched.
 
+## Does the third parameter earn its place? No, and the reason is the interesting part
+
+Section III-B specifies `m = theta0 + theta1*s + theta2*(s*dT)` with the interaction identified
+online, and no estimator fitted such a term, so the claim was withdrawn. `AffineTemp` makes it a
+tested hypothesis instead: the same map, the same objective, one more column, fitted in the same
+batch as `static_affine`. `configs/experiments/theta2.yaml` runs the two against each other at
+thirty seeds on the thermal scenario the term exists for and on two others.
+
+**23 of 90 `affine_temp` runs did not produce a calibration at all.** They failed on the
+non-positive-gain guard, with fitted gains from -246 to -34,800 -- a calibration that reports
+heavier vehicles as lighter. 9 of 30 on `S2_thermal_cycle`, 14 of 30 on `S6_combined`, 0 of 30 on
+`S3_zero_drift_walk`. The two that fail are the two with real thermal variation.
+
+**Where it did produce one, it is catastrophically worse.** Medians with IQR, over the runs that
+survived:
+
+| scenario | estimator | runs | MAE kg | IQR | MAE / floor | coverage |
+| --- | --- | ---: | ---: | --- | ---: | ---: |
+| S2_thermal_cycle | static_affine | 30 | 138.8 | [137.5, 142.7] | 1.02 | 0.952 |
+| S2_thermal_cycle | affine_temp | 21 | **4405.3** | [1008.9, 9844.6] | **32.4** | 0.901 |
+| S3_zero_drift_walk | static_affine | 30 | 138.9 | [134.0, 144.5] | 1.02 | 0.954 |
+| S3_zero_drift_walk | affine_temp | 30 | 150.5 | [143.4, 162.0] | 1.11 | 0.951 |
+| S6_combined | static_affine | 30 | 722.3 | [690.5, 760.4] | 3.78 | 0.898 |
+| S6_combined | affine_temp | 16 | **2934.7** | [1909.6, 6213.4] | **15.4** | 0.814 |
+
+Paired by seed, Holm-corrected: worse on all three, p_holm 1.9e-6, 2.8e-8 and 3.1e-5, effect sizes
++0.99 to +1.00. And those tests are **biased in the third parameter's favour**, because the runs it
+lost hardest are the 23 that failed outright and cannot be paired at all.
+
+### Why: the calibration window sees a seventh of the temperature range it must extrapolate across
+
+The interaction column is `s*dT`, and it is identifiable only to the extent that `dT` varies across
+the reference observations the fit sees. Those are the first 60 references, which at one reference
+vehicle in ten is about three hours -- and three hours of a daily thermal cycle is almost none of it:
+
+| scenario | calibration window | dT span in the window | dT span over the run | ratio |
+| --- | ---: | ---: | ---: | ---: |
+| S2_thermal_cycle | 3.33 h of 72 h | 2.59 degC | 19.00 degC | 0.136 |
+| S6_combined | 3.00 h of 48 h | 3.30 degC | 22.30 degC | 0.148 |
+| S3_zero_drift_walk | 3.00 h of 24 h | 0.00 degC | 0.00 degC | -- |
+
+A third parameter fitted over 2.6 degC and then extrapolated across 19 degC is what produces a gain
+of -34,800. `S3_zero_drift_walk` is the control: temperature is flat by design, the interaction is
+pure noise, no run blows up, and the term still costs 8 % -- the price of a parameter that cannot
+help.
+
+### What this does and does not settle
+
+It settles that a **batch-fitted** third parameter is worse than useless at this reference rate, and
+that the guard refusing non-positive gains is what stands between the experiment and 23 published
+calibrations with a negative sensor gain.
+
+It does **not** test what section III-B actually specifies, which is the interaction identified
+*online*. A recursive estimator would accumulate references across the whole thermal cycle rather
+than across one window, and the lever-arm problem above is exactly the one it would fix. That
+estimator does not exist, and this result is a reason to build it rather than a reason not to --
+with the caveat that the two-parameter map is already within 2 % of the dynamic floor on S2, so
+there is very little left for it to win.
+
 ## Thirty seeds, and the first significance tests in the project
 
 Every number the project reported before this was descriptive, and the manuscript had to say so.
