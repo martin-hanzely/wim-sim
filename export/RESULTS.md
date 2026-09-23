@@ -14,7 +14,108 @@ seeds **1, 2, 3**. Real-data results: commit `f40ca51`, station `cintron_platfor
 
 **Dispersion.** Median with [Q1, Q3] over three seeds throughout. With n = 3 an IQR spans the whole
 sample; it is reported because a bare figure is unusable, not because it is a confidence interval.
-**No significance test was performed anywhere in this project.**
+**Significance testing now exists**, on `ladder30` only — thirty seeds, Wilcoxon signed-rank paired
+by seed, Holm-corrected, with rank-biserial effect sizes. Everything from the three-seed sweeps below
+remains descriptive and is labelled as such. See the new section immediately below.
+
+---
+
+## Five sweeps added 2026-09-23, and what each settled
+
+Commit `a2c70f37`, clean tree. Full per-seed values in `export/data/*_long.csv`; paired tests in
+`*__comparisons.md`.
+
+### 1. Thirty seeds and the first significance tests — `ladder30`
+
+630 runs, 30 seeds, **none failed**, same grid as `ladder`. Run as three 10-seed shards and merged
+by `wimsim.experiments.merge`, which refuses shards differing in anything but the seed. 37
+core-hours.
+
+| comparison | n | median A kg | median B kg | median diff | effect | p | p (Holm) | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| S1_nominal / static_affine->kalman | 30 | 0.944 | 0.951 | +0.00673 | +0.47 | 0.0248 | 0.198 | not separated |
+| S1_nominal / static_affine->rls | 30 | 0.944 | 0.94 | +0.001 | +0.05 | 0.808 | 1 | not separated |
+| S2_thermal_cycle / static_affine->kalman | 30 | 139 | 139 | +0.629 | +0.15 | 0.477 | 1 | not separated |
+| S2_thermal_cycle / static_affine->rls | 30 | 139 | 138 | -0.798 | -0.45 | 0.0293 | 0.198 | not separated |
+| S3_zero_drift_walk / static_affine->kalman | 30 | 139 | 140 | +0.759 | +0.08 | 0.715 | 1 | not separated |
+| S3_zero_drift_walk / static_affine->rls | 30 | 139 | 138 | -0.892 | -0.50 | 0.0155 | 0.139 | not separated |
+| S4_step_fault / static_affine->kalman | 30 | 182 | 151 | -31.6 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+| S4_step_fault / static_affine->rls | 30 | 182 | 154 | -27.1 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+| S5_outage / static_affine->kalman | 30 | 139 | 143 | +0.701 | +0.29 | 0.164 | 0.657 | not separated |
+| S5_outage / static_affine->rls | 30 | 139 | 138 | -0.811 | -0.42 | 0.0473 | 0.236 | not separated |
+| S6_combined / static_affine->kalman | 30 | 697 | 707 | +12 | +0.46 | 0.0277 | 0.198 | not separated |
+| S6_combined / static_affine->rls | 30 | 697 | 666 | -32.7 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+| S7_sparse_reference / static_affine->kalman | 30 | 179 | 163 | -14.2 | -0.97 | 3.54e-08 | 3.54e-07 | better |
+| S7_sparse_reference / static_affine->rls | 30 | 179 | 162 | -14.1 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+
+**Five of fourteen survive Holm, all with effect sizes −0.97 to −1.00** — every seed moving the same
+way. Adaptation wins where the plant moves (S4, S6, S7) and nowhere else. **Five more have a raw p
+below 0.05 and none survives**; reported per-scenario they would have been findings. Where nothing
+survives, the differences are under 1 kg against MAEs of 139–697 kg.
+
+### 2. The scorable scenarios on the real instrument — `cintron_ladder`
+
+63 runs, none failed, on `cintron_sim`: influence-line response, the measured influence length and
+the estimated sensitivity, at 500 Hz. **This required correcting `k0`, which was wrong by a factor
+of 1000** (see CONTRADICTIONS.md). The first attempt at this sweep failed all 63 runs with "0 events
+detected".
+
+| | default station | ST-CINTRON-1 |
+| --- | ---: | ---: |
+| S1 (no dynamic load) MAE | 0.97 kg | **12.0–12.4 kg** |
+| all other scenarios | — | +6 % to +14 % |
+| MAE / dynamic floor, median | 1.02 | **1.13** |
+| coverage, median (nominal 0.95) | 0.95 | **0.947** |
+
+The 12× on S1 against a sensitivity ratio of 13.9× is the model agreeing with itself. Everywhere
+else the dynamic load floor dominates and the instrument barely matters. **Coverage holds within a
+point of nominal on an instrument the conformal interval was not tuned on.**
+
+*Not a sensor effect:* S6's 0.53 match rate is 0.531 on the default station and 0.533 here — S6's
+clock skew breaking timestamp matching, on both.
+
+### 3. Four detectors, one at a time — `detectors`
+
+100 runs, ten seeds, none failed. **Median detection recall 0.000 in every cell.** The four-way
+ensemble produces numbers identical to CUSUM alone. False alarms 0.00–0.06/h. Full table in
+`detectors__detectors.md`; detail in CONTRADICTIONS.md §IV-G.
+
+### 4. Does the third parameter earn its place? — `theta2`
+
+180 runs, 30 seeds. **23 of 90 `affine_temp` runs produced no calibration at all**, failing the
+non-positive-gain guard with fitted gains from −246 to −34,800; 9 of 30 on S2, 14 of 30 on S6, 0 of
+30 on the flat-temperature control.
+
+| scenario | static_affine | affine_temp | MAE / floor |
+| --- | ---: | ---: | --- |
+| S2_thermal_cycle | 138.8 kg [137.5, 142.7] | **4405.3 kg** [1008.9, 9844.6] | 1.02 → **32.4** |
+| S3_zero_drift_walk | 138.9 kg [134.0, 144.5] | 150.5 kg [143.4, 162.0] | 1.02 → 1.11 |
+| S6_combined | 722.3 kg [690.5, 760.4] | **2934.7 kg** [1909.6, 6213.4] | 3.78 → **15.4** |
+
+Worse on all three after Holm (p = 1.9e-6, 2.8e-8, 3.1e-5; effect +1.00), and those tests are biased
+*in its favour* because the 23 worst runs cannot be paired. **Why:** the interaction is identifiable
+only as far as ΔT varies across the 60 references the fit sees — about three hours of a daily cycle.
+Measured, S2 moves **2.59 °C inside the calibration window against 19.00 °C over the run**, a ratio
+of 0.136. **This tests a batch-fitted third parameter, not §III-B's online-identified one**, and
+online identification is exactly what would fix that lever arm.
+
+### 5. What a recalibration costs the interval — `recal_coverage`
+
+300 runs, `confirm_sigma` swept 1.5 → 6.0, ten seeds, none failed. Its own figure,
+`recal_coverage__recal_tradeoff.png`.
+
+- **The mechanism is real and sized:** 187 fallback events per recalibration on a 122-event
+  intercept. Two recalibrations put 14.5 % of a run's events on the estimator's own band.
+- **The cost it was supposed to carry is gone.** Coverage over only the events that got the
+  *configured* interval is indistinguishable from coverage over all of them — 0.9353 vs 0.9343 at
+  zero recalibrations, 0.9178 vs 0.9185 at one. The premise dated from when the Kalman analytic
+  fallback ran at 0.0065 coverage; replacing it removed the cost.
+- **The residual association is confounded** — recalibrations happen *because* a fault occurred.
+  Compared arm to arm at fixed scenario, estimator and seed, nothing survives Holm on either metric,
+  and the largest effect has recalibration improving **both** (S6/static_affine: −45.7 kg and
+  +0.011 coverage).
+- **The knob barely moves the system:** in 24 of 60 seed-cells, `confirm_sigma` 1.5 and 6.0 gave a
+  byte-identical MAE, and the sweep only ever produced 0, 1 or 2 recalibrations in a run.
 
 ---
 
@@ -476,8 +577,13 @@ So that none of it has to be hunted for:
 - population mode, and any crossover against sparse supervised (§VI-G) — **not implementable**
 - fleet-composition shift (§VI-G)
 - per-board latency, CPU, memory, added end-to-end latency (§VI-H)
-- ablation of the interaction term (§VI-J) — **not implementable**, the term does not exist
+- ~~ablation of the interaction term (§VI-J)~~ — **now run**, see `theta2` above
 - peak-versus-area at scenario level (§VI-J)
 - λ and Q sweeps (§VI-J)
-- per-detector comparison; ADWIN and windowed KS at scenario level (§VI-J)
-- any statistical significance test, anywhere
+- ~~per-detector comparison; ADWIN and windowed KS at scenario level (§VI-J)~~ — **now run**, see
+  `detectors` above
+- ~~any statistical significance test, anywhere~~ — **now run on `ladder30`**; the three-seed sweeps
+  remain descriptive
+- the detector grid at lower thresholds, which is the one direction the false-alarm budget leaves
+  open
+- an *online*-identified interaction term, which is what §III-B actually specifies

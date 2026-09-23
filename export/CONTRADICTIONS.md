@@ -6,20 +6,30 @@ contradicted, what is true instead is stated, with a file or test to check it.
 **The six that matter most, before the detail:**
 
 1. **The calibration map is two-parameter, not three.** There is no `θ₂·(s·ΔT)` term in any
-   estimator. Temperature is compensated upstream in the preprocessor from a *fixed* profile
-   coefficient. `α = −θ₂/θ₁` is not recoverable because `θ₂` does not exist. (§III-B)
-2. **Two detectors run, not four.** ADWIN and windowed KS are implemented and tested but are not in
-   the shipped configuration; every reported detection number comes from CUSUM and Page–Hinkley
-   only. (§IV-G)
+   *shipped* estimator. Temperature is compensated upstream in the preprocessor from a *fixed*
+   profile coefficient. **Since resolved as far as it can be by experiment:** a three-parameter
+   estimator now exists and has been run, and it is worse than useless — 23 of 90 runs produce a
+   negative sensor gain, and where it fits at all it is 32× the dynamic floor against the
+   two-parameter map's 1.02×. The reason is that the calibration window spans a seventh of the
+   thermal range it must extrapolate across. This does **not** test §III-B's *online* identification,
+   which is the one thing that would fix that. (§III-B)
+2. **Two detectors run, not four — and running all four changes nothing.** ADWIN and windowed KS
+   were implemented and tested but absent from the shipped configuration. **Since run at scenario
+   level:** each detector alone and the four-way ensemble, 100 runs. Median detection recall is
+   0.000 in every cell; the four-way ensemble produces numbers identical to CUSUM alone. (§IV-G)
 3. **Population mode is a label, not an implementation.** `reference_mode: population` changes the
    `source` string on a `ReferenceObservation` and nothing else; the mass still comes from the
    supervised reference. No vehicle classification exists. (§IV-F, §VI-G)
 4. **No reference mass has ever been measured.** Every kilogram attributed to the real sensor
    descends from published vehicle weights, not a weighbridge. (§V-D)
-5. **Three seeds, not thirty. No significance testing of any kind.** No Wilcoxon, no Holm
-   correction, no effect sizes anywhere in the repository. (§V-H)
+5. **~~Three seeds, not thirty. No significance testing of any kind.~~ RESOLVED.** 630 runs at
+   thirty seeds, Wilcoxon signed-rank paired by seed with Holm correction and rank-biserial effect
+   sizes. Five of fourteen comparisons survive correction; five others have a raw p below 0.05 and
+   do not. (§V-H)
 6. **The experiments used the contact-force station.** The real instrument is an influence-line
-   strain platform, and the two are different instruments, not two settings of one. (§III-A)
+   strain platform, and the two are different instruments, not two settings of one. **Since run on
+   both:** the scorable scenarios now have results on the real instrument's physics, and it costs a
+   factor of 12 on the clean scenario and 6–14 % elsewhere. (§III-A)
 7. **The real platform's sensitivity constant was wrong by a factor of 1000**, and had been since it
    was derived. Found by running the scenario suite on it for the first time, which detected nothing
    at all. Corrected to `k0 = 1.44e-5` mV/V per kg. No previously reported number used it. (§III-A)
@@ -154,10 +164,25 @@ string and nothing else.** No vehicle classification exists anywhere in the repo
 `calibration/drift.py:435`, 63 tests in `tests/test_drift.py`), but the shipped configuration runs
 **two**: `detectors: ('cusum', 'page_hinkley')`.
 
-*What is true instead:* every detection number in the results — delay, false-alarm rate, recall —
-is the behaviour of CUSUM and Page–Hinkley in parallel. ADWIN and windowed KS have unit-test
-evidence only, and no scenario-level result. **A per-detector results table as §VI-D envisages
-cannot be produced from what has been run.**
+*What is true instead:* every detection number reported before 2026-09-23 — delay, false-alarm
+rate, recall — is the behaviour of CUSUM and Page–Hinkley in parallel.
+
+**UPDATE — the per-detector table now exists** (`detectors__detectors.md`, 100 runs, ten seeds, two
+scenarios, none failed), and it does not say what §IV-G assumes:
+
+- **Median detection recall is 0.000 in every cell.** CUSUM catches 3 of 20 injected calibration
+  faults on `S4_step_fault`, Page–Hinkley 1 of 20, ADWIN and windowed KS none at all on either
+  scenario.
+- **The four-way ensemble is CUSUM.** `detect_all4` and `detect_cusum` produce identical detections,
+  false alarms and delays on S4. Adding three detectors changed no detection in 100 runs.
+- **Not a scoring-horizon artefact.** The detectors alarm 1–2 times per run against 2 injected
+  faults, so scoring *every* alarm as a hit would cap recall at 0.20–0.95 against a measured
+  0.00–0.15.
+- **False alarms run at 0.00–0.06 per hour**, one per 17 hours at worst, so the operating point is
+  far too conservative and there is a large unspent budget on that axis.
+
+So §IV-G can be written, with four detectors and scenario-level evidence. What it cannot claim is
+that running four helps.
 
 ### §IV-H — five-state machine with confirmation, minimum references, verification, cool-down, DEGRADED
 
@@ -266,16 +291,29 @@ numbers in §VI-H are **bench measurements on an x86 laptop**, not board measure
 
 ### §V-H — thirty seeds, medians with IQR, Wilcoxon signed-rank with Holm correction, effect sizes
 
-**CONTRADICTED.**
+**NOW CONFIRMED.** This was contradicted — three seeds, no tests of any kind — and has been fixed
+rather than reworded.
 
-- **Three seeds per configuration** (1, 2, 3), not thirty.
-- No Wilcoxon test, no Holm or Bonferroni correction, no effect size, anywhere in the repository —
-  searching for all of these returns nothing.
-- Aggregates in the shipped results tables are **means**, not medians with IQR. This export
-  recomputes medians and IQRs from the per-seed values, but with n = 3 an IQR is barely meaningful.
+`ladder30` is 630 runs at thirty seeds, none failed, run as three 10-seed shards and merged.
+`wimsim compare` applies Wilcoxon signed-rank paired by seed, Holm-corrected over a family declared
+at the call site, with matched-pairs rank-biserial effect sizes beside every p-value. Full table in
+`ladder30__comparisons.md`.
 
-*What is true instead:* no claim of statistical significance can be supported. Differences reported
-here are descriptive.
+- **Five of fourteen comparisons survive correction**, all with effect sizes between −0.97 and
+  −1.00, meaning every one of the thirty seeds moved the same way: `S4_step_fault` (kalman −31.6 kg,
+  rls −27.1), `S6_combined` (rls −32.7) and `S7_sparse_reference` (kalman −14.2, rls −14.1).
+  Adaptation wins where the plant moves, and nowhere else.
+- **Five others have a raw p below 0.05 and none survives Holm** — S1/kalman 0.025, S2/rls 0.029,
+  S3/rls 0.016, S5/rls 0.047, S6/kalman 0.028. Reported per-scenario, these would have been written
+  up as findings.
+- Where nothing survives, the median differences are **under 1 kg against MAEs of 139–697 kg**, so
+  the effect sizes say it a second time.
+- Why three seeds could never have worked: the smallest attainable two-sided Wilcoxon p at n=3 is
+  **0.25**. `min_attainable_p` is reported with every family so a null result can be read against
+  what the design could have detected.
+
+*Still true:* the hyperparameters were tuned on the evaluation scenarios. Significance testing does
+not touch that, and it remains the larger threat to the evaluation. See `OPEN.md`.
 
 ---
 

@@ -25,9 +25,21 @@ FIGS = EXPORT / "figures"
 #: Sweeps to draw on, and what each one is for.
 SWEEPS = {
     "ladder": "every estimator across every scorable scenario, 3 seeds, 1 reference in 10",
+    "ladder30": "the same grid at THIRTY seeds, which is what makes significance testing possible",
     "reference_rate": "reference rate 1-in-2..1-in-50 x controller on/off, S4 and S7",
     "governance": "controller on/off on S6_combined, the B2 comparison",
+    "cintron_ladder": "the scorable scenarios on the REAL instrument's physics, not the "
+    "contact-force model every other sweep used",
+    "detectors": "CUSUM, Page-Hinkley, ADWIN and windowed KS each alone, plus the four-way "
+    "ensemble section IV-G describes",
+    "recal_coverage": "recalibration frequency via confirm_sigma, against interval coverage and "
+    "fallback-event count",
+    "theta2": "the three-parameter map against the two-parameter one, 30 seeds",
 }
+
+#: Analysis products written beside a sweep's parquet. Copied into the export because they are the
+#: result, not a rendering of it: `comparisons.md` carries the only p-values the project has.
+SIDECARS = ("comparisons.md", "detectors.md")
 
 
 def _run(cmd: list[str]) -> str:
@@ -147,6 +159,15 @@ def main() -> int:
             target = FIGS / f"{name}__{png.name}"
             shutil.copy2(png, target)
             copied.append(target.name)
+
+    # -- analysis sidecars -----------------------------------------------------------------------
+    for name in frames:
+        for sidecar in SIDECARS:
+            src = ROOT / "data" / "results" / name / sidecar
+            if src.is_file():
+                target = EXPORT / f"{name}__{sidecar}"
+                shutil.copy2(src, target)
+                copied.append(target.name)
 
     # -- manifest ---------------------------------------------------------------------------------
     manifest = {
