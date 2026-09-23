@@ -841,13 +841,15 @@ class EstimateConfig(_Base):
         description="per_axle_sum estimates each axle and adds; whole_signal treats the merged "
         "vehicle window as one measurement.",
     )
-    estimator: Literal["static_affine", "rls", "kalman"] = Field(
+    estimator: Literal["static_affine", "rls", "kalman", "affine_temp"] = Field(
         "static_affine",
         description="The ladder, in order of adaptivity. static_affine fits once and freezes, so "
         "it is the floor the others must beat; rls is the same model and objective with a "
         "forgetting factor, which isolates adaptivity and changes nothing else; kalman models the "
         "plant's own [q, k] and is the only one not attenuated by feature noise. The residual "
-        "learner is phase 6, behind a feature flag.",
+        "learner is phase 6, behind a feature flag. affine_temp is static_affine plus the "
+        "section III-B interaction term, batch-only and off the adaptivity ladder: it exists to "
+        "test whether the third PARAMETER earns its place, not to add a third adaptive mechanism.",
     )
     forgetting: float = Field(
         0.99,

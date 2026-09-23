@@ -159,13 +159,21 @@ class AffineTemp:
         )
 
     def update(self, observation: ReferenceObservation) -> EstimatorState:
-        """Not supported. This estimator exists to test whether the third *parameter* helps, not to
-        add a third adaptive mechanism; making it recursive would confound the two questions."""
+        """Count the observation and change nothing else, exactly as :class:`StaticAffine` does.
+
+        This estimator exists to test whether the third *parameter* helps, not to add a third
+        adaptive mechanism, so the parameters never move between batch fits -- making it recursive
+        would confound the two questions and the comparison could answer neither.
+
+        It used to raise instead, which defeated the experiment rather than protecting it: the
+        closed loop offers every reference observation to `update`, so `theta2` failed every
+        `affine_temp` cell with NotImplementedError and measured nothing. Batch-only means ignoring
+        updates, not refusing them. Observations are still counted so a dashboard can show how many
+        reference passes an adaptive estimator had available over the same window.
+        """
         del observation
-        raise NotImplementedError(
-            "AffineTemp is a batch estimator, like StaticAffine. Use rls or kalman for recursive "
-            "tracking; this exists to isolate the effect of the interaction term."
-        )
+        self._update_count += 1
+        return self.state()
 
     # -- thermal sensitivity --------------------------------------------------------------------
 

@@ -419,12 +419,7 @@ def test_every_estimator_can_be_costed() -> None:
     ]
     for name in ESTIMATORS:
         estimator = build_estimator(name)
-        if not hasattr(estimator, "update") or name == "affine_temp":
-            # `affine_temp` is batch-only on purpose: it exists to isolate the effect of the third
-            # PARAMETER, and making it recursive would confound that with a third adaptive
-            # mechanism. A per-update cost is not a meaningful number for it.
-            with pytest.raises(NotImplementedError):
-                estimator.update(observations[0])
+        if not hasattr(estimator, "update"):
             continue
         cost = estimator_cost(estimator, observations)
         assert cost.update_us > 0.0
