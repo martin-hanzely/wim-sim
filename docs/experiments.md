@@ -597,6 +597,55 @@ come down from 4σ to 3σ — improving resolution from ~48 % to ~36 %. And a de
 into the baseline, confirmed or not: without that, a 50 % sensitivity loss walked the baseline from
 2.96 to 1.42 and the alarm never latched.
 
+## What a recalibration costs the interval, measured on purpose
+
+This started as a diagnostic column and a worry. `run_closed_loop` calls `conformal.reset()` on
+every profile activation -- correctly, since the old residual quantiles describe an estimator that no
+longer exists -- so each recalibration reopens the conformal warm-up window, during which the
+pipeline emits the estimator's own fallback band instead of the configured one. On the ladder that
+showed up as kalman with 0 recalibrations and 121 fallback events against static_affine with 4 and
+345. The inference drawn at the time was that recalibrating improves the mass and degrades the
+interval, and nobody had measured the trade.
+
+`configs/experiments/recal_coverage.yaml` sweeps `confirm_sigma` from 1.5 to 6.0 -- lower confirms
+drift more readily and so recalibrates more often -- on the two scenarios that recalibrate at all,
+three estimators, ten seeds, 300 runs, none failed. The figure is `recal_tradeoff.png`: delivered
+coverage, fallback share and MAE against the floor, all on one axis of *measured* recalibrations.
+
+**The mechanism is real and its size is now known.** Fallback events against recalibration count is
+almost exactly linear: 187 events per recalibration on a 122-event intercept, which is the initial
+warm-up every run pays. At two recalibrations, 14.5 % of a run's events are served by the fallback
+band.
+
+**The cost it was supposed to have is gone.** Coverage over only the events that got the *configured*
+interval is indistinguishable from coverage over all of them -- 0.9353 against 0.9343 at zero
+recalibrations, 0.9178 against 0.9185 at one. If the fallback band were the problem, those two
+columns would separate, and they do not. The premise this experiment was built on dates from when
+the Kalman analytic fallback ran at 0.0065 coverage; replacing it with the empirical residual band
+removed the cost, and this sweep is the confirmation.
+
+**The remaining association between recalibrating and lower coverage is confounded, and the
+controlled comparison says so.** Pooled across the sweep, coverage falls from 0.934 at zero
+recalibrations to 0.919 at one -- but recalibrations happen *because* a fault occurred, and the fault
+is what moves the coverage. Comparing the two extreme arms at fixed scenario, estimator and seed,
+Holm-corrected within each metric, nothing survives:
+
+| | MAE kg, s60 -> s15 | effect | p_holm | coverage, s60 -> s15 | effect | p_holm |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| S4 / static_affine | 187.6 -> 179.5 | -0.56 | 0.375 | 0.9303 -> 0.9198 | -0.60 | 0.387 |
+| S4 / rls | 151.3 -> 154.2 | +1.00 | 0.156 | 0.9567 -> 0.9463 | -1.00 | 0.125 |
+| S6 / static_affine | 722.3 -> 676.6 | -1.00 | 0.094 | 0.9003 -> 0.9148 | +1.00 | 0.094 |
+| S6 / rls | 658.8 -> 657.3 | -0.83 | 0.156 | 0.9123 -> 0.9187 | +0.89 | 0.117 |
+
+The largest effect in the table has recalibration improving **both** -- S6 / static_affine, 45.7 kg
+of MAE and a point of coverage, in the same direction, just short of significance at ten seeds.
+
+**And the knob barely moves the system.** In 24 of 60 seed-cells, `confirm_sigma` 1.5 and 6.0
+produced a byte-identical MAE: a factor of four on the confirmation threshold changed nothing the
+loop did. The whole sweep only ever produced 0, 1 or 2 recalibrations in a run. That is the same
+finding the detector sweep reached from the other side -- the loop very rarely fires -- and it is the
+reason a recalibration-frequency experiment has so little frequency to work with.
+
 ## Does the third parameter earn its place? No, and the reason is the interesting part
 
 Section III-B specifies `m = theta0 + theta1*s + theta2*(s*dT)` with the interaction identified
