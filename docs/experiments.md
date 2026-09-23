@@ -597,6 +597,49 @@ come down from 4σ to 3σ — improving resolution from ~48 % to ~36 %. And a de
 into the baseline, confirmed or not: without that, a 50 % sensitivity loss walked the baseline from
 2.96 to 1.42 and the alarm never latched.
 
+## Four detectors, run one at a time
+
+Section IV-G describes four detectors in parallel. The shipped pipeline runs two, so every detection
+number the project had reported was the behaviour of CUSUM and Page-Hinkley together and nothing was
+known about the other two. `configs/experiments/detectors.yaml` runs each alone and the four-way
+ensemble, on the two scenarios carrying calibration faults, ten seeds, 100 runs, none failed.
+
+| scenario | detector | runs | faults hit | missed | detection recall (IQR) | false alarms/h (IQR) | detection delay s (IQR) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| S4_step_fault | detect_adwin | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.06 [0.06, 0.06] | -- |
+| S4_step_fault | detect_all4 | 10 | 3 | 17 | 0.000 [0.000, 0.375] | 0.06 [0.06, 0.12] | 1559 [1475, 1636] |
+| S4_step_fault | detect_cusum | 10 | 3 | 17 | 0.000 [0.000, 0.375] | 0.06 [0.06, 0.12] | 1559 [1475, 1636] |
+| S4_step_fault | detect_ks | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.00 [0.00, 0.06] | -- |
+| S4_step_fault | detect_ph | 10 | 1 | 19 | 0.000 [0.000, 0.000] | 0.06 [0.06, 0.06] | 1698 [1698, 1698] |
+| S6_combined | detect_adwin | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.02 [0.02, 0.04] | -- |
+| S6_combined | detect_all4 | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.04 [0.03, 0.04] | -- |
+| S6_combined | detect_cusum | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.04 [0.03, 0.04] | -- |
+| S6_combined | detect_ks | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.00 [0.00, 0.00] | -- |
+| S6_combined | detect_ph | 10 | 0 | 20 | 0.000 [0.000, 0.000] | 0.03 [0.02, 0.04] | -- |
+
+**No detector finds the injected calibration faults.** Median recall is 0.000 in every cell. CUSUM
+catches 3 of 20 on `S4_step_fault` and Page-Hinkley 1 of 20; ADWIN and windowed KS catch none at all,
+on either scenario.
+
+**The ensemble is CUSUM.** `detect_all4` and `detect_cusum` produce identical numbers on S4 -- same
+detections, same false alarms, same delay -- and on S6 they differ only in false alarms. Adding three
+detectors to CUSUM changed no detection in 100 runs. Section IV-G's parallel ensemble, measured, is
+one detector and three passengers.
+
+**It is not a horizon artefact.** A fault counts as detected if an alarm falls within 1800 s of it,
+and a longer horizon would not rescue this: the detectors alarm 1-2 times per run against 2 injected
+faults, so even if *every* alarm were scored as a hit the ceiling would be 0.20-0.95, and the
+measured recall is 0.00-0.15. The alarms that fire are mostly not near a fault.
+
+**The operating point is far too conservative, which is the useful part.** False alarms run at 0.00
+to 0.06 per hour -- one per 17 hours at worst. An operator would tolerate a great deal more than
+that, so there is a large amount of unspent budget on the false-alarm axis. The experiment to run
+next is the same grid at lower thresholds, which is the one direction this table says is open.
+
+**What the loop does with a detection is also worth reading.** The two arms that recalibrated on S4
+ended at MAE 153.19 kg against 151.33 for the three arms that never did. Recalibrating made it
+slightly worse, which is the project's central negative result showing up again from a new angle.
+
 ## The suite on the instrument the recordings came from
 
 Every synthetic result above was produced on `configs/stations/default.yaml`, a contact-force sensor
