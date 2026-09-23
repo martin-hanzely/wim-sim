@@ -21,6 +21,18 @@
 # modelled changes: k0, the influence length, the thermal constants and the noise are all copied
 # from the measured file unchanged.
 #
+# THE FIRST ATTEMPT AT THIS SWEEP DETECTED NOTHING, AND THE RATE WAS NOT THE REASON. All 63 runs of
+# `cintron_ladder` failed with "0 events detected". Two causes, both since fixed and neither of them
+# the sample rate:
+#
+#   1. `k0` read 1.44e-8 where its own derivation gives 1.44e-5, so every axle was simulated a
+#      thousand times too faint. See the note beside `k0` in `cintron_platform.yaml`.
+#   2. The sweep ran the `default` edge pipeline, whose `detect.start_threshold` is an ABSOLUTE
+#      0.05 mV/V set for a sensor 14x more sensitive than this one. `configs/estimators/
+#      cintron_sim.yaml` is the pipeline for this station.
+#
+# A synthetic run here needs both, and the experiment config that uses this station sets the second.
+#
 # WHAT THIS IS NOT. It is not a model of the real *recordings*, which were taken at walking pace with
 # one wheel on the plate. It is the real instrument's response characteristics driven by the
 # project's own synthetic traffic, so that the scenario suite exercises the sensor the recordings
@@ -36,7 +48,8 @@ sensor_id: Tenzo2
 description: >
   The ST-CINTRON-1 strain platform's physics at a simulable sample rate. Identical to
   cintron_platform.yaml except for sample_rate_hz; see the header for why that is the only
-  defensible difference.
+  defensible difference, and for the two bugs that made the first attempt at this sweep detect
+  nothing.
 
 sample_rate_hz: 500.0
 lane_count: 1
@@ -51,7 +64,7 @@ sensor:
   # Copied unchanged from cintron_platform.yaml. ESTIMATED, NOT WEIGHED -- k0 descends from the
   # Fabia's published operating weight and an axle split measured off the bimodal peak amplitudes,
   # converted at gauge factor 2.0 and an ASSUMED quarter bridge. See docs/sim-to-real.md.
-  k0: 1.44e-8
+  k0: 1.44e-5
   alpha0_per_c: -2.0e-4
   alpha_walk_sigma_per_sqrt_s: 0.0
   t_ref_c: 20.0

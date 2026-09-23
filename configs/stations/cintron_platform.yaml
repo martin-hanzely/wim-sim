@@ -115,7 +115,16 @@ sensor:
   # split removed most of that, and what remains is the 13 % spread between the two independent
   # strain extractions plus the unmeasured bridge configuration. A single weighbridge ticket would
   # collapse the rest.
-  k0: 1.44e-8            # (2.88e-8 strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain
+  # CORRECTED 2026-09-23: this read 1.44e-8, which is the line below divided by a thousand.
+  # 2.88e-8 x 5e-4 x 1e6 = 1.44e-5. The slip made the platform a thousand times less sensitive than
+  # the recordings show it to be, and `cintron_ladder` found it the expensive way: 63 synthetic runs
+  # on this sensitivity detected 0 events, because a 780 kg axle came out at 1.1e-5 mV/V against a
+  # measured noise of 6.4e-4. The recordings themselves settle it -- Tenzo2 peaks at 9.07-10.30 ue
+  # for a 336 kg wheel against 1.39 ue of total noise, an SNR of 7.0, and only 1.44e-5 reproduces
+  # that. Nothing else in the project read this value: no synthetic run on this station had ever
+  # succeeded, and the real-data work detects crossings without weighing them, so k0 never entered
+  # a published number.
+  k0: 1.44e-5            # (2.88e-8 strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain
   alpha0_per_c: -2.0e-4
   alpha_walk_sigma_per_sqrt_s: 0.0
   t_ref_c: 20.0

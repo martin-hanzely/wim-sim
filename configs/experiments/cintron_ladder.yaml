@@ -9,6 +9,13 @@
 # property of the logger, not of the structure, and carrying it would cost 50x for nothing. The
 # `pulse` overrides are required: the pulse belongs to the scenario, so without them this would be
 # contact-patch pulses on an influence-line sensor, which is no instrument at all.
+#
+# THE FIRST RUN OF THIS SWEEP FAILED COMPLETELY -- 63 of 63 runs, "0 events detected" -- and finding
+# out why corrected a constant. `k0` on both cintron stations read 1.44e-8 where its own derivation
+# gives 1.44e-5, making every simulated axle a thousand times too faint, and this file asked for the
+# `default` pipeline, whose absolute 0.05 mV/V trigger means "3.5 tonnes" on a sensor this
+# insensitive. Both are fixed. A result here is therefore the SECOND run of this configuration, and
+# the first one is reported rather than discarded: see docs/experiments.md.
 experiment_id: cintron_ladder
 description: >
   The seven scorable scenarios on the real instrument's physics -- influence-line response, the
@@ -24,7 +31,9 @@ scenarios:
 estimators: [static_affine, rls, kalman]
 seeds: [1, 2, 3]
 station: cintron_sim
-edge_config: default
+# NOT `default`: its detect thresholds are absolute mV/V set for a sensor 14x more sensitive, and
+# the first attempt at this sweep detected 0 events in all 63 runs because of it. See that file.
+edge_config: cintron_sim
 edge_overrides: [edge.control.enabled=true]
 reference_every_n: 10
 overrides:

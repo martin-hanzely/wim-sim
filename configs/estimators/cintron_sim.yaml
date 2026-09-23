@@ -1,0 +1,29 @@
+# The edge pipeline for SYNTHETIC runs on `configs/stations/cintron_sim.yaml`.
+#
+# WHY THE DEFAULT PIPELINE CANNOT BE USED, which is what `cintron_ladder` learned the expensive way.
+# `detect.start_threshold` is an ABSOLUTE level in mV/V -- 0.05 -- and it was set for a contact-force
+# sensor whose k0 is 2.0e-4 mV/V per kg, where it means "an axle of at least 250 kg". This platform's
+# k0 is 1.44e-5, fourteen times lower, so the same number means "at least 3.5 tonnes" and every car
+# in the stream falls under the trigger. All 63 runs of that sweep reported 0 events and failed.
+#
+# So the thresholds here are the default pipeline's, re-expressed in this sensor's units at the same
+# mass: 250 kg to open an event and 100 kg to close it. That keeps the one thing a threshold should
+# mean constant across two instruments, instead of keeping the number constant and letting the
+# meaning move.
+#
+# WHY NOT `cintron_platform`, which is also for this sensor: that pipeline is for the real
+# recordings, and it sets `invert: true` because the real gauges go negative under load. The
+# simulator's k0 is positive and its pulses go up, so inverting would push every pulse below the
+# baseline and detect nothing -- which looks exactly like a sensor that saw no traffic. Its 5 Hz
+# low-pass is wrong here too: that suits the 770 ms pulses of a walking-pace crossing, and this
+# station is driven by the project's road-speed traffic, where the influence-line pulse is 25 ms.
+
+extends: default
+name: cintron_sim
+description: >
+  For synthetic runs on the ST-CINTRON-1 platform model: influence-line pulses about 25 ms wide at
+  road speed, positive-going, at a gain fourteen times below the default station's.
+
+detect:
+  start_threshold: 3.6e-3   # 250 kg x k0, the same mass the default pipeline's 0.05 mV/V means
+  end_threshold: 1.44e-3    # 100 kg x k0, likewise from the default's 0.02
