@@ -640,6 +640,57 @@ because the real gauges go negative under load. The simulator's k0 is positive a
 so inverting would push every pulse below the baseline and detect nothing -- which looks exactly
 like a sensor that saw no traffic, and is worth knowing about before diagnosing one.
 
+### What the instrument costs, once both bugs are out of the way
+
+63 of 63 runs, three seeds, the same grid as `ladder` in every respect except the station and the
+pipeline. Medians across seeds; three seeds cannot support a significance test, so these are
+descriptive and `comparisons.md` beside the parquet says so in place of p-values.
+
+| scenario | estimator | MAE kg default | MAE kg cintron | x | MAE/floor default | MAE/floor cintron | cov default | cov cintron |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| S1_nominal | kalman | 1.0 | 12.0 | 12.35x | -- | -- | 0.966 | 0.954 |
+| S1_nominal | rls | 1.0 | 12.0 | 12.39x | -- | -- | 0.958 | 0.956 |
+| S1_nominal | static_affine | 1.0 | 12.4 | 12.78x | -- | -- | 0.960 | 0.956 |
+| S2_thermal_cycle | kalman | 137.7 | 151.2 | 1.10x | 1.023 | 1.124 | 0.958 | 0.953 |
+| S2_thermal_cycle | rls | 136.8 | 150.2 | 1.10x | 1.017 | 1.117 | 0.941 | 0.947 |
+| S2_thermal_cycle | static_affine | 136.2 | 149.5 | 1.10x | 1.013 | 1.111 | 0.939 | 0.947 |
+| S3_zero_drift_walk | kalman | 135.5 | 151.1 | 1.11x | 1.020 | 1.137 | 0.961 | 0.950 |
+| S3_zero_drift_walk | rls | 134.6 | 149.7 | 1.11x | 1.013 | 1.127 | 0.943 | 0.943 |
+| S3_zero_drift_walk | static_affine | 132.9 | 149.4 | 1.12x | 1.001 | 1.125 | 0.944 | 0.938 |
+| S4_step_fault | kalman | 145.1 | 159.6 | 1.10x | 1.125 | 1.238 | 0.983 | 0.968 |
+| S4_step_fault | rls | 152.7 | 166.9 | 1.09x | 1.185 | 1.295 | 0.951 | 0.929 |
+| S4_step_fault | static_affine | 182.5 | 194.2 | 1.06x | 1.416 | 1.507 | 0.914 | 0.935 |
+| S5_outage | kalman | 126.4 | 143.2 | 1.13x | 0.999 | 1.132 | 0.988 | 0.973 |
+| S5_outage | rls | 125.8 | 142.8 | 1.14x | 0.994 | 1.129 | 0.947 | 0.951 |
+| S5_outage | static_affine | 127.0 | 143.8 | 1.13x | 1.004 | 1.137 | 0.907 | 0.948 |
+| S6_combined | kalman | 698.0 | 668.3 | 0.96x | 3.770 | 3.602 | 0.920 | 0.904 |
+| S6_combined | rls | 652.8 | 661.3 | 1.01x | 3.526 | 3.564 | 0.911 | 0.908 |
+| S6_combined | static_affine | 676.7 | 682.5 | 1.01x | 3.655 | 3.679 | 0.916 | 0.900 |
+| S7_sparse_reference | kalman | 160.8 | 171.9 | 1.07x | 1.017 | 1.087 | 0.956 | 0.962 |
+| S7_sparse_reference | rls | 160.3 | 171.8 | 1.07x | 1.014 | 1.086 | 0.933 | 0.954 |
+| S7_sparse_reference | static_affine | 182.0 | 195.6 | 1.07x | 1.151 | 1.237 | 0.891 | 0.942 |
+
+**On the clean scenario the instrument costs a factor of 12.** S1 has no dynamic load, so the error
+is the sensor and the pipeline and nothing else: 0.97 kg becomes 12.0-12.4 kg. The ratio of the two
+sensitivities is 2.0e-4 / 1.44e-5 = **13.9**, and the MAE ratio is 12.4-12.8. The model is coherent
+with itself, which is the main thing this sweep was for.
+
+**Everywhere else it costs 6-14 %**, because everywhere else the dynamic load floor dominates. The
+error the vehicles bring with them is a property of the vehicles, not of what is measuring them, so
+a sensor fourteen times less sensitive moves the total very little. Against the floor the estimators
+sit at a median of **1.13** here against **1.02** on the default station: the headroom above the
+floor roughly sextuples, and it is still small.
+
+**Coverage holds.** Median empirical coverage is 0.947 against a nominal 0.95, within a point of the
+default station in every cell. The conformal interval is doing its job on an instrument it was not
+tuned on, which is the strongest evidence so far that it is not fitted to one noise model.
+
+**S6's match rate of 0.53 is not a sensor effect.** It is 0.531 on the default station and 0.533
+here. S6 injects a 0.35 s clock skew with 45 ppm drift, and the scorer matches detections to truth
+by timestamp; half the vehicles fall outside the match window on both instruments. That is a
+scoring-window question and it is the same question it always was -- worth separating from anything
+this sweep says about the hardware.
+
 ### What a threshold in absolute units costs
 
 The general lesson is worth separating from this instance. A detector threshold expressed in sensor
