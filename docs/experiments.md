@@ -597,6 +597,59 @@ come down from 4σ to 3σ — improving resolution from ~48 % to ~36 %. And a de
 into the baseline, confirmed or not: without that, a 50 % sensitivity loss walked the baseline from
 2.96 to 1.42 and the alarm never latched.
 
+## The suite on the instrument the recordings came from
+
+Every synthetic result above was produced on `configs/stations/default.yaml`, a contact-force sensor
+with millisecond axle pulses. The hardware the eight recordings came from is a different instrument:
+a strain platform whose response is the structure's influence line. So no synthetic result
+corresponded to the hardware, which breaks the sim-to-real chain structurally -- the simulator was
+being validated against recordings from an instrument it was not modelling.
+
+`configs/experiments/cintron_ladder.yaml` runs the seven scorable scenarios on
+`configs/stations/cintron_sim.yaml`: the measured influence length, the measured thermal constants
+and the estimated sensitivity, at 500 Hz rather than the logger's 25 kHz. The sample rate is a
+property of the logger and not of the structure, and carrying it would make `S2_thermal_cycle` 6.48
+billion samples.
+
+### The first attempt detected nothing, and it was a constant that was wrong
+
+All 63 runs failed with `0 events detected but 60 are reserved for the initial calibration`. Two
+causes, neither of them the sample rate:
+
+**`k0` was a thousand times too small.** Both cintron station files carried `k0: 1.44e-8` mV/V per
+kg. The derivation written beside it -- `(2.88e-8 strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain`
+-- evaluates to `1.44e-5`. The recordings decide which is right: Tenzo2 peaks at 9.07-10.30 ue for
+the 336 kg wheel against 1.39 ue of total noise, an SNR of **7.0**, and `1.44e-5` reproduces that
+while `1.44e-8` predicts **0.008** -- a pulse that could not have been seen in data where it plainly
+is. At the wrong value a 780 kg axle simulated at 1.1e-5 mV/V against 6.4e-4 mV/V of measured noise,
+which is why nothing was ever detected.
+
+No published number moved. `sensor.k0` is read by `signal/plant.py` and `plots.py` and by nothing
+else: no synthetic run on either cintron station had ever succeeded, and the real-data work detects
+crossings without weighing them, so the constant never entered a result.
+
+**The sweep also ran the wrong pipeline.** `detect.start_threshold` is an *absolute* level in mV/V.
+At the default pipeline's `0.05` it means "an axle of at least 250 kg" on a sensor whose k0 is
+2.0e-4, and "at least 3.5 tonnes" on one whose k0 is 1.44e-5. Every car in the stream fell under the
+trigger. `configs/estimators/cintron_sim.yaml` re-expresses the same two thresholds at the same
+masses in this sensor's units, which keeps the thing a threshold should mean constant across two
+instruments instead of keeping the number constant and letting the meaning move.
+
+That pipeline is not `cintron_platform`, which is for the real recordings and sets `invert: true`
+because the real gauges go negative under load. The simulator's k0 is positive and its pulses go up,
+so inverting would push every pulse below the baseline and detect nothing -- which looks exactly
+like a sensor that saw no traffic, and is worth knowing about before diagnosing one.
+
+### What a threshold in absolute units costs
+
+The general lesson is worth separating from this instance. A detector threshold expressed in sensor
+units silently encodes the sensitivity of the sensor it was tuned on. Ported to another instrument
+it keeps its number and changes its meaning, and it fails by detecting nothing rather than by
+raising an error -- which is indistinguishable from an empty road. A threshold in units of the
+measured noise, or in kilograms multiplied through the profile's own gain, would have refused to be
+portable in silence. This has not been changed; `detect` is deliberately truth-free and does not
+know the gain. It is recorded here as a design question for section IV-B.
+
 ## What is still missing
 
 **No real vehicle has been weighed**, and the leave-one-out result above is the sharpest argument

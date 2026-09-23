@@ -20,6 +20,9 @@ contradicted, what is true instead is stated, with a file or test to check it.
    correction, no effect sizes anywhere in the repository. (§V-H)
 6. **The experiments used the contact-force station.** The real instrument is an influence-line
    strain platform, and the two are different instruments, not two settings of one. (§III-A)
+7. **The real platform's sensitivity constant was wrong by a factor of 1000**, and had been since it
+   was derived. Found by running the scenario suite on it for the first time, which detected nothing
+   at all. Corrected to `k0 = 1.44e-5` mV/V per kg. No previously reported number used it. (§III-A)
 
 ---
 
@@ -305,6 +308,27 @@ and nothing in the project has yet converted a real sensor reading into a verifi
 leave-one-out result makes this sharper rather than softer — the per-vehicle bias split (Citroën
 −30.8 kg, Fabia +59.4 kg) cannot be attributed to the platform or to the inference without one
 weighed vehicle.
+
+**That the constants describing the real platform had been checked against each other.** They had
+not, and one was wrong by three orders of magnitude. `configs/stations/cintron_platform.yaml`
+carried `k0: 1.44e-8` mV/V per kg while the derivation written on the same line -- `(2.88e-8
+strain/kg) x (5e-4 mV/V per ue) x 1e6 ue/strain` -- gives `1.44e-5`. The error was invisible for as
+long as nothing simulated that station: `k0` is read only by the forward model and by the plotting
+code, and the real-data work detects crossings without weighing them.
+
+It surfaced the first time the scenario suite was pointed at the instrument, as 63 of 63 runs
+failing with `0 events detected`. The recordings settle which value is right: Tenzo2 peaks at
+9.07-10.30 ue for a 336 kg wheel against 1.39 ue of total noise, an SNR of 7.0, which `1.44e-5`
+reproduces and `1.44e-8` contradicts by predicting 0.008 -- an invisible pulse, in data where the
+pulse is plainly visible. Nothing previously reported changes. What it costs is the claim that the
+platform model was validated: it had never been exercised end to end, and "a station file exists
+for it" turned out to mean less than it sounded like.
+
+A second finding rides along and is a design question rather than an error. `detect.start_threshold`
+is an absolute level in mV/V, so it silently encodes the sensitivity of the sensor it was tuned on;
+ported to an instrument 14x less sensitive it keeps its number, changes its meaning from "250 kg" to
+"3.5 tonnes", and fails by detecting nothing -- which is indistinguishable from an empty road. See
+`docs/experiments.md`.
 
 **That the evaluation is statistically powered.** Three seeds, no significance testing, and
 hyperparameters tuned on the evaluation scenarios. The results are descriptive and the paper should
