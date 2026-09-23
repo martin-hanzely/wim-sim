@@ -42,7 +42,9 @@ COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("dynamic_floor_kg", "floor kg", "{:.1f}"),
     ("coverage", "coverage", "{:.4f}"),
     ("mean_interval_width_kg", "width kg", "{:.0f}"),
-    ("recall", "recall", "{:.3f}"),
+    # Detection recall, not vehicle matching -- see `_ROW_TEMPLATE`. The two shared
+    # this name until 2026-09-23 and the matching one was the one being lost.
+    ("recall", "detect recall", "{:.3f}"),
     ("alarms", "alarms", "{:.0f}"),
     ("recalibrations", "recal", "{:.0f}"),
     ("detected", "faults hit", "{:.0f}"),

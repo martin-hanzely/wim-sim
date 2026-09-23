@@ -95,6 +95,10 @@ _ROW_TEMPLATE: dict[str, Any] = {
     # accuracy
     "n_truth": None,
     "n_matched": None,
+    # Vehicle matching: n_matched / n_truth. Named apart from `recall` because `_control_row` emits
+    # a `recall` of its own -- fault DETECTION recall -- and it is merged second, so a shared name
+    # silently destroyed this one. Everything downstream reads `recall` as the detection one.
+    "match_recall": None,
     "recall": None,
     "false_positive_rate": None,
     "mae_kg": None,
@@ -528,7 +532,10 @@ def _score_row(result) -> dict[str, Any]:
     return {
         "n_truth": s.n_truth,
         "n_matched": s.n_matched,
-        "recall": s.recall,
+        # NOT "recall": `_control_row` is merged after this one and emits fault-detection recall
+        # under that name. Sharing it meant this value was computed on every run and reached no
+        # output at all.
+        "match_recall": s.recall,
         "false_positive_rate": s.false_positive_rate,
         "mae_kg": s.mae_kg,
         "mape": s.mape,

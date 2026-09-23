@@ -347,6 +347,21 @@ leave-one-out result makes this sharper rather than softer — the per-vehicle b
 −30.8 kg, Fabia +59.4 kg) cannot be attributed to the platform or to the inference without one
 weighed vehicle.
 
+**That `recall` in the results tables meant what its neighbours suggest.** It is *fault-detection*
+recall — `detected / (detected + missed)` — and not vehicle-matching recall, in every results table,
+parquet, CSV and figure the project has produced. Two functions building the row both emitted a key
+named `recall` and the detection one was merged second, so the matching recall was computed on every
+run and reached no output at all, while the row template filed the surviving column under
+`# accuracy` beside `n_truth` and `n_matched`.
+
+Verified on the 63 rows of `data/results/ladder`: `recall` equals `detected/(detected+missed)` for
+all of them and `n_matched/n_truth` for none. **No reported number is wrong** — every consumer,
+including `export/RESULTS.md` and the detector figure, reads it as detection recall. What was
+missing is the other one. Matching recall now ships as `match_recall`, and the results tables label
+the column `detect recall`. In `export/data/*_long.csv` from before this commit, read `recall` as
+detection recall and note that scenarios with no injected fault carry a blank, because recall over
+zero faults is undefined rather than zero.
+
 **That the constants describing the real platform had been checked against each other.** They had
 not, and one was wrong by three orders of magnitude. `configs/stations/cintron_platform.yaml`
 carried `k0: 1.44e-8` mV/V per kg while the derivation written on the same line -- `(2.88e-8

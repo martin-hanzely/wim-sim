@@ -713,3 +713,47 @@ def test_naming_both_the_edge_axis_and_the_scalar_is_refused() -> None:
             edge_config="filtered",
             edge_configs=["default", "filtered"],
         )
+
+
+def test_the_two_recalls_are_different_columns_and_neither_overwrites_the_other() -> None:
+    """`_score_row` and `_control_row` both used to emit a key called `recall`, and the row is
+    built by updating one dict with the other -- so fault-detection recall won and vehicle-matching
+    recall was computed on every run and reached no output at all.
+
+    Verified on `data/results/ladder` before the fix: `recall` equalled `detected/(detected+missed)`
+    for all 63 rows and `n_matched/n_truth` for none. Nothing published was wrong, because
+    everything downstream reads `recall` as the detection one -- but the matching recall was
+    unreachable and the row template filed `recall` under accuracy, beside n_truth and n_matched,
+    which is where a reader would look for it.
+    """
+    from wimsim.experiments.runner import _ROW_TEMPLATE
+
+    assert "recall" in _ROW_TEMPLATE, "detection recall keeps the name everything already reads"
+    assert "match_recall" in _ROW_TEMPLATE, "and vehicle matching gets its own"
+
+
+def test_a_scored_row_carries_both_recalls_with_their_own_meanings() -> None:
+    from types import SimpleNamespace
+
+    from wimsim.experiments.runner import _score_row
+
+    score = SimpleNamespace(
+        n_truth=100,
+        n_matched=90,
+        recall=0.9,
+        false_positive_rate=0.0,
+        mae_kg=1.0,
+        mape=0.01,
+        rmse_kg=1.0,
+        bias_kg=0.0,
+        dynamic_floor_kg=0.0,
+        coverage=0.95,
+        coverage_expected=0.95,
+        n_interval_fallback=0,
+        mean_interval_width_kg=1.0,
+        axle_count_accuracy=1.0,
+    )
+    row = _score_row(SimpleNamespace(score=score))
+
+    assert row["match_recall"] == 0.9
+    assert "recall" not in row, "so it cannot be overwritten by the detection one and lost"
