@@ -597,6 +597,52 @@ come down from 4σ to 3σ — improving resolution from ~48 % to ~36 %. And a de
 into the baseline, confirmed or not: without that, a 50 % sensitivity loss walked the baseline from
 2.96 to 1.42 and the alarm never latched.
 
+## Thirty seeds, and the first significance tests in the project
+
+Every number the project reported before this was descriptive, and the manuscript had to say so.
+Three seeds made that unavoidable rather than a choice: the smallest attainable two-sided Wilcoxon
+p-value at n=3 is **0.25**, so nothing could reach 0.05 however large the effect. Thirty pairs put
+the floor below 1e-8.
+
+`ladder30` is the same grid as `ladder` with the seed axis widened -- 630 runs, none failed, run as
+three 10-seed shards and merged (`wimsim.experiments.merge`, which refuses shards that differ in
+anything but the seed). 37 core-hours, about seven wall-clock.
+
+Wilcoxon signed-rank, paired by seed, Holm-corrected over the fourteen tests as one family.
+
+| comparison | n | median A | median B | median diff kg | effect | p | p (Holm) | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| S1_nominal / static_affine->kalman | 30 | 0.944 | 0.951 | +0.00673 | +0.47 | 0.0248 | 0.198 | not separated |
+| S1_nominal / static_affine->rls | 30 | 0.944 | 0.94 | +0.001 | +0.05 | 0.808 | 1 | not separated |
+| S2_thermal_cycle / static_affine->kalman | 30 | 139 | 139 | +0.629 | +0.15 | 0.477 | 1 | not separated |
+| S2_thermal_cycle / static_affine->rls | 30 | 139 | 138 | -0.798 | -0.45 | 0.0293 | 0.198 | not separated |
+| S3_zero_drift_walk / static_affine->kalman | 30 | 139 | 140 | +0.759 | +0.08 | 0.715 | 1 | not separated |
+| S3_zero_drift_walk / static_affine->rls | 30 | 139 | 138 | -0.892 | -0.50 | 0.0155 | 0.139 | not separated |
+| S4_step_fault / static_affine->kalman | 30 | 182 | 151 | -31.6 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+| S4_step_fault / static_affine->rls | 30 | 182 | 154 | -27.1 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+| S5_outage / static_affine->kalman | 30 | 139 | 143 | +0.701 | +0.29 | 0.164 | 0.657 | not separated |
+| S5_outage / static_affine->rls | 30 | 139 | 138 | -0.811 | -0.42 | 0.0473 | 0.236 | not separated |
+| S6_combined / static_affine->kalman | 30 | 697 | 707 | +12 | +0.46 | 0.0277 | 0.198 | not separated |
+| S6_combined / static_affine->rls | 30 | 697 | 666 | -32.7 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+| S7_sparse_reference / static_affine->kalman | 30 | 179 | 163 | -14.2 | -0.97 | 3.54e-08 | 3.54e-07 | better |
+| S7_sparse_reference / static_affine->rls | 30 | 179 | 162 | -14.1 | -1.00 | 1.86e-09 | 2.61e-08 | better |
+
+**Five of fourteen survive correction, and adaptation wins exactly where the plant moves.**
+`S4_step_fault` (kalman -31.6 kg, rls -27.1 kg), `S6_combined` (rls -32.7 kg) and
+`S7_sparse_reference` (kalman -14.2 kg, rls -14.1 kg), all at p_holm <= 3.5e-7 with a rank-biserial
+effect size of -0.97 to -1.00. An effect size of -1.00 means every one of the thirty seeds moved the
+same way, which is as decisive as a paired test gets.
+
+**On the stationary scenarios the estimators are indistinguishable, and the correction is what says
+so.** Five comparisons have a raw p below 0.05 -- S1/kalman at 0.025, S2/rls at 0.029, S3/rls at
+0.016, S5/rls at 0.047, S6/kalman at 0.028 -- and not one survives Holm. This is the whole reason
+the family is declared at the call site: reported per-scenario, five of these would have been
+written up as findings.
+
+**The magnitudes say it twice.** Where nothing survives, the median differences are under 1 kg
+against MAEs of 139 to 697 kg. Even had they been detectable they would not have mattered, which is
+why the effect size sits beside the p-value in every row.
+
 ## Four detectors, run one at a time
 
 Section IV-G describes four detectors in parallel. The shipped pipeline runs two, so every detection
