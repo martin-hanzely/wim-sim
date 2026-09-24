@@ -1,0 +1,19 @@
+# ADWIN at delta = 0.9, 450x the shipped 0.002.
+#
+# WHY THIS ARM IS SO MUCH FURTHER OUT THAN THE OTHER DETECTORS' TOP ARMS. ADWIN's delta enters its
+# cut test through a Hoeffding bound as sqrt(2/m * log(2n/delta)), so it is a LOGARITHMIC control.
+# Measured on a planted one-sigma step: moving delta from 0.002 to 0.25 -- a factor of 125 -- shifts
+# the first alarm only from sample 326 to 318, because the bound falls by about a quarter. Over the
+# same span CUSUM's first alarm moves from 336 to 67.
+#
+# So the three-level ladder that gives CUSUM and Page-Hinkley a wide sweep barely moves ADWIN, and
+# without this arm the ADWIN curve would be four points on top of each other -- easily misread as
+# "ADWIN cannot be made sensitive" when what it shows is "delta is a weak knob". 0.9 is as far as
+# the parameter goes while remaining a confidence level; the config refuses anything outside (0, 1).
+
+extends: default
+name: detect_adwin_d9
+description: adwin alone, delta = 0.9 -- the far end of a logarithmically weak knob.
+drift:
+  detectors: [adwin]
+  adwin_delta: 0.9

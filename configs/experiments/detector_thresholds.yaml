@@ -13,17 +13,23 @@
 #
 # So each detector's own sensitivity knob is stepped three levels past the shipped value, with the
 # shipped value included as the paired baseline so the whole curve comes from one commit and one set
-# of seeds. Sixteen arms.
+# of seeds. Seventeen arms.
 #
 # THE KNOBS RUN IN DIFFERENT DIRECTIONS, which is why this is not a single scale factor:
 #
 #   cusum_threshold          12.0 -> 6.0, 3.0, 1.5          lower is more sensitive
 #   page_hinkley_threshold   15.0 -> 7.5, 3.75, 1.875       lower is more sensitive
-#   adwin_delta              0.002 -> 0.01, 0.05, 0.25      a significance level: HIGHER is more
+#   adwin_delta              0.002 -> 0.01, 0.05, 0.25, 0.9  a significance level: HIGHER is more
 #   ks_alpha                 1e-4 -> 1e-3, 1e-2, 1e-1       likewise HIGHER is more
 #
 # One knob per arm. CUSUM's slack and Page-Hinkley's tolerance are second sensitivity controls and
 # are left at the shipped values, because moving two at once would make a difference unattributable.
+#
+# ADWIN GETS A FIFTH ARM because its knob is logarithmic. `delta` enters a Hoeffding bound as
+# sqrt(log(2n/delta)), so the factor of 125 from 0.002 to 0.25 moves its cut threshold by about a
+# quarter, while the same span takes CUSUM's first alarm on a planted one-sigma step from sample 336
+# to 67. Without `detect_adwin_d9` the ADWIN curve would be four points on top of each other and
+# would read as "ADWIN cannot be made sensitive" rather than "delta is a weak control".
 #
 # WHAT WOULD COUNT AS AN ANSWER. Either some arm reaches usable recall at a false-alarm rate an
 # operator would accept -- in which case the shipped thresholds are simply mistuned and the fix is a
@@ -38,7 +44,8 @@
 experiment_id: detector_thresholds
 description: >
   CUSUM, Page-Hinkley, ADWIN and windowed KS, each alone at its shipped threshold and at three more
-  sensitive settings, on the two scenarios carrying calibration faults.
+  sensitive settings (four for ADWIN, whose knob is logarithmic), on the two scenarios carrying
+  calibration faults.
 scenarios: [S4_step_fault, S6_combined]
 estimators: [rls]
 seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -55,6 +62,7 @@ edge_configs:
   - detect_adwin_d01
   - detect_adwin_d05
   - detect_adwin_d25
+  - detect_adwin_d9
   - detect_ks             # shipped
   - detect_ks_a001
   - detect_ks_a01
