@@ -179,10 +179,32 @@ scenarios, none failed), and it does not say what §IV-G assumes:
   faults, so scoring *every* alarm as a hit would cap recall at 0.20–0.95 against a measured
   0.00–0.15.
 - **False alarms run at 0.00–0.06 per hour**, one per 17 hours at worst, so the operating point is
-  far too conservative and there is a large unspent budget on that axis.
+  far too conservative.
+
+**FOLLOW-UP — the rest of the curve was then measured** (`detector_thresholds`, 340 runs, seventeen
+arms, ten seeds, none failed):
+
+- **The shipped Page–Hinkley threshold is simply mistuned.** Halving it takes S4 recall from 1-of-20
+  to **5-of-20 at an identical 0.062 false alarms per hour**. Free, and the most actionable single
+  number in this export.
+- **But recall then falls again.** S4 runs 0.05 → 0.25 → 0.25 → 0.05 as the threshold drops by 2×,
+  4×, 8×, while alarms climb monotonically 9 → 17 → 25 → 30. The cause is in the controller, not the
+  detector: `drift_detected` is emitted only from the MONITORING state, and an alarm holds the
+  machine in DRIFT_SUSPECTED for `confirmation_passes = 60` residuals — **982 s at S4's traffic rate,
+  55 % of the 1800 s fault horizon**. One spurious alarm shortly before a fault eats the window that
+  fault must be caught in. Verified directly on seed 1: the most sensitive arm alarms 1239 s *before*
+  the second fault and misses it.
+- **No arm reaches usable recall.** Ceiling 0.25 on S4 and 0.10 on S6.
+- **The budget is unspent because the detectors will not spend it.** At 8× sensitivity CUSUM's false
+  alarms only reach 0.188/h. The residual stream is quiet and a threshold cannot manufacture
+  evidence, which points at the reference rate rather than the thresholds.
+- **Windowed KS detects nothing at any alpha** (0 of 20 on both scenarios across a factor of 1000),
+  and **ADWIN's `delta` is logarithmically weak** — a factor of 450 moves its cut threshold about a
+  third.
 
 So §IV-G can be written, with four detectors and scenario-level evidence. What it cannot claim is
-that running four helps.
+that running four helps, and what it must add is that the confirmation window is sized in vehicles
+while the horizon it is judged against is sized in seconds.
 
 ### §IV-H — five-state machine with confirmation, minimum references, verification, cool-down, DEGRADED
 

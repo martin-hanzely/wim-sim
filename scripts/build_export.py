@@ -35,6 +35,8 @@ SWEEPS = {
     "recal_coverage": "recalibration frequency via confirm_sigma, against interval coverage and "
     "fallback-event count",
     "theta2": "the three-parameter map against the two-parameter one, 30 seeds",
+    "detector_thresholds": "each detector's threshold stepped from the shipped value to three more "
+    "sensitive ones, to measure the rest of the recall/false-alarm curve",
 }
 
 #: Analysis products written beside a sweep's parquet. Copied into the export because they are the

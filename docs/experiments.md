@@ -705,6 +705,108 @@ estimator does not exist, and this result is a reason to build it rather than a 
 with the caveat that the two-parameter map is already within 2 % of the dynamic floor on S2, so
 there is very little left for it to win.
 
+## Spending the false-alarm budget, and the ceiling it runs into
+
+`detectors.yaml` left one direction open: median recall was 0.000 everywhere while false alarms ran
+at 0.00-0.06 an hour, one per seventeen hours at worst. The shipped thresholds were not at a bad
+point on the recall/false-alarm trade-off, they were at one end of it.
+
+`configs/experiments/detector_thresholds.yaml` measures the rest of the curve. Seventeen arms --
+each detector at its shipped threshold and three more sensitive settings, five for ADWIN whose knob
+is logarithmic -- two scenarios, ten seeds, 340 runs as five seed shards, none failed, 21.8
+core-hours. Figure: `detector_curve.png`.
+
+| scenario | arm | alarms | faults hit | recall | false alarms/h |
+| --- | --- | ---: | ---: | ---: | ---: |
+| S4_step_fault | detect_ks | 4 | 0/20 | 0.00 | 0.000 |
+| S4_step_fault | detect_ks_a001 | 7 | 0/20 | 0.00 | 0.062 |
+| S4_step_fault | detect_ph | 9 | 1/20 | 0.05 | 0.062 |
+| S4_step_fault | detect_ks_a01 | 9 | 0/20 | 0.00 | 0.062 |
+| S4_step_fault | detect_ks_a1 | 11 | 0/20 | 0.00 | 0.062 |
+| S4_step_fault | detect_adwin | 12 | 0/20 | 0.00 | 0.062 |
+| S4_step_fault | detect_adwin_d05 | 13 | 2/20 | 0.10 | 0.062 |
+| S4_step_fault | detect_adwin_d01 | 13 | 1/20 | 0.05 | 0.062 |
+| S4_step_fault | detect_cusum | 15 | 3/20 | 0.15 | 0.062 |
+| S4_step_fault | detect_adwin_d25 | 16 | 2/20 | 0.10 | 0.062 |
+| S4_step_fault | detect_ph_h7p5 | 17 | 5/20 | 0.25 | 0.062 |
+| S4_step_fault | detect_adwin_d9 | 19 | 2/20 | 0.10 | 0.125 |
+| S4_step_fault | detect_cusum_h6 | 21 | 3/20 | 0.15 | 0.125 |
+| S4_step_fault | detect_ph_h3p75 | 25 | 5/20 | 0.25 | 0.125 |
+| S4_step_fault | detect_cusum_h3 | 30 | 2/20 | 0.10 | 0.188 |
+| S4_step_fault | detect_cusum_h1p5 | 30 | 1/20 | 0.05 | 0.188 |
+| S4_step_fault | detect_ph_h1p875 | 30 | 1/20 | 0.05 | 0.188 |
+| S6_combined | detect_ks | 1 | 0/20 | 0.00 | 0.000 |
+| S6_combined | detect_ks_a001 | 5 | 0/20 | 0.00 | 0.000 |
+| S6_combined | detect_ks_a01 | 8 | 0/20 | 0.00 | 0.021 |
+| S6_combined | detect_adwin | 14 | 0/20 | 0.00 | 0.021 |
+| S6_combined | detect_ph | 14 | 0/20 | 0.00 | 0.031 |
+| S6_combined | detect_adwin_d01 | 14 | 1/20 | 0.05 | 0.021 |
+| S6_combined | detect_ks_a1 | 15 | 0/20 | 0.00 | 0.031 |
+| S6_combined | detect_adwin_d05 | 18 | 0/20 | 0.00 | 0.042 |
+| S6_combined | detect_cusum | 19 | 0/20 | 0.00 | 0.042 |
+| S6_combined | detect_adwin_d25 | 21 | 0/20 | 0.00 | 0.042 |
+| S6_combined | detect_adwin_d9 | 22 | 0/20 | 0.00 | 0.042 |
+| S6_combined | detect_ph_h7p5 | 27 | 0/20 | 0.00 | 0.062 |
+| S6_combined | detect_cusum_h6 | 31 | 2/20 | 0.10 | 0.062 |
+| S6_combined | detect_ph_h3p75 | 34 | 2/20 | 0.10 | 0.062 |
+| S6_combined | detect_cusum_h3 | 40 | 0/20 | 0.00 | 0.083 |
+| S6_combined | detect_cusum_h1p5 | 40 | 0/20 | 0.00 | 0.083 |
+| S6_combined | detect_ph_h1p875 | 40 | 0/20 | 0.00 | 0.083 |
+
+**Halving Page-Hinkley's threshold multiplies recall by five, and costs nothing.** On S4, shipped
+(`h=15`) catches 1 of 20 injected faults at 0.062 false alarms an hour; `h=7.5` catches **5 of 20 at
+the same 0.062**. That is a free change, and it is the single most actionable number in this
+document.
+
+**And then recall falls again.** Past the optimum, more sensitivity makes detection *worse*: S4
+recall runs 0.05 (shipped) -> 0.25 (h7.5) -> 0.25 (h3.75) -> 0.05 (h1.875), while alarms climb
+monotonically 9 -> 17 -> 25 -> 30. CUSUM does the same, peaking at `h6` and falling by `h1.5`. An
+inverted U is not what a threshold sweep is supposed to produce.
+
+### Why: an alarm makes the controller deaf for most of the horizon it is scored over
+
+`drift_detected` is emitted only from `_monitor`, that is, only while the controller is in
+MONITORING. An alarm moves it to DRIFT_SUSPECTED, where it collects `confirmation_passes = 60`
+residuals before it can return. At S4's 220 vehicles an hour that is **982 seconds, or 55 % of the
+1800 s fault horizon** -- so one spurious alarm shortly before a fault consumes most of the window
+in which that fault must be caught.
+
+Measured directly on seed 1, the same scenario, three thresholds:
+
+| arm | alarms (s after start) | fault at 14400 | fault at 32400 |
+| --- | --- | --- | --- |
+| `detect_ph` | 17460 | missed -- alarm 3060 s late | missed |
+| `detect_ph_h3p75` | 15996, 45101 | **caught**, 1596 s in | missed |
+| `detect_ph_h1p875` | 10698, 31161, 52349 | missed | missed -- **alarm fired 1239 s BEFORE it** |
+
+The most sensitive arm alarms at 10698 s, nowhere near a fault, and again at 31161 s -- 1239 s ahead
+of the 32400 s fault, so the 982 s confirmation window covers most of the gap and the fault itself
+arrives while the machine is not listening. The extra sensitivity buys alarms on noise and spends
+the horizon on them.
+
+This is a design question rather than a tuning one: `confirmation_passes` is measured in vehicles and
+the horizon in seconds, and nobody had set one against the other. Letting the detector keep alarming
+during confirmation, or sizing confirmation against the horizon, would both address it. Neither is
+done here.
+
+### The ceiling, and where the budget actually ran out
+
+**No arm reaches usable recall.** The best is 0.25 on S4 and 0.10 on S6. A system that catches one
+calibration fault in four is not a self-calibrating system, and this sweep says so at ten seeds
+across seventeen operating points.
+
+**The false-alarm budget is still not spent, because the detectors will not spend it.** At eight
+times the shipped sensitivity, CUSUM's alarm count only goes from 15 to 30 and its false-alarm rate
+from 0.062 to 0.188 an hour. The trade-off curve does not extend to the right: the residual stream is
+quiet, and lowering a threshold cannot manufacture evidence that is not in it. That points at the
+reference rate rather than the thresholds, which is the same conclusion `recal_coverage` reached from
+the other side.
+
+**Windowed KS never detects anything, at any alpha.** 0 of 20 on both scenarios across a factor of
+1000 in `ks_alpha`. **ADWIN's `delta` is a logarithmically weak knob** -- it enters a Hoeffding bound
+as `sqrt(log(2n/delta))`, so a factor of 450 moves its cut threshold by about a third, and its five
+arms span 12 to 22 alarms where CUSUM's four span 15 to 30.
+
 ## Thirty seeds, and the first significance tests in the project
 
 Every number the project reported before this was descriptive, and the manuscript had to say so.

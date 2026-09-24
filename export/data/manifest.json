@@ -1,6 +1,6 @@
 {
-  "generated_utc": "2026-09-23T18:29:39.068060+00:00",
-  "git_commit": "4745dd4b33ed3916244e10db9332fe4fa1123049",
+  "generated_utc": "2026-09-24T12:53:04.864404+00:00",
+  "git_commit": "b675c9d5c9ddbbdecd2f74f49dcc0462f202d2a9",
   "git_dirty": true,
   "python": "3.13.13",
   "packages": {
@@ -765,6 +765,75 @@
         "c6335bbd24a8e7cb3af8e5d376ac29c401f5a183b2242974930e81df54ac6b9e"
       ],
       "wall_clock_s": 49164.709641699876
+    },
+    "detector_thresholds": {
+      "purpose": "each detector's threshold stepped from the shipped value to three more sensitive ones, to measure the rest of the recall/false-alarm curve",
+      "command": "wimsim experiment detector_thresholds --out data/results/detector_thresholds",
+      "n_runs": 340,
+      "n_failed": 0,
+      "git_commit": "b675c9d5c9ddbbdecd2f74f49dcc0462f202d2a9",
+      "git_dirty": false,
+      "scenarios": [
+        "S4_step_fault",
+        "S6_combined"
+      ],
+      "estimators": [
+        "rls"
+      ],
+      "seeds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "config_hashes": [
+        "091893e2b20fe4f1f4ec71b10a24db6c43dabefaa37c7ef75c67f5a78f00f2b7",
+        "1efe02364dacd47e4d9a937957614582b8530ef56f2b525678988666500727b7",
+        "29718e114c21c01b04a983f185bbf01430cfac8dd9e8b5808281b0434dac26fc",
+        "4054ab96937dfc6eef3c9c4f46347db001fd4eea59432509f786c95b51d12234",
+        "4471998ed306e877216c6c1b12b8ba9d62e309093746866fb7f4d683dd3b0138",
+        "57d0146db86c059173927b479ffa5908a6e01f3cdeb9f10b63e58e983cd88fb2",
+        "5cf17843f3bfe6e9f5ce0f88df6e9f0fa19691e7d0781a28d2e0071debfacd13",
+        "755a0aa70d2f3fe05534c8cb137d5df18ed16325d4692fc840c3daee2c8a8c92",
+        "7d29a6d7dca932314e512c265e0e559ec6cc02e548aa25349a95d1f29dbf9ef1",
+        "8fbcb1374a66e26dea4a0e8dbcf64db42ebcd88dd11b5cd3bb5d44e8d4b0665a",
+        "adc80992e5ad2b0074c2ccb5fd189429c3fd11d2d51d242aa1caec078b0db1d2",
+        "af86278540fa1654a3e5819e52691400963a2f43bbaf4be0dd151148c2836411",
+        "b3cf8d14b3aed8b1d65ab4497dcbfb879dbda2ce1da03bb07f6401c9b4b9bd4a",
+        "b97f4fa67d55b0a4900a4dc84b9f38b152ab85aa07d9118de95bac234f41360d",
+        "c1d9d4a7d46d9a42ad59de704b5ae8b21c9bf2f17d4576d9bfa6e10e6c6f4b13",
+        "c371bfebbbdb510b204e19fcaedea3c47a4e8b6d77499f04ee6ac55d13fed988",
+        "da4740837e6cf85b5c7d22d84cf556133cbff181edcbfd4d107db823d7c1f164",
+        "e4f7ab87faf6982be139dc8af97757bff8d540d357c41e3d06ec298e4dd75854",
+        "eb12037c60287858e9925e83fcaf2aa6789246ee5a2aa0c936402930de58eb1c",
+        "edb8fb013b7aeb64e877b749783afa62d6864702f69cf9e7c539d6cd9df4f86d"
+      ],
+      "edge_config_hashes": [
+        "20130680d31d3f86b6ba2aca7957cd12726792b2c6077268c0d5c6a76769e97b",
+        "25c6db56fd3e52ff8b9063a41e01076d7895fe780d460377e00284d22371caf1",
+        "2f4e3b278d7071bec8aa0677f1cbbd03d47402170bb04693f40ccacdf5c29f49",
+        "4461eb1cf9b92114a14812e336f298ef19941d76cde75f8385519785a7e2bea3",
+        "54466acae6a4c374fa42ba30f2653b284f4dc3a8e76fe56debc92a54cb2e07f8",
+        "54802d707ea21b5da7cf2ad3f7cd24e65bddaec15f251a1122b5b85343d49b25",
+        "aa1200243cef10c1f8c21df27d04196d8768dd9fdd450c7d0a7e4009cc08eacb",
+        "ab019c8a3a6e7bd3d75935438f4cd74044183d5874dc74a50e9feafc0be4f6bf",
+        "b25499a819bb41b85de12799ca8ba1bde0b42ee46ddc2fc8613c9aeb6e2d6266",
+        "ba90eb10e4e1f7500a344f9b4e5e676713fa49fa355f420971a75285e0b9c298",
+        "bb30a00e8b71a9c205c2a8ae8bfd12dbd398eb05e13ef3cca8505688e8cc1931",
+        "cd0b532d57584fbe61d90fef1c37837c0c553f0f331ba2daf4ccc9a2a55394c8",
+        "e1849b73da5f69edb0c85c8f626316c1e6c981a5af194ab1a66cea84c836ec40",
+        "e213869d932f0bcaa7780383d553ec0db2648ea462e31071b5fb37c76bc29d84",
+        "e5360505f8c49a15eebb5ef47f7d7477818e9b19f26155854e4ff574f74f5811",
+        "e68694c868384201c53bdaf13449887c7b05c2ad9ef5f3f7d7b8bf5cddc0bcb0",
+        "f148dc11752161354c3021f05b1fe526c43baf276ba3893e2b36806f990aaf93"
+      ],
+      "wall_clock_s": 77845.6934043995
     }
   },
   "missing_sweeps": [],
@@ -806,12 +875,19 @@
     "theta2__coverage.png",
     "theta2__detectors.png",
     "theta2__reconvergence.png",
+    "detector_thresholds__accuracy.png",
+    "detector_thresholds__coverage.png",
+    "detector_thresholds__detector_curve.png",
+    "detector_thresholds__detectors.png",
+    "detector_thresholds__recal_tradeoff.png",
+    "detector_thresholds__reconvergence.png",
     "ladder__comparisons.md",
     "ladder30__comparisons.md",
     "reference_rate__comparisons.md",
     "cintron_ladder__comparisons.md",
     "detectors__detectors.md",
-    "theta2__comparisons.md"
+    "theta2__comparisons.md",
+    "detector_thresholds__detectors.md"
   ],
   "container_digest": "not applicable -- runs are local, not containerised"
 }

@@ -119,6 +119,35 @@ online identification is exactly what would fix that lever arm.
 
 ---
 
+### 6. Spending the false-alarm budget — `detector_thresholds`
+
+340 runs, seventeen arms, ten seeds, none failed, 21.8 core-hours. Commit `b675c9d5`. Figure
+`detector_thresholds__detector_curve.png`; full table `detector_thresholds__detectors.md`.
+
+| | shipped | best arm | most sensitive arm |
+| --- | --- | --- | --- |
+| S4 Page–Hinkley recall | 1/20 (0.05) | **5/20 (0.25)** at half the threshold | 1/20 (0.05) at an eighth |
+| S4 false alarms/h | 0.062 | **0.062** — unchanged | 0.188 |
+| S4 CUSUM recall | 3/20 (0.15) | 3/20 (0.15) at half | 1/20 (0.05) at an eighth |
+| S6 best recall, any arm | 0/20 | **2/20 (0.10)** | 0/20 |
+
+- **Halving Page–Hinkley's threshold multiplies S4 recall by five at an identical false-alarm rate.**
+  Free, and the most actionable number here.
+- **Past the optimum, sensitivity makes detection worse** — an inverted U, not what a threshold sweep
+  should produce. Cause: `drift_detected` is emitted only from the MONITORING state, and an alarm
+  holds the controller in DRIFT_SUSPECTED for `confirmation_passes = 60` residuals, which is **982 s
+  at S4's 220 vehicles/h — 55 % of the 1800 s fault horizon**. Verified on seed 1: the most sensitive
+  arm alarms 1239 s *before* the second fault and misses it. `confirmation_passes` is sized in
+  vehicles and the horizon in seconds, and the two were never set against each other.
+- **No arm reaches usable recall**: 0.25 on S4, 0.10 on S6.
+- **The budget goes unspent because the detectors will not spend it.** At 8× sensitivity CUSUM only
+  reaches 0.188 false alarms/h. The residual stream is quiet; a threshold cannot manufacture evidence
+  that is not in it, which points at the reference rate.
+- **Windowed KS detects nothing at any alpha** (0/20 both scenarios, across 1000× in `ks_alpha`);
+  **ADWIN's `delta` is logarithmically weak** (450× moves its cut threshold about a third).
+
+---
+
 ## Read this first: did the method beat B2?
 
 **No — not on mean absolute error, on any scenario tested, at any reference rate.**
@@ -584,6 +613,7 @@ So that none of it has to be hunted for:
   `detectors` above
 - ~~any statistical significance test, anywhere~~ — **now run on `ladder30`**; the three-seed sweeps
   remain descriptive
-- the detector grid at lower thresholds, which is the one direction the false-alarm budget leaves
-  open
+- ~~the detector grid at lower thresholds~~ — **now run**, see `detector_thresholds` above
+- detection at a higher reference rate, which is where that sweep points instead
+- `confirmation_passes` sized against the fault horizon rather than in vehicles
 - an *online*-identified interaction term, which is what §III-B actually specifies
