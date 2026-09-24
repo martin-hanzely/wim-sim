@@ -1,0 +1,15 @@
+# cusum at a lower threshold: a quarter of the shipped 12.0.
+#
+# The shipped operating point detects almost nothing -- median recall 0.000 across 100 runs -- while
+# spending 0.00-0.06 false alarms an hour, which is one per seventeen hours at worst. The budget is
+# nearly untouched, so this arm spends some of it. Lower threshold, more sensitive, more alarms.
+#
+# One knob per arm, so a difference is attributable. Slack and tolerance are left at the shipped
+# values; they are a second sensitivity control and moving both at once would confound them.
+
+extends: default
+name: detect_cusum_h3
+description: cusum alone, threshold a quarter of the shipped 12.0.
+drift:
+  detectors: [cusum]
+  cusum_threshold: 3.0

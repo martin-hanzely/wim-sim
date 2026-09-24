@@ -1,0 +1,15 @@
+# page_hinkley at a lower threshold: half the shipped 15.0.
+#
+# The shipped operating point detects almost nothing -- median recall 0.000 across 100 runs -- while
+# spending 0.00-0.06 false alarms an hour, which is one per seventeen hours at worst. The budget is
+# nearly untouched, so this arm spends some of it. Lower threshold, more sensitive, more alarms.
+#
+# One knob per arm, so a difference is attributable. Slack and tolerance are left at the shipped
+# values; they are a second sensitivity control and moving both at once would confound them.
+
+extends: default
+name: detect_ph_h7p5
+description: page_hinkley alone, threshold half the shipped 15.0.
+drift:
+  detectors: [page_hinkley]
+  page_hinkley_threshold: 7.5

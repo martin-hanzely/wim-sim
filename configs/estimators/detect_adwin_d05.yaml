@@ -1,0 +1,15 @@
+# adwin at a looser confidence level: 25x the shipped 0.002.
+#
+# This detector's knob runs the other way from CUSUM's and Page-Hinkley's: it is a significance
+# level, so a LARGER value is more willing to declare a change. At the shipped setting this detector
+# found nothing at all in 100 runs, on either scenario.
+#
+# The shipped operating point spends 0.00-0.06 false alarms an hour against a budget an operator
+# would set far higher, so this arm spends some of it.
+
+extends: default
+name: detect_adwin_d05
+description: adwin alone, 25x the shipped 0.002.
+drift:
+  detectors: [adwin]
+  adwin_delta: 0.05

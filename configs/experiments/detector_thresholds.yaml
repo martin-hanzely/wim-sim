@@ -1,0 +1,66 @@
+# The one direction the detector table left open: spend the false-alarm budget.
+#
+# WHAT `detectors.yaml` FOUND. Each detector alone and the four-way ensemble, 100 runs, ten seeds:
+# median detection recall **0.000 in every cell**. CUSUM caught 3 of 20 injected calibration faults
+# on S4 and Page-Hinkley 1 of 20; ADWIN and windowed KS caught none at all, on either scenario. And
+# it was not the scoring horizon -- the detectors alarm only 1-2 times per run against 2 faults, so
+# scoring every alarm as a hit would still cap recall at 0.20-0.95.
+#
+# WHY THIS SWEEP EXISTS. That result came with an unspent budget attached. False alarms ran at 0.00
+# to 0.06 per hour, which is one per seventeen hours at worst, and no operator sets their tolerance
+# there. The shipped thresholds are not at a bad point on the recall/false-alarm trade-off; they are
+# at one end of it, and nothing has ever measured the rest of the curve.
+#
+# So each detector's own sensitivity knob is stepped three levels past the shipped value, with the
+# shipped value included as the paired baseline so the whole curve comes from one commit and one set
+# of seeds. Sixteen arms.
+#
+# THE KNOBS RUN IN DIFFERENT DIRECTIONS, which is why this is not a single scale factor:
+#
+#   cusum_threshold          12.0 -> 6.0, 3.0, 1.5          lower is more sensitive
+#   page_hinkley_threshold   15.0 -> 7.5, 3.75, 1.875       lower is more sensitive
+#   adwin_delta              0.002 -> 0.01, 0.05, 0.25      a significance level: HIGHER is more
+#   ks_alpha                 1e-4 -> 1e-3, 1e-2, 1e-1       likewise HIGHER is more
+#
+# One knob per arm. CUSUM's slack and Page-Hinkley's tolerance are second sensitivity controls and
+# are left at the shipped values, because moving two at once would make a difference unattributable.
+#
+# WHAT WOULD COUNT AS AN ANSWER. Either some arm reaches usable recall at a false-alarm rate an
+# operator would accept -- in which case the shipped thresholds are simply mistuned and the fix is a
+# config change -- or recall stays near zero while false alarms climb, in which case the residual
+# signal a calibration fault leaves is too small for these detectors at this reference rate, and the
+# remedy is more reference vehicles rather than a lower threshold. Both are results. The second is
+# the more likely one, given that `recal_coverage` found a factor of four on `confirm_sigma` changing
+# nothing in 24 of 60 seed-cells.
+#
+# Everything else is `detectors.yaml` unchanged, so the threshold is the only thing that moved.
+
+experiment_id: detector_thresholds
+description: >
+  CUSUM, Page-Hinkley, ADWIN and windowed KS, each alone at its shipped threshold and at three more
+  sensitive settings, on the two scenarios carrying calibration faults.
+scenarios: [S4_step_fault, S6_combined]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_configs:
+  - detect_cusum          # shipped, the paired baseline for the CUSUM ladder
+  - detect_cusum_h6
+  - detect_cusum_h3
+  - detect_cusum_h1p5
+  - detect_ph             # shipped
+  - detect_ph_h7p5
+  - detect_ph_h3p75
+  - detect_ph_h1p875
+  - detect_adwin          # shipped
+  - detect_adwin_d01
+  - detect_adwin_d05
+  - detect_adwin_d25
+  - detect_ks             # shipped
+  - detect_ks_a001
+  - detect_ks_a01
+  - detect_ks_a1
+edge_overrides: [edge.control.enabled=true]
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
