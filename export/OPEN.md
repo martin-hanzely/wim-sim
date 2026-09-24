@@ -4,6 +4,50 @@ Commit `f40ca51`. Test suite last run with the full docker stack up.
 
 ---
 
+## What the 2026-09-24 reruns superseded, and what they did not
+
+Two sweeps were re-run after the rest of this export was generated: `cintron_ladder30` (the
+influence-line ladder at thirty seeds) and `reference_rate_ph75` (the governance sweep at the
+corrected Page-Hinkley threshold). Nothing else was re-run, deliberately. That leaves some artifacts
+in this export superseded and most of them untouched, and the difference has to be explicit rather
+than inferred from timestamps.
+
+### Superseded — still present, no longer the best evidence
+
+| artifact | superseded by | why |
+| --- | --- | --- |
+| `cintron_ladder__comparisons.md` | `cintron_ladder30__comparisons.md` | three seeds; every null verdict was a statement about seed count, the surviving effects were overstated by up to 23 %, and `S6_combined`/kalman had the **wrong sign** |
+| `figures/cintron_ladder__*.png` (5) | `figures/cintron_ladder30__*.png` (5) | same data at three seeds instead of thirty |
+| `data/cintron_ladder_long.csv` | `data/cintron_ladder30_long.csv` | superset: same grid, 630 rows against 63 |
+| `figures/reference_rate__*.png` (15) | `figures/reference_rate_ph75__*.png` (6) | **for the governance question only.** The threshold-15 figures remain the record of what the *shipped* configuration did, which is a different and still-valid question |
+| `reference_rate__comparisons.md` | `reference_rate_ph75` §8 in RESULTS.md | as above: superseded as evidence about governance's best configuration, not as evidence about the shipped one |
+
+The superseded files are kept rather than deleted. The three-seed influence-line run is the reason
+the thirty-seed one was commissioned, and the threshold-15 reference-rate sweep is what the
+correction is measured against.
+
+### Unaffected — nothing about these changed
+
+`ladder`, `ladder30`, `governance`, `theta2`, `recal_coverage`, `detectors`, `detector_thresholds`,
+and every figure, CSV and table derived from them. None of them shares a grid with either rerun.
+
+Two points of care for anyone comparing across them:
+
+* **`ladder30` and `cintron_ladder30` are directly comparable.** Both ran Page-Hinkley at 15.0 — the
+  latter pins it explicitly for exactly this reason — so they differ in the instrument and in
+  nothing else.
+* **`reference_rate` and `reference_rate_ph75` differ in the threshold and nothing else.** Same
+  scenarios, estimators, seeds, rates, arms and calibration budget.
+
+### The shipped default has moved, so these configs no longer reproduce these numbers
+
+The Page-Hinkley default is now 7.5. Every sweep in this export except `reference_rate_ph75` ran at
+15.0, and the experiment configs mostly say `edge_config: default`, which now resolves to 7.5.
+**Re-running them will not reproduce their stored numbers.** The mismatch is detectable rather than
+silent — every row carries `edge_config_hash` — and RESULTS.md carries the table of which sweep ran
+at which threshold. `configs/estimators/detect_ph.yaml` is pinned at 15.0 so the detector ladders
+keep a fixed baseline.
+
 ## Constants
 
 The values actually in the code, not the intended ones.

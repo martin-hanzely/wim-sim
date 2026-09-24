@@ -175,6 +175,86 @@ online identification is exactly what would fix that lever arm.
 
 ---
 
+## Two reruns, 2026-09-24 — the last runs before Sections VI–VIII
+
+Commit `f10cbd83` (cintron_ladder30) and `6523c7de` (reference_rate_ph75). Both merged from seed
+shards; neither had a failed run.
+
+### 7. The influence-line ladder at thirty seeds — `cintron_ladder30`
+
+630 runs, 30 seeds, 35.6 core-hours. **Page-Hinkley pinned at 15.0**, the pre-correction value, so
+the seed count is the only difference from `ladder30`. Median per-seed MAE difference in kg,
+`static_affine` against the named estimator; ★ = significant at 0.05 after Holm within that run's
+own family of fourteen.
+
+| comparison | contact-force 30 seeds | influence-line 3 seeds | influence-line 30 seeds | p (Holm) |
+| --- | ---: | ---: | ---: | ---: |
+| S1_nominal / static_affine->kalman | +0.01 | -0.10 | +0.03 | 1 |
+| S1_nominal / static_affine->rls | +0.00 | -0.14 | -0.04 | 0.261 |
+| S2_thermal_cycle / static_affine->kalman | +0.63 | +1.24 | +0.48 | 1 |
+| S2_thermal_cycle / static_affine->rls | -0.80 | -0.35 | -1.07 ★ | 0.03 |
+| S3_zero_drift_walk / static_affine->kalman | +0.76 | +1.68 | +1.09 | 1 |
+| S3_zero_drift_walk / static_affine->rls | -0.89 | +0.56 | -0.69 | 0.207 |
+| S4_step_fault / static_affine->kalman | -31.61 ★ | -36.11 | -33.17 ★ | 2.61e-08 |
+| S4_step_fault / static_affine->rls | -27.09 ★ | -33.76 | -31.83 ★ | 2.61e-08 |
+| S5_outage / static_affine->kalman | +0.70 | +2.22 | +0.95 | 1 |
+| S5_outage / static_affine->rls | -0.81 | -1.01 | -1.08 | 0.115 |
+| S6_combined / static_affine->kalman | +12.05 | -13.66 | +9.60 ★ | 0.0269 |
+| S6_combined / static_affine->rls | -32.74 ★ | -29.46 | -30.69 ★ | 2.61e-08 |
+| S7_sparse_reference / static_affine->kalman | -14.18 ★ | -23.69 | -18.06 ★ | 3.73e-08 |
+| S7_sparse_reference / static_affine->rls | -14.10 ★ | -23.53 | -18.20 ★ | 2.61e-08 |
+
+**The transfer holds.** All five of `ladder30`'s significant effects reproduce on the real
+instrument's physics at comparable magnitude and an identical effect size of −1.00: S4 kalman −33.2
+(was −31.6), S4 rls −31.8 (−27.1), S6 rls −30.7 (−32.7), S7 kalman −18.1 (−14.2), S7 rls −18.2
+(−14.1). Adaptation wins where the plant moves, on both instruments, at power.
+
+**Two comparisons separate here that did not on the contact-force station** — 7 of 14 against 5:
+
+- `S2_thermal_cycle` / rls, **−1.07 kg**, p_holm 0.030, effect −0.59. Real and negligible: 0.7 % of a
+  152 kg MAE.
+- `S6_combined` / kalman, **+9.60 kg WORSE**, p_holm 0.027, effect +0.60. On this instrument Kalman
+  is significantly worse than the frozen baseline on the combined-fault scenario. The same cell on
+  the contact-force station was +12.05 kg and did not reach significance.
+
+**The three-seed run overstated what it found, and one cell had the wrong sign.** S4 −36.1/−33.8
+became −33.2/−31.8; S7 −23.7/−23.5 became −18.1/−18.2, about 23 % smaller. And `S6_combined` /
+kalman was −13.66 kg at three seeds — kalman apparently helping — against +9.60 and significantly
+*worse* at thirty. Three seeds were not merely underpowered there; they pointed the wrong way.
+
+### 8. Governance at the corrected threshold — `reference_rate_ph75`
+
+180 runs, identical to `reference_rate` except Page-Hinkley at **7.5** instead of 15.0. Controller
+on, both scenarios pooled, medians over three seeds:
+
+| | Page-Hinkley 15.0 | Page-Hinkley 7.5 |
+| --- | ---: | ---: |
+| alarms raised | 207 | **382** (+85 %) |
+| recalibrations completed | 20 | **40** (×2) |
+| detection recall | 31/135 = 0.23 | 39/135 = 0.29 |
+| median MAE, controller on | 159.34 kg | **159.50 kg** (+0.16) |
+| median MAE difference, loop on − off | **+0.000 kg** | **+0.000 kg** |
+| cells byte-identical between arms | 25 of 30 | **23 of 30** |
+
+**The negative result survives, and this is its definitive form.** Given its best available
+configuration the loop fired 85 % more often, recalibrated twice as many times, and moved the median
+mean absolute error by a tenth of a percent, in the wrong direction. In 23 of 30 cells the two arms
+produced identical numbers — not "no significant difference", but the loop changing nothing at all.
+
+**The one exception is not an improvement.** `static_affine`'s MAE falls 4.10–7.17 kg at dense
+reference rates while its **signed bias degrades sharply**: −12.33 → −34.64 kg at one reference in
+two, and +4.18 → **−65.96 kg** at one in five. Recalibrating a frozen estimator more often trades a
+little scatter for a lot of offset. Quoting the MAE gain without the bias would misdescribe it.
+
+At one reference in twenty and one in fifty nothing changes anywhere — identical alarms, MAE and
+bias. The loop cannot fire on references it does not have.
+
+*Power:* three seeds, and most cells produce zero difference between arms, so the Wilcoxon floor is
+1.0 and nothing here can be significant. These are descriptive, and what they describe is 23 of 30
+cells in which nothing happened.
+
+---
+
 ## Read this first: did the method beat B2?
 
 **No — not on mean absolute error, on any scenario tested, at any reference rate.**

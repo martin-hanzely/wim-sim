@@ -37,6 +37,10 @@ SWEEPS = {
     "theta2": "the three-parameter map against the two-parameter one, 30 seeds",
     "detector_thresholds": "each detector's threshold stepped from the shipped value to three more "
     "sensitive ones, to measure the rest of the recall/false-alarm curve",
+    "cintron_ladder30": "the influence-line ladder at THIRTY seeds, testing whether ladder30's "
+    "result transfers to the real instrument; Page-Hinkley pinned at the pre-correction 15.0",
+    "reference_rate_ph75": "the governed-vs-ungoverned sweep at the CORRECTED Page-Hinkley "
+    "threshold of 7.5 -- governance's best available configuration",
 }
 
 #: Analysis products written beside a sweep's parquet. Copied into the export because they are the

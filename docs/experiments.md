@@ -705,6 +705,72 @@ estimator does not exist, and this result is a reason to build it rather than a 
 with the caveat that the two-parameter map is already within 2 % of the dynamic floor on S2, so
 there is very little left for it to win.
 
+## Does the contact-force result transfer to the real instrument? Yes, and then some
+
+`cintron_ladder` ran three seeds, where the smallest attainable two-sided Wilcoxon p is 0.25 --
+so every "not separated" verdict in it was a statement about the seed count. Its effect sizes
+mirrored `ladder30` closely enough to suggest the result transfers, and suggesting is not testing.
+`cintron_ladder30` is the same grid at thirty seeds: 630 runs, none failed, 35.6 core-hours, five
+seed shards merged. **Page-Hinkley is pinned at 15.0**, the pre-correction value, because `ladder30`
+ran at 15.0 and changing the seed count and the detector threshold together would leave any
+difference attributable to neither.
+
+Median per-seed difference in MAE, kg, `static_affine` against the named estimator. **\*** marks
+significance at 0.05 after Holm within that run's own family of fourteen.
+
+| comparison | contact-force, 30 seeds | influence-line, 3 seeds | influence-line, 30 seeds | effect | p (Holm) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| S1_nominal / static_affine->kalman | +0.01 | -0.10 | +0.03 | +0.04 | 1 |
+| S1_nominal / static_affine->rls | +0.00 | -0.14 | -0.04 | -0.41 | 0.261 |
+| S2_thermal_cycle / static_affine->kalman | +0.63 | +1.24 | +0.48 | -0.04 | 1 |
+| S2_thermal_cycle / static_affine->rls | -0.80 | -0.35 | -1.07 **\*** | -0.59 | 0.03 |
+| S3_zero_drift_walk / static_affine->kalman | +0.76 | +1.68 | +1.09 | +0.19 | 1 |
+| S3_zero_drift_walk / static_affine->rls | -0.89 | +0.56 | -0.69 | -0.44 | 0.207 |
+| S4_step_fault / static_affine->kalman | -31.61 **\*** | -36.11 | -33.17 **\*** | -1.00 | 2.61e-08 |
+| S4_step_fault / static_affine->rls | -27.09 **\*** | -33.76 | -31.83 **\*** | -1.00 | 2.61e-08 |
+| S5_outage / static_affine->kalman | +0.70 | +2.22 | +0.95 | +0.23 | 1 |
+| S5_outage / static_affine->rls | -0.81 | -1.01 | -1.08 | -0.50 | 0.115 |
+| S6_combined / static_affine->kalman | +12.05 | -13.66 | +9.60 **\*** | +0.60 | 0.0269 |
+| S6_combined / static_affine->rls | -32.74 **\*** | -29.46 | -30.69 **\*** | -1.00 | 2.61e-08 |
+| S7_sparse_reference / static_affine->kalman | -14.18 **\*** | -23.69 | -18.06 **\*** | -1.00 | 3.73e-08 |
+| S7_sparse_reference / static_affine->rls | -14.10 **\*** | -23.53 | -18.20 **\*** | -1.00 | 2.61e-08 |
+
+**All five of `ladder30`'s effects reproduce**, at comparable magnitudes and at an identical effect
+size of -1.00 -- every one of the thirty seeds moving the same way:
+
+| | contact-force | influence-line |
+| --- | ---: | ---: |
+| S4 / kalman | -31.6 kg | **-33.2 kg** |
+| S4 / rls | -27.1 kg | **-31.8 kg** |
+| S6 / rls | -32.7 kg | **-30.7 kg** |
+| S7 / kalman | -14.2 kg | **-18.1 kg** |
+| S7 / rls | -14.1 kg | **-18.2 kg** |
+
+Adaptation wins where the plant moves, on both instruments, at power. That is the transfer tested
+rather than suggested, and it is the result Section VI-I needs.
+
+**Two comparisons separate here that did not on the contact-force station**, taking the count from
+5 of 14 to 7 of 14:
+
+* **`S2_thermal_cycle` / rls, -1.07 kg, p_holm 0.030.** Real and negligible: 0.7 % of a 152 kg MAE.
+  Reported because the effect size is -0.59 and the test is honest, not because it matters.
+* **`S6_combined` / kalman, +9.60 kg WORSE, p_holm 0.027.** On the combined-fault scenario the
+  Kalman estimator is significantly worse than the frozen baseline on this instrument. The same
+  comparison on the contact-force station was +12.05 kg and did not reach significance.
+
+### A caution about the three-seed run, which matters for how it was read
+
+The three-seed medians were **systematically larger in magnitude** than the thirty-seed ones for the
+effects that survive: S4 -36.1 and -33.8 became -33.2 and -31.8; S7 -23.7 and -23.5 became -18.1 and
+-18.2, about 23 % smaller. Three seeds did not merely fail to reach significance, they overstated
+the size of what they found.
+
+And one cell **changed sign**. `S6_combined` / kalman was -13.66 kg at three seeds -- kalman
+apparently helping -- against +12.05 on the contact-force station. At thirty seeds it is +9.60 and
+significantly *worse*. So the claim that the three-seed influence-line effects mirror the
+contact-force ladder holds for four of the five significant cells and fails for that one, where the
+two runs disagreed in direction and the three-seed run was wrong.
+
 ## Governance at its best available configuration, and the answer it gives
 
 Every governed-versus-ungoverned number the project had reported was produced with Page-Hinkley at
