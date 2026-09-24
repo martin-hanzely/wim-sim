@@ -32,6 +32,7 @@ from wimsim.experiments.figures import (
     FIGURES,
     accuracy_ratios,
     coverage_rows,
+    detector_curves,
     detector_points,
     recal_points,
     reconvergence_rows,
@@ -81,14 +82,17 @@ def test_every_figure_the_frame_supports_is_written(tmp_path: Path) -> None:
     """
     written = write_figures(_frame(), out_dir=tmp_path, experiment_id="t")
     assert {p.name for p in written if p.suffix == ".png"} == {
-        f"{n}.png" for n in FIGURES if n not in ("reference_rate", "recal_tradeoff")
+        f"{n}.png"
+        for n in FIGURES
+        if n not in ("reference_rate", "recal_tradeoff", "detector_curve")
     }
     assert all(p.is_file() and p.stat().st_size > 0 for p in written)
 
 
 def test_a_rate_sweep_draws_every_figure_including_the_rate_one(tmp_path: Path) -> None:
     written = write_figures(_rate_frame(), out_dir=tmp_path, experiment_id="t")
-    assert {f"{n}.png" for n in FIGURES} <= {p.name for p in written}
+    expected = {f"{n}.png" for n in FIGURES if n != "detector_curve"}
+    assert expected <= {p.name for p in written}
 
 
 def test_the_figures_land_under_the_results_directory(tmp_path: Path) -> None:
@@ -422,3 +426,91 @@ def test_the_figure_is_not_drawn_when_recalibration_never_varied(tmp_path: Path)
 def test_the_trade_figure_is_drawn_when_it_varies(tmp_path: Path) -> None:
     written = write_figures(_recal_frame(), out_dir=tmp_path, experiment_id="recal_coverage")
     assert any(p.name == "recal_tradeoff.png" for p in written)
+
+
+# -- the detector threshold curve -------------------------------------------------------------
+
+
+def _threshold_frame(**overrides) -> pd.DataFrame:
+    """A `detector_thresholds`-shaped frame: one detector family per arm, four thresholds each,
+    recall rising with false alarms as the threshold comes down."""
+    rows = []
+    arms = {
+        "detect_cusum": (0.00, 0.06),
+        "detect_cusum_h6": (0.20, 0.5),
+        "detect_cusum_h3": (0.55, 2.0),
+        "detect_cusum_h1p5": (0.90, 9.0),
+        "detect_ks": (0.00, 0.00),
+        "detect_ks_a01": (0.10, 1.2),
+    }
+    for scenario in ("S4_step_fault", "S6_combined"):
+        for arm, (recall, fa) in arms.items():
+            for seed in (1, 2, 3):
+                rows.append(
+                    {
+                        "scenario": scenario,
+                        "estimator": "rls",
+                        "edge_config": arm,
+                        "seed": seed,
+                        "recall": recall,
+                        "false_alarms_per_hour": fa + 0.01 * seed,
+                        "detected": int(recall * 2),
+                        "missed": 2 - int(recall * 2),
+                        "mae_kg": 150.0 + seed,
+                        "dynamic_floor_kg": 141.0,
+                        "coverage": 0.95,
+                        "mean_interval_width_kg": 900.0,
+                        "n_matched": 400,
+                        "reconverged": True,
+                        "reconverge_measurable": True,
+                        "reconverge_s": 400.0,
+                        "failed": False,
+                    }
+                    | overrides
+                )
+    return pd.DataFrame(rows)
+
+
+def test_each_detector_family_is_one_curve_rather_than_one_point() -> None:
+    """Keyed on scenario and estimator as the existing detector figure is, sixteen threshold arms
+    of one estimator collapse into a single cloud and the trade-off the sweep exists to show is
+    invisible."""
+    curves = detector_curves(_threshold_frame())
+
+    families = {f for _s, f in curves}
+    assert families == {"cusum", "ks"}
+    assert len(curves[("S4_step_fault", "cusum")]) == 4, "one point per threshold"
+
+
+def test_the_curve_is_ordered_by_measured_false_alarms_not_by_the_knob() -> None:
+    """The knobs run in different directions -- a lower CUSUM threshold and a *higher* KS alpha are
+    both "more sensitive" -- so ordering by the configured value would draw two of the four families
+    backwards. The measured rate is the same quantity for all of them."""
+    points = detector_curves(_threshold_frame())[("S4_step_fault", "cusum")]
+
+    assert [p[0] for p in points] == sorted(p[0] for p in points)
+    assert points[0][1] == pytest.approx(0.0), "the least trigger-happy arm is the first point"
+    assert points[-1][1] == pytest.approx(0.9)
+
+
+def test_a_family_is_read_from_the_detectors_an_arm_actually_runs() -> None:
+    """Not from its name. An arm named for one detector and configured with another would be drawn
+    on the wrong curve, and the name is the part nothing validates."""
+    frame = _threshold_frame()
+    frame.loc[frame.edge_config == "detect_cusum_h3", "edge_config"] = "detect_all4"
+    curves = detector_curves(frame)
+
+    assert ("S4_step_fault", "cusum+page_hinkley+adwin+ks") in curves, sorted(curves)
+    assert ("S4_step_fault", "detect_all4") not in curves, "the name is not the family"
+
+
+def test_the_curve_figure_is_not_drawn_when_there_is_one_arm(tmp_path: Path) -> None:
+    frame = _threshold_frame()
+    frame = frame[frame.edge_config == "detect_cusum"]
+    written = write_figures(frame, out_dir=tmp_path, experiment_id="one")
+    assert not any(p.name.startswith("detector_curve") for p in written)
+
+
+def test_the_curve_figure_is_drawn_for_a_threshold_sweep(tmp_path: Path) -> None:
+    written = write_figures(_threshold_frame(), out_dir=tmp_path, experiment_id="thr")
+    assert any(p.name == "detector_curve.png" for p in written)

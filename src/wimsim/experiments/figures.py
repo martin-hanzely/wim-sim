@@ -59,6 +59,7 @@ __all__ = [
     "Reconvergence",
     "accuracy_ratios",
     "coverage_rows",
+    "detector_curves",
     "detector_points",
     "rate_curves",
     "recal_points",
@@ -103,6 +104,15 @@ FIGURES: dict[str, str] = {
         "the fallback band. Right: MAE against the dynamic floor, which is what the recalibration "
         "was for. A figure of the left panel alone would show recalibration as pure cost and a "
         "figure of the right alone as pure benefit."
+    ),
+    "detector_curve": (
+        "Recall against false alarms per hour, with each detector's threshold stepped from the "
+        "shipped value to three more sensitive ones -- the trade-off curve rather than the single "
+        "point the shipped configuration sits on. One line per detector, one marker per threshold, "
+        "ordered by the false-alarm rate actually measured rather than by the setting, because the "
+        "knobs run in opposite directions (a LOWER CUSUM threshold and a HIGHER KS alpha are both "
+        "more sensitive). The detector each arm is drawn for is read from the detectors it runs, "
+        "not from its name. Medians across seeds."
     ),
     "detectors": (
         "Recall against false alarms per hour of simulated operation: the trade-off an operator "
@@ -292,6 +302,57 @@ def recal_points(frame: pd.DataFrame) -> dict[_Key, list[RecalPoint]]:
             )
         if points:
             out[key] = points
+    return out
+
+
+def _family_of(edge_config: str) -> str:
+    """The detectors an arm actually runs, as a stable label.
+
+    Read from the configuration rather than parsed out of the name: an arm named for one detector
+    and configured with another would be drawn on the wrong curve, and the name is the part nothing
+    validates. Falls back to the name when the config cannot be loaded, so a frame from a renamed or
+    deleted config still draws.
+    """
+    try:
+        from wimsim.core.config import load_edge_config
+
+        return "+".join(load_edge_config(edge_config).drift.detectors)
+    except Exception:  # pragma: no cover - a config that no longer exists
+        return edge_config
+
+
+def detector_curves(frame: pd.DataFrame) -> dict[_Key, list[tuple[float, float]]]:
+    """``(false alarms per hour, recall)`` per threshold arm, keyed by scenario and detector.
+
+    Keyed on the detector rather than on the estimator, because a threshold sweep varies
+    `edge_config` and leaves the estimator fixed -- so the figure's usual key would collapse every
+    arm into one cloud and hide the trade-off the sweep exists to measure.
+
+    Each point is one arm's median across seeds, and the points are ordered by the *measured*
+    false-alarm rate. Ordering by the configured threshold would draw half the families backwards,
+    since ADWIN's delta and KS's alpha get more sensitive as they rise while CUSUM's and
+    Page-Hinkley's thresholds get more sensitive as they fall.
+    """
+    usable = _usable(frame)
+    if "edge_config" not in usable or usable["edge_config"].nunique(dropna=False) < 2:
+        return {}
+
+    out: dict[_Key, list[tuple[float, float]]] = {}
+    for scenario in dict.fromkeys(usable["scenario"]):
+        rows = usable[usable["scenario"] == scenario]
+        by_family: dict[str, list[tuple[float, float]]] = {}
+        for arm in sorted(dict.fromkeys(rows["edge_config"])):
+            cell = rows[rows["edge_config"] == arm]
+            fa = cell["false_alarms_per_hour"].dropna()
+            recall = cell["recall"].dropna()
+            if fa.empty or recall.empty:
+                continue
+            by_family.setdefault(_family_of(str(arm)), []).append(
+                (float(fa.median()), float(recall.median()))
+            )
+        for family, points in by_family.items():
+            if points:
+                out[(scenario, family)] = sorted(points)
     return out
 
 
@@ -664,12 +725,50 @@ def _draw_recal_tradeoff(frame: pd.DataFrame, title: str, path: Path) -> Path | 
     return _save(fig, path)
 
 
+def _draw_detector_curve(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    curves = detector_curves(frame)
+    if not curves or all(len(p) < 2 for p in curves.values()):
+        # One threshold per detector is a point, not a curve, and drawing it invites exactly the
+        # reading about the trade-off that a single operating point cannot support.
+        return None
+
+    scenarios = list(dict.fromkeys(s for s, _f in curves))
+    families = sorted({f for _s, f in curves})
+    markers = dict(zip(families, _MARKERS, strict=False))
+
+    fig, axes = plt.subplots(
+        1, len(scenarios), figsize=(5.0 * len(scenarios) + 1.0, 4.2), sharey=True, squeeze=False
+    )
+    fig.suptitle(title)
+    for ax, scenario in zip(axes[0], scenarios, strict=True):
+        for index, family in enumerate(families):
+            points = curves.get((scenario, family))
+            if not points:
+                continue
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            ax.plot(xs, ys, "-", color=f"C{index}", linewidth=1.5, zorder=2)
+            ax.scatter(
+                xs, ys, marker=markers[family], s=40, color=f"C{index}", label=family, zorder=3
+            )
+        ax.set_title(scenario, fontsize=9)
+        ax.set_xlabel("false alarms per hour")
+        ax.set_ylim(-0.03, 1.03)
+        ax.grid(alpha=0.3, linewidth=0.5)
+
+    axes[0][0].set_ylabel("detection recall")
+    axes[0][-1].legend(fontsize=8, framealpha=0.9, title="detectors run", title_fontsize=8)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
 _DRAW = {
     "accuracy": _draw_accuracy,
     "reference_rate": _draw_reference_rate,
     "coverage": _draw_coverage,
     "reconvergence": _draw_reconvergence,
     "detectors": _draw_detectors,
+    "detector_curve": _draw_detector_curve,
     "recal_tradeoff": _draw_recal_tradeoff,
 }
 
