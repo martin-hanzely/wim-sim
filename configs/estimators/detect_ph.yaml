@@ -1,5 +1,11 @@
 extends: default
 name: detect_ph
-description: Page-Hinkley alone.
+description: Page-Hinkley alone, at the pre-correction threshold of 15.0.
 drift:
   detectors: [page_hinkley]
+  # PINNED at 15.0, which was the shipped value when `detectors.yaml` and `detector_thresholds.yaml`
+  # were run. The shipped default has since moved to 7.5 on the strength of that second sweep, and
+  # an arm that inherited it would now be identical to `detect_ph_h7p5` -- collapsing the ladder's
+  # baseline into its own first step and making the sweep unreproducible. The baseline of a
+  # threshold ladder has to be a number, not "whatever is currently shipped".
+  page_hinkley_threshold: 15.0

@@ -45,7 +45,16 @@ drift:
   warmup: 60                 # in *references*, so readiness costs warmup * reference_every_n passes
   cusum_threshold: 12.0
   cusum_slack: 0.5           # nothing at or below this is ever detected -- the loop's hard floor
-  page_hinkley_threshold: 15.0
+  # 7.5, not the 15.0 this shipped with. Selected from `configs/experiments/detector_thresholds.yaml`
+  # (340 runs, seventeen arms, ten seeds): at 15.0 Page-Hinkley caught 1 of 20 injected faults on
+  # S4, at 7.5 it caught 5 of 20, and BOTH at 0.062 false alarms per hour. The old value was
+  # mistuned at equal false-alarm cost, so this is free recall rather than a trade.
+  #
+  # Not lower. The same sweep shows recall falling again past this point -- 0.25 at 7.5 and at 3.75,
+  # back to 0.05 at 1.875 -- because an alarm holds the controller in DRIFT_SUSPECTED for
+  # `confirmation_passes` residuals and a spurious alarm eats the window a real fault must be caught
+  # in. 7.5 is the shallow end of the plateau, which is where a threshold belongs.
+  page_hinkley_threshold: 7.5
   page_hinkley_tolerance: 0.5
   adwin_delta: 0.002
   ks_window: 60

@@ -956,7 +956,11 @@ class DriftConfig(_Base):
         "detector rather than an outlier detector -- and what puts a hard floor under the whole "
         "loop's sensitivity. Measured: nothing at or below the slack is ever detected.",
     )
-    page_hinkley_threshold: float = Field(15.0, gt=0.0)
+    page_hinkley_threshold: float = Field(7.5, gt=0.0)
+    """Corrected from 15.0 by `configs/experiments/detector_thresholds.yaml`, which found the
+    old value caught 1 of 20 injected faults on S4 where 7.5 catches 5, at the same 0.062 false
+    alarms per hour. Kept in step with `configs/estimators/default.yaml`, which carries the same
+    value and the full reasoning."""
     page_hinkley_tolerance: float = Field(0.5, gt=0.0)
     adwin_delta: float = Field(0.002, gt=0.0, lt=1.0)
     ks_window: int = Field(60, ge=5)

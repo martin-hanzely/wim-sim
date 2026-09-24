@@ -12,6 +12,33 @@ simulation code that produced those numbers is exactly `f40ca51`. Station
 seeds **1, 2, 3**. Real-data results: commit `f40ca51`, station `cintron_platform`, edge config
 `cintron_platform`. Config hashes per run are in `export/data/manifest.json`.
 
+**Which Page-Hinkley threshold each sweep ran at.** The shipped default was **15.0** for every
+sweep in this export except the two named below, and moved to **7.5** afterwards, on the strength of
+`detector_thresholds`. Nothing has been retrospectively re-run: the threshold curve is itself a
+result, and re-running everything at one corrected point would hide how it was found. So this table
+is not a footnote — it is part of the definition of every detection number here.
+
+| sweep | Page-Hinkley threshold as run | note |
+| --- | --- | --- |
+| `ladder`, `ladder30` | 15.0 | inherited from the shipped default of the day |
+| `reference_rate` | 15.0 | the governed-vs-ungoverned comparison |
+| `reference_rate_ph75` | **7.5** | the same sweep at the corrected threshold |
+| `governance` | 15.0 | |
+| `cintron_ladder` (3 seeds) | 15.0 | |
+| `cintron_ladder30` | **15.0, pinned explicitly** | held at the old value so the seed count is the only difference from `ladder30` |
+| `theta2` | 15.0 | control disabled; detection scored but never acted on |
+| `recal_coverage` | 15.0 | `confirm_sigma` is the swept knob, not the detector threshold |
+| `detectors` | 15.0 | the Page-Hinkley arm; the CUSUM, ADWIN and KS arms do not run Page-Hinkley at all |
+| `detector_thresholds` | 15.0, 7.5, 3.75, 1.875 | the sweep that found the correction |
+
+**A reproducibility hazard this creates, stated plainly.** The experiment configs for the sweeps
+above still say `edge_config: default`, and that default now resolves to 7.5. **Re-running them today
+will not reproduce their stored numbers.** The mismatch is detectable rather than silent — every row
+carries `edge_config_hash`, and it will differ — but a reader who re-runs `ladder30` and compares
+against this document must expect different detection figures. `configs/estimators/detect_ph.yaml` is
+pinned at 15.0 for the same reason: left inherited it would now equal `detect_ph_h7p5` and collapse
+the threshold ladder's baseline into its own first step.
+
 **Dispersion.** Median with [Q1, Q3] over three seeds throughout. With n = 3 an IQR spans the whole
 sample; it is reported because a bare figure is unusable, not because it is a confidence interval.
 **Significance testing now exists**, on `ladder30` only — thirty seeds, Wilcoxon signed-rank paired

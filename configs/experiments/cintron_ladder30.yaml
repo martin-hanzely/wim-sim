@@ -1,0 +1,63 @@
+# `cintron_ladder` at THIRTY seeds: does the contact-force result transfer to the real instrument?
+#
+# WHAT THE THREE-SEED RUN SHOWED, AND WHY IT IS NOT ENOUGH. The influence-line ladder's effect sizes
+# and median differences mirror the contact-force ladder closely -- S4 -36.1 and -33.8 kg against
+# ladder30's -31.6 and -27.1, S7 -23.7 and -23.5 against -14.2 and -14.1, every one at an effect
+# size of -1.00. But with three nonzero pairs the smallest attainable two-sided Wilcoxon p is 0.25,
+# so every "not separated" verdict in `cintron_ladder/comparisons.md` is a statement about the seed
+# count and not about the system. The pattern is suggested and not tested.
+#
+# Thirty seeds puts the attainable floor below 1e-8, which is what `ladder30` has, and makes the two
+# ladders comparable as tests rather than as descriptions.
+#
+# THE PAGE-HINKLEY THRESHOLD IS PINNED AT 15.0, THE PRE-CORRECTION VALUE. `detector_thresholds`
+# showed 7.5 to be the better operating point and the shipped default moves there in the same batch
+# of work. It is held back here deliberately: this sweep exists to test whether ladder30's result
+# transfers to a different instrument, and `ladder30` ran at 15.0. Changing the seed count and the
+# detector threshold at once would leave a difference between the two ladders attributable to
+# neither. The threshold is written out rather than inherited so the file keeps meaning this after
+# the default changes.
+#
+# `cintron_sim` is that instrument at 500 Hz instead of the logger's 25 kHz -- the sample rate is a
+# property of the logger, not of the structure, and carrying it would cost 50x for nothing. The
+# `pulse` overrides are required: the pulse belongs to the scenario, so without them this would be
+# contact-patch pulses on an influence-line sensor, which is no instrument at all.
+#
+# THE FIRST RUN OF THIS SWEEP FAILED COMPLETELY -- 63 of 63 runs, "0 events detected" -- and finding
+# out why corrected a constant. `k0` on both cintron stations read 1.44e-8 where its own derivation
+# gives 1.44e-5, making every simulated axle a thousand times too faint, and this file asked for the
+# `default` pipeline, whose absolute 0.05 mV/V trigger means "3.5 tonnes" on a sensor this
+# insensitive. Both are fixed. A result here is therefore the SECOND run of this configuration, and
+# the first one is reported rather than discarded: see docs/experiments.md.
+experiment_id: cintron_ladder30
+description: >
+  The seven scorable scenarios on the real instrument's physics, at thirty seeds, so the transfer of
+  the contact-force ladder's result to the real instrument is tested rather than suggested.
+scenarios:
+  - S1_nominal
+  - S2_thermal_cycle
+  - S3_zero_drift_walk
+  - S4_step_fault
+  - S5_outage
+  - S6_combined
+  - S7_sparse_reference
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+station: cintron_sim
+# NOT `default`: its detect thresholds are absolute mV/V set for a sensor 14x more sensitive, and
+# the first attempt at this sweep detected 0 events in all 63 runs because of it. See that file.
+edge_config: cintron_sim
+edge_overrides:
+  - edge.control.enabled=true
+  # Held at the PRE-correction value on purpose; see the header.
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides:
+  - scenario.output.samples=none
+  - scenario.pulse.shape=influence_line
+  - scenario.pulse.width_source=influence_length
+scenario_overrides:
+  S1_nominal: [scenario.duration_s=21600.0]
+calibration_passes: 60
+fault_horizon_s: 1800.0

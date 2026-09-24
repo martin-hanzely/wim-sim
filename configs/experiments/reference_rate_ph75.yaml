@@ -1,0 +1,43 @@
+# `reference_rate`, rerun with Page-Hinkley at the corrected threshold. Governance's last chance.
+#
+# WHY. `detector_thresholds` measured the rest of the recall/false-alarm curve and found the shipped
+# Page-Hinkley threshold of 15.0 mistuned by a factor of two: at 7.5 it reaches 5 of 20 injected
+# faults on S4 against 1 of 20, at an identical 0.062 false alarms per hour. Free recall.
+#
+# Every governed-versus-ungoverned number the project has reported was produced at 15.0, so the
+# central negative result -- that the governed loop does not improve MAE -- was measured with a
+# detector that was firing about a fifth as often as it could have. This rerun puts governance on
+# its best available configuration, which is the last opportunity it has to show an effect.
+#
+# THE THRESHOLD IS SET EXPLICITLY HERE rather than inherited, and it is set on both this file and on
+# `cintron_ladder30.yaml` for the same reason: the shipped default moves to 7.5 in the same batch of
+# work, and a config that inherited it would silently mean something different before and after that
+# change. A file that records its own operating point can be re-run years later and mean the same
+# thing.
+#
+# WHAT TO EXPECT, so the result is read rather than hoped at. `detector_thresholds` puts the
+# detection ceiling at 0.25 on S4 and 0.10 on S6 across seventeen operating points, so the loop is
+# likely to remain rarely active even corrected. If it fires materially more often and MAE still
+# does not move, that is the definitive form of the negative result rather than a weaker one.
+#
+# Everything else is `reference_rate.yaml` unchanged -- same scenarios, estimators, seeds, rates,
+# arms and calibration budget -- so the threshold is the only thing that differs between the two.
+
+experiment_id: reference_rate_ph75
+description: >
+  The reference rate swept from one vehicle in two to one in fifty, controller on and off over the
+  identical stream, with Page-Hinkley at the corrected threshold of 7.5 rather than the shipped 15.
+scenarios:
+  - S4_step_fault          # two abrupt sensitivity steps -- what the detector is built for
+  - S7_sparse_reference    # a 3 % gain loss ramped over two hours -- what it is worst at
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3]
+reference_rates: [2, 5, 10, 20, 50]
+control_arms: [true, false]
+edge_config: default
+edge_overrides:
+  - edge.drift.page_hinkley_threshold=7.5
+overrides:
+  - scenario.output.samples=none
+calibration_passes: 60
+fault_horizon_s: 1800.0
