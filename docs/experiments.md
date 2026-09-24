@@ -705,6 +705,71 @@ estimator does not exist, and this result is a reason to build it rather than a 
 with the caveat that the two-parameter map is already within 2 % of the dynamic floor on S2, so
 there is very little left for it to win.
 
+## Governance at its best available configuration, and the answer it gives
+
+Every governed-versus-ungoverned number the project had reported was produced with Page-Hinkley at
+15.0, which `detector_thresholds` then showed to be mistuned by a factor of two. So the central
+negative result -- the governed loop does not improve MAE -- had been measured with a detector firing
+about a fifth as often as it could have. `reference_rate_ph75` is the identical sweep at 7.5: same
+scenarios, estimators, seeds, rates and arms, 180 runs, none failed.
+
+Controller ON, both scenarios pooled per cell, medians over three seeds, `15.0 -> 7.5`:
+
+| estimator | reference rate | alarms | recalibrations | detection recall | MAE kg | signed bias kg |
+| --- | --- | --- | --- | --- | --- | --- |
+| kalman | 1 in 2 | 30 -> 73 | 0 -> 3 | 0.44 -> 0.67 | 149.04 -> 149.04 (+0.00) | -4.17 -> -4.60 |
+| kalman | 1 in 5 | 17 -> 29 | 0 -> 4 | 0.44 -> 0.56 | 150.38 -> 150.78 (+0.40) | -14.80 -> -14.80 |
+| kalman | 1 in 10 | 5 -> 14 | 0 -> 0 | 0.11 -> 0.33 | 154.57 -> 154.57 (+0.00) | -18.52 -> -18.52 |
+| kalman | 1 in 20 | 5 -> 8 | 1 -> 2 | 0.00 -> 0.00 | 156.75 -> 158.52 (+1.77) | -25.57 -> -25.57 |
+| kalman | 1 in 50 | 2 -> 2 | 0 -> 0 | 0.00 -> 0.00 | 164.59 -> 164.59 (+0.00) | -44.38 -> -44.38 |
+| rls | 1 in 2 | 29 -> 76 | 1 -> 4 | 0.56 -> 0.78 | 148.18 -> 147.54 (-0.63) | -4.85 -> -4.85 |
+| rls | 1 in 5 | 18 -> 29 | 3 -> 3 | 0.56 -> 0.33 | 151.61 -> 151.04 (-0.58) | -12.70 -> -13.22 |
+| rls | 1 in 10 | 9 -> 14 | 2 -> 2 | 0.22 -> 0.33 | 158.01 -> 157.60 (-0.41) | -20.17 -> -20.17 |
+| rls | 1 in 20 | 6 -> 8 | 0 -> 1 | 0.00 -> 0.00 | 159.34 -> 159.50 (+0.16) | -51.82 -> -51.82 |
+| rls | 1 in 50 | 2 -> 2 | 0 -> 0 | 0.00 -> 0.00 | 166.30 -> 166.30 (+0.00) | -81.49 -> -81.49 |
+| static_affine | 1 in 2 | 42 -> 69 | 4 -> 8 | 0.44 -> 0.78 | 167.77 -> 160.59 (-7.17) | -12.33 -> -34.64 |
+| static_affine | 1 in 5 | 19 -> 30 | 4 -> 6 | 0.56 -> 0.33 | 176.39 -> 172.29 (-4.10) | +4.18 -> -65.96 |
+| static_affine | 1 in 10 | 13 -> 16 | 4 -> 6 | 0.11 -> 0.22 | 182.26 -> 175.44 (-6.82) | -39.82 -> -12.04 |
+| static_affine | 1 in 20 | 7 -> 9 | 1 -> 1 | 0.00 -> 0.00 | 181.21 -> 181.21 (+0.00) | -117.79 -> -117.79 |
+| static_affine | 1 in 50 | 3 -> 3 | 0 -> 0 | 0.00 -> 0.00 | 181.21 -> 181.21 (+0.00) | -117.79 -> -117.79 |
+
+**The loop does fire materially more often.** Alarms **207 -> 382** (+85 %), recalibrations
+**20 -> 40** (exactly double), detection **31/135 -> 39/135** (0.23 -> 0.29). The correction works as
+the threshold sweep said it would.
+
+**And MAE does not move.** Median over every controller-on cell: **159.34 -> 159.50 kg, +0.16 kg**, a
+tenth of a percent, in the wrong direction. Cell by cell, kalman moves +0.00 to +1.77 kg and rls
+-0.63 to +0.16 kg -- all inside a kilogram on a ~150 kg error.
+
+**The governed-versus-ungoverned comparison, which is the actual claim:**
+
+| | Page-Hinkley 15.0 | Page-Hinkley 7.5 |
+| --- | ---: | ---: |
+| median per-cell MAE difference, loop on minus off | **+0.000 kg** | **+0.000 kg** |
+| cells where the loop helped by more than 1 kg | 3 of 30 | 4 of 30 |
+| cells where the loop hurt by more than 1 kg | 1 of 30 | 1 of 30 |
+| cells byte-identical -- the loop changed nothing | 25 of 30 | **23 of 30** |
+
+**So the negative result survives, and this is its definitive form.** The loop was given its best
+available configuration, fired 85 % more often, recalibrated twice as many times, and the median
+effect on mean absolute error was exactly zero. In 23 of 30 cells the two arms produced identical
+numbers, which is not "no significant difference" -- it is the loop never changing anything at all.
+
+### The one exception, and it is not an improvement
+
+`static_affine` is the only estimator whose MAE moves: -7.17 kg at one reference in two, -4.10 at one
+in five, -6.82 at one in ten. But its **signed bias gets much worse at the same time** -- -12.33 ->
+-34.64 kg at one in two, and +4.18 -> -65.96 kg at one in five. Recalibrating a frozen estimator more
+often trades a little scatter for a lot of offset. Reported as a pair because either number alone
+would misdescribe it, which is why the brief asked for both.
+
+At one reference in twenty and one in fifty, nothing changes anywhere: identical alarms, identical
+MAE, identical bias. The loop cannot fire on references it does not have.
+
+**On power.** Three seeds, and most cells produce zero difference between arms, so the Wilcoxon
+floor is 1.0 and no comparison here can be significant. That is stated rather than worked around:
+these are descriptive, and the thing they describe is 23 of 30 cells in which nothing happened.
+
 ## Spending the false-alarm budget, and the ceiling it runs into
 
 `detectors.yaml` left one direction open: median recall was 0.000 everywhere while false alarms ran
