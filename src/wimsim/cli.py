@@ -1518,6 +1518,111 @@ def reference_curve_cmd(
     typer.secho(f"wrote {out} and {len(drawn)} figure files", fg=typer.colors.GREEN)
 
 
+@app.command("validate-sim")
+def validate_sim_cmd(
+    root: Annotated[
+        Path, typer.Argument(help="Directory of real recordings, one run directory each.")
+    ],
+    channel: Annotated[
+        str | None, typer.Option("--channel", help="Which channel to analyse. Default: the only.")
+    ] = None,
+    scenario: Annotated[
+        str, typer.Option("--scenario", help="Synthetic scenario the fitted trace is generated on.")
+    ] = "S1_nominal",
+    station: StationOpt = "cintron_platform",
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Write the report here. Default: stdout.")
+    ] = None,
+) -> None:
+    """Cross-validate the simulator parameters: fit on every recording but one, test on that one.
+
+    Section V-C concedes that no simulator parameter has ever been cross-validated -- everything
+    in docs/sim-to-real.md was fitted on the recordings and reported against them. This is the
+    leave-one-recording-out version, which is the construction that answers whether the simulator
+    reproduces the instrument or merely reproduces the minutes it was fitted on.
+
+    Writes the measured statistics, the held-out agreement per fold, and the in-sample contrast.
+    There is no pass mark: a simulator matching on every statistic would mean the statistics were
+    not discriminating.
+    """
+    import pandas as _pd
+    import pandas as pd
+
+    from wimsim.experiments.sim_crossval import crossval_markdown, leave_one_out
+
+    candidates = sorted(
+        d for d in Path(root).iterdir() if d.is_dir() and (d / "run.yaml").is_file()
+    )
+    # A run directory that does not carry the channel being analysed is not a short recording of
+    # it, it is a different instrument -- `data/real/EXAMPLE` is the schema sample and carries a
+    # synthetic channel. Skipped by name on screen rather than silently, so the fold count in the
+    # report is always a count of something a reader can check.
+    runs, skipped = [], []
+    for run in candidates:
+        try:
+            channels = set(
+                _pd.read_parquet(run / "samples.parquet", columns=["channel_id"])[
+                    "channel_id"
+                ].unique()
+            )
+        except (OSError, KeyError, ValueError) as exc:
+            skipped.append(f"{run.name}: {exc}")
+            continue
+        if channel is not None and channel not in channels:
+            skipped.append(f"{run.name}: carries {sorted(channels)}, not {channel!r}")
+            continue
+        runs.append(run)
+    for line in skipped:
+        typer.secho(f"  skipped  {line[:90]}", fg=typer.colors.YELLOW)
+
+    if len(runs) < 3:
+        typer.secho(
+            f"{root} holds {len(runs)} recording(s); leave-one-out needs at least three",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    typer.secho(f"{len(runs)} recordings, {len(runs)} folds", bold=True)
+    for run in runs:
+        typer.echo(f"  {run.name}")
+
+    try:
+        folds = leave_one_out(runs, channel=channel, scenario=scenario, station=station)
+    except (OSError, KeyError, ValueError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    text = crossval_markdown(folds, git_commit=_git_commit())
+    if out is None:
+        typer.echo(text)
+        return
+
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "sim_crossval.md").write_text(f"{text}\n", encoding="utf-8")
+
+    rows = []
+    for fold in folds:
+        held = fold.agreement()
+        own = fold.in_sample_agreement()
+        for statistic, value in held.items():
+            rows.append(
+                {
+                    "held_out_recording": fold.held_out,
+                    "n_train": fold.fitted.n_train,
+                    "statistic": statistic,
+                    "held_out_log2_ratio": value,
+                    "in_sample_log2_ratio": own.get(statistic),
+                }
+            )
+    pd.DataFrame(rows).to_csv(out / "sim_crossval_long.csv", index=False)
+    pd.DataFrame([f.observed.to_dict() for f in folds]).to_csv(
+        out / "sim_crossval_measured.csv", index=False
+    )
+    typer.secho(f"wrote {out / 'sim_crossval.md'} and two CSVs", fg=typer.colors.GREEN)
+
+
 @app.command()
 def detect(
     scenario: ScenarioArg,
@@ -1926,6 +2031,19 @@ def score_corpus(
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
         typer.secho(f"wrote {out}", fg=typer.colors.GREEN)
+
+
+def _git_commit() -> str:
+    """HEAD, for stamping a report. Unknown rather than a guess when git is not available."""
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+        )
+    except OSError:  # pragma: no cover
+        return "unknown"
+    return done.stdout.strip() or "unknown"
 
 
 def _one_line(text: object, limit: int = 60) -> str:
