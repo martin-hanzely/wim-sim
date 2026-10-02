@@ -1,0 +1,60 @@
+# The held-out scenario set. The one sweep in this project whose scenarios were not looked at
+# while anything was tuned.
+#
+# WHAT THIS IS FOR. Section V names the most serious methodological weakness in the study: every
+# estimator hyperparameter, every detector threshold and every controller setting was chosen from
+# development measurements on S1-S8, and S1-S8 are then the evaluation set. There are no disjoint
+# seeds and no equalised tuning budget. Nothing measured so far distinguishes "these estimators
+# work" from "these estimators have been fitted to these eight scenarios".
+#
+# H1-H4 are four fresh draws over the same disturbance classes. The parameters were written
+# without consulting any tuning result, and no value of any key repeats an S1-S8 value of that
+# key. Three of them are deliberately harder than their development counterparts in ways the
+# tuning never saw -- H2 and H3 and H4 all inject a gain RISE, and every sensitivity fault in
+# S1-S8 is a gain loss.
+#
+# THE SHIPPED CONFIGURATION, UNCHANGED. Same estimators, same edge config, same reference rate,
+# same calibration budget as `ladder30`. Nothing is retuned for these scenarios and nothing may
+# be: the moment a threshold is adjusted after seeing an H-scenario result, the set stops being
+# held out and this sweep stops being evidence.
+#
+# WHAT WOULD COUNT AS AN ANSWER. `ladder30` found five comparisons surviving Holm correction:
+#
+#   S4 static->kalman  -31.6 kg    S4 static->rls  -27.1 kg
+#   S6 static->rls     -32.7 kg
+#   S7 static->kalman  -14.2 kg    S7 static->rls  -14.1 kg
+#
+# H2 is the S4 class, H4 the S6 class, H3 the S7 class, and H1 the S2 class where nothing
+# survived. If the same comparisons come out in the same direction on scenarios nothing was tuned
+# on, the five results generalise beyond the development suite. If they do not, they do not, and
+# that is the most important thing this sweep could find.
+#
+# ONE DIFFERENCE FROM `ladder30`, named so it is not discovered later. `ladder30` ran with
+# Page-Hinkley at 15.0, which was the shipped default at the time; the shipped default is now 7.5
+# and this sweep pins that. The threshold governs when the control loop fires, and
+# `reference_rate30` measures what firing is worth: nothing, for the adaptive estimators, at any
+# reference rate. So the comparison between estimators is not expected to move with it -- but
+# that is an expectation, and the difference is real and is recorded here rather than assumed
+# away.
+
+experiment_id: heldout30
+description: >
+  Four held-out scenarios covering the thermal, abrupt-fault, slow-ramp and combined disturbance
+  classes, evaluated with the shipped configuration and no retuning, at thirty seeds.
+scenarios:
+  - H1_warm_front      # thermal class, S2's counterpart -- where nothing survived correction
+  - H2_gain_jolt       # abrupt-fault class, S4's counterpart
+  - H3_slow_fade       # slow-ramp class, S7's counterpart
+  - H4_pileup          # combined class, S6's counterpart
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+edge_config: default
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=7.5
+reference_every_n: 10
+overrides:
+  - scenario.output.samples=none
+calibration_passes: 60
+fault_horizon_s: 1800.0
