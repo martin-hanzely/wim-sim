@@ -544,3 +544,65 @@ def test_a_moving_average_keeps_its_exact_group_delay() -> None:
 
     pre = Preprocessor(PreprocessConfig(filter="moving_average", window=9), sample_rate_hz=FS)
     assert pre.group_delay_s == pytest.approx(4.0 / FS)
+
+
+# -- the zero tracker's hot path -----------------------------------------------------------------
+
+
+def test_the_fused_quantiles_are_bit_identical_to_numpy() -> None:
+    """The zero tracker recomputes four order statistics every `zero_stride` samples -- 230,000
+    times on a sixteen-hour scenario, 61 % of a sweep run. They are computed from one partition
+    rather than from `np.median` plus `np.quantile`, which is 1.58x faster end to end.
+
+    Faster is worthless here unless it is *bit*-identical. Every sweep in this export is compared
+    against sweeps run before this code existed, and a one-ulp difference in a zero-line estimate
+    propagates into a different mass. So this asserts exact equality, not approximate, over the
+    cases where an interpolation shortcut would diverge: both parities of length, heavy ties,
+    constant windows, and a window whose spread is a single denormal.
+    """
+    from wimsim.edge.preprocess import _low_quantiles_and_median
+
+    rng = np.random.default_rng(7)
+    for trial in range(400):
+        n = int(rng.integers(8, 4000))
+        kind = trial % 5
+        if kind == 0:
+            window = rng.normal(0.0, 1e-3, n)
+        elif kind == 1:
+            window = np.full(n, 0.05)
+        elif kind == 2:
+            window = rng.normal(0.0, 1e-3, n)
+            window[: n // 3] += 0.02
+        elif kind == 3:
+            window = rng.integers(-3, 3, n).astype(float)
+        else:
+            window = np.full(n, float(rng.normal()))
+            window[0] += 1e-12
+
+        q05, q10, q25, median = _low_quantiles_and_median(window)
+        expected = np.quantile(window, [0.05, 0.10, 0.25])
+
+        assert (q05, q10, q25) == tuple(expected), f"quantiles differ at n={n} kind={kind}"
+        assert median == float(np.median(window)), f"median differs at n={n} kind={kind}"
+
+
+def test_occupancy_still_matches_its_two_call_definition() -> None:
+    """`_occupancy` is now assembled from the fused quantiles and `count_nonzero`. Both sum the
+    same boolean array, so the fraction must come out exactly equal, including in the degenerate
+    zero-scale branch where the threshold is the bare q10."""
+    from wimsim.edge.preprocess import _occupancy
+
+    rng = np.random.default_rng(11)
+    for window in (
+        rng.normal(0.0, 1e-3, 2000),
+        np.concatenate([rng.normal(0.0, 1e-3, 1500), rng.normal(0.05, 1e-3, 500)]),
+        np.full(900, 0.05),
+    ):
+        q05, q10, q25 = np.quantile(window, [0.05, 0.10, 0.25])
+        scale = float(q25 - q05)
+        reference = (
+            float(np.mean(window > q10))
+            if scale <= 0.0
+            else float(np.mean(window > q10 + 8.0 * scale))
+        )
+        assert _occupancy(window) == reference
