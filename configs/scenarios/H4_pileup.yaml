@@ -1,0 +1,86 @@
+# HELD OUT. Combined class. No hyperparameter in this project was set while looking at this file.
+#
+# S6 class redrawn. Every disturbance at once again, but a different site and a different set of
+# magnitudes: a cold site with the largest daily swing in the suite, sparse traffic rather than
+# dense, heavy low-frequency dynamic load, a zero line that walks faster and slopes the other way,
+# a louder mains line, a ringing pulse at a different frequency and damping, and faults placed on
+# a different clock. The gain fault RISES here, where the S6 one falls.
+#
+# Sparse traffic is the deliberate part: at 155 vehicles an hour over 32 h, a reference every tenth
+# vehicle is about 500 references against roughly 1100 in S6 -- so this runs the combined class at
+# a reference density the development suite never ran it at.
+extends: _base_traffic
+name: H4_pileup
+description: Every disturbance class at once at a cold, sparsely trafficked site. Held-out.
+station: endurance
+station_overrides:
+  sensor:
+    alpha_walk_sigma_per_sqrt_s: 1.4e-8
+duration_s: 115200.0        # 32 h
+seed: 20261004
+block_seconds: 60.0
+plant_rate_hz: 50.0
+traffic:
+  rate_per_hour: 155.0
+  min_headway_s: 3.4
+  dynamic_load: {enabled: true, amplitude: 0.13, freq_hz_mean: 1.5, freq_hz_std: 0.6}
+temperature:
+  mean_c: 2.5
+  daily_amplitude_c: 15.5
+  peak_hour_utc: 16.0
+  trend_c_per_day: 0.9
+  noise_sigma_c: 0.6
+  noise_tau_s: 1500.0
+zero_drift:
+  q0: 0.03
+  random_walk_sigma_per_sqrt_s: 9.5e-5
+  linear_slope_per_hour: -1.7e-4
+  steps:
+    - {t_s: 27000.0, delta: -0.022}
+  step_rate_per_hour: 0.22
+  step_magnitude_sigma: 0.011
+  temp_coupling_per_c: 2.2e-4
+noise:
+  white_sigma: 2.1e-4
+  pink_sigma: 1.3e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 1.15e-3, harmonics: [0.18, 0.21]}
+pulse:
+  width_source: contact_patch
+  shape: ringing
+  ring_freq_hz: 85.0
+  ring_damping: 0.20
+  ring_amplitude: 0.40
+  support_widths: 9.0
+faults:
+  - type: gain_instability
+    label: amp_creep_up
+    t_start_s: 21600.0        # 6 h
+    duration_s: null
+    factor: 1.068
+    ramp_s: 5400.0            # 1.5 h
+  - type: clock_skew
+    label: ntp_slip
+    t_start_s: 36000.0        # 10 h
+    offset_s: -0.22
+    drift_ppm: 70.0
+  - type: channel_dropout
+    label: adc_stuck
+    t_start_s: 50400.0        # 14 h
+    duration_s: 150.0
+    mode: stuck
+    stuck_value: null
+  - type: sensor_displacement
+    label: pad_shift_down
+    t_s: 75600.0              # 21 h
+    k_factor: 0.955
+    q_delta: 0.038
+  - type: connectivity_loss
+    label: link_down
+    t_start_s: 90000.0        # 25 h
+    duration_s: 2700.0
+output:
+  truth_rate_hz: 0.5
+  samples: none
+  window_pad_s: 2.0

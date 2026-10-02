@@ -84,7 +84,14 @@ def test_every_figure_the_frame_supports_is_written(tmp_path: Path) -> None:
     assert {p.name for p in written if p.suffix == ".png"} == {
         f"{n}.png"
         for n in FIGURES
-        if n not in ("reference_rate", "recal_tradeoff", "detector_curve")
+        if n
+        not in (
+            "reference_rate",
+            "recall_vs_rate",
+            "governance_vs_rate",
+            "recal_tradeoff",
+            "detector_curve",
+        )
     }
     assert all(p.is_file() and p.stat().st_size > 0 for p in written)
 
@@ -249,10 +256,12 @@ def _rate_frame(**overrides) -> pd.DataFrame:
                             "control_enabled": control,
                             "n_matched": 3000,
                             "mae_kg": 130.0 * penalty + seed,
+                            "bias_kg": -20.0 * penalty - seed,
                             "dynamic_floor_kg": 130.0,
                             "coverage": 0.94,
                             "mean_interval_width_kg": 900.0,
                             "recall": 0.5,
+                            "mean_detection_delay_s": 400.0 + 50 * rate,
                             "false_alarms_per_hour": 0.1,
                             "detected": 1,
                             "missed": 1,

@@ -1,0 +1,70 @@
+# HELD OUT. Abrupt-fault class. No hyperparameter in this project was set while looking at this
+# file.
+#
+# S4 class redrawn, and deliberately harder in three ways the development scenario never presented.
+# THREE faults rather than two. The first is a gain RISE, not a loss -- every injected sensitivity
+# fault in S1-S8 reduces the gain, so a detector or a controller tuned on them has never been asked
+# to handle a scale that reads heavy. And the displacement moves the zero line DOWN while reducing
+# the gain, where the S4 one moves it up while raising the gain.
+#
+# A cold, nearly isothermal site, so the faults are close to the only thing moving. The magnitudes
+# straddle the S4 pair: +5.5 % and -6.6 % against -4.0 % and +2.5 %.
+extends: _base_traffic
+name: H2_gain_jolt
+description: Three abrupt sensitivity faults, one of them a gain rise, at a cold still site.
+station: endurance
+duration_s: 72000.0         # 20 h
+seed: 20261002
+block_seconds: 60.0
+plant_rate_hz: 50.0
+traffic:
+  rate_per_hour: 275.0
+  min_headway_s: 2.8
+  dynamic_load: {enabled: true, amplitude: 0.11, freq_hz_mean: 1.7, freq_hz_std: 0.3}
+temperature:
+  mean_c: 7.5
+  daily_amplitude_c: 3.2
+  peak_hour_utc: 14.0
+  trend_c_per_day: 0.0
+  noise_sigma_c: 0.22
+  noise_tau_s: 700.0
+zero_drift:
+  q0: 0.04
+  random_walk_sigma_per_sqrt_s: 3.5e-5
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 5.0e-5
+noise:
+  white_sigma: 1.0e-4
+  pink_sigma: 1.8e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 9.4e-4, harmonics: [0.26, 0.15]}
+pulse:
+  width_source: contact_patch
+  shape: emg
+  emg_tau_ratio: 0.41
+  support_widths: 7.0
+faults:
+  - type: gain_instability
+    label: amp_gain_rise       # a RISE: nothing in S1-S8 injects one
+    t_start_s: 9000.0          # 2.5 h
+    duration_s: null
+    factor: 1.055
+    ramp_s: 0.0
+  - type: sensor_displacement
+    label: pad_slip_down
+    t_s: 39600.0               # 11 h
+    k_factor: 0.968
+    q_delta: -0.031
+  - type: gain_instability
+    label: amp_gain_drop
+    t_start_s: 57600.0         # 16 h
+    duration_s: null
+    factor: 0.934
+    ramp_s: 600.0
+output:
+  truth_rate_hz: 1.0
+  samples: none
+  window_pad_s: 2.0

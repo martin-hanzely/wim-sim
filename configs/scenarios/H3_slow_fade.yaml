@@ -1,0 +1,55 @@
+# HELD OUT. Slow-ramp class. No hyperparameter in this project was set while looking at this file.
+#
+# S7 class redrawn: a sensitivity fault slow enough to hide inside population variance, at a
+# traffic rate dense enough that references are a small fraction of the stream. Three differences
+# that matter. The ramp is three hours rather than two and the fault is a 4.2 % RISE rather than a
+# 3 % loss. And the zero line walks and slopes underneath it, where S7 holds it nearly still -- so
+# a slow gain change has to be separated from a slow zero change, which S7 never asked of anything.
+extends: _base_traffic
+name: H3_slow_fade
+description: A 4.2 % sensitivity rise ramped over three hours under a walking zero line.
+station: endurance
+duration_s: 54000.0         # 15 h
+seed: 20261003
+block_seconds: 60.0
+plant_rate_hz: 50.0
+traffic:
+  rate_per_hour: 450.0
+  min_headway_s: 2.5
+  dynamic_load: {enabled: true, amplitude: 0.05, freq_hz_mean: 2.4, freq_hz_std: 0.45}
+temperature:
+  mean_c: 18.5
+  daily_amplitude_c: 4.4
+  peak_hour_utc: 12.0
+  trend_c_per_day: 0.0
+  noise_sigma_c: 0.27
+  noise_tau_s: 800.0
+zero_drift:
+  q0: 0.06
+  random_walk_sigma_per_sqrt_s: 6.5e-5
+  linear_slope_per_hour: 1.4e-4
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 7.0e-5
+noise:
+  white_sigma: 1.35e-4
+  pink_sigma: 1.1e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 7.1e-4, harmonics: [0.34, 0.18]}
+pulse:
+  width_source: contact_patch
+  shape: emg
+  emg_tau_ratio: 0.63
+  support_widths: 7.0
+faults:
+  - type: gain_instability
+    label: slow_sensitivity_rise
+    t_start_s: 18000.0        # 5 h
+    duration_s: null
+    factor: 1.042
+    ramp_s: 10800.0           # 3 h
+output:
+  truth_rate_hz: 1.0
+  samples: none
+  window_pad_s: 2.0

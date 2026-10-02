@@ -1,0 +1,14 @@
+# S6 with the ZERO-LINE WALK removed. One of four ablations; see configs/experiments/ablation.yaml.
+#
+# WHAT IS DISABLED, exactly: every source that moves the zero line on its own -- the Brownian walk,
+# the linear slope, the scheduled settling step and the Poisson settling process. What stays is the
+# zero line's coupling to temperature, which belongs to the thermal ablation rather than this one.
+extends: S6_combined
+name: S6_ablate_zero_walk
+description: S6 with the Brownian zero drift, its linear slope and its settling steps removed.
+zero_drift:
+  random_walk_sigma_per_sqrt_s: 0.0
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  step_magnitude_sigma: 0.0

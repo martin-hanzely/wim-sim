@@ -1468,6 +1468,56 @@ def detector_table_cmd(
     typer.secho(f"wrote {out_path}", fg=typer.colors.GREEN)
 
 
+@app.command(name="reference-curve")
+def reference_curve_cmd(
+    results: Annotated[
+        Path, typer.Argument(help="A results directory written by `experiment`, or its parquet.")
+    ],
+) -> None:
+    """Detection recall and the governance effect against reference rate, from a rate sweep.
+
+    Section VII-C argues the reference rate is the binding constraint by elimination. Both
+    relationships are measurable directly from any sweep that varied `reference_rates`, and were
+    in none of the project's outputs until this command existed.
+
+    Writes `reference_curve.md` beside the parquet, the per-cell CSVs, the per-seed paired
+    differences in long format, and redraws `recall_vs_rate.png` and `governance_vs_rate.png`
+    into `figures/` -- the last of these so a sweep run before the figures existed can be brought
+    up to date without re-running it.
+    """
+    import pandas as pd
+
+    from wimsim.experiments.figures import write_figures
+    from wimsim.experiments.reference_curve import write_reference_curve
+
+    path = Path(results)
+    parquet = path if path.is_file() else path / "results.parquet"
+    if not parquet.exists():
+        typer.secho(f"no results at {parquet}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(2)
+
+    frame = pd.read_parquet(parquet)
+    commit = "unknown"
+    manifest = parquet.parent / "manifest.json"
+    if manifest.exists():
+        with contextlib.suppress(Exception):
+            commit = json.loads(manifest.read_text(encoding="utf-8")).get("git_commit", "unknown")
+
+    try:
+        out = write_reference_curve(
+            frame,
+            out_dir=parquet.parent,
+            experiment_id=parquet.parent.name,
+            git_commit=commit,
+        )
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(2) from exc
+
+    drawn = write_figures(frame, out_dir=parquet.parent, experiment_id=parquet.parent.name)
+    typer.secho(f"wrote {out} and {len(drawn)} figure files", fg=typer.colors.GREEN)
+
+
 @app.command()
 def detect(
     scenario: ScenarioArg,

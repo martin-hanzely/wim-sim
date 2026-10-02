@@ -45,7 +45,14 @@ SWEEPS = {
 
 #: Analysis products written beside a sweep's parquet. Copied into the export because they are the
 #: result, not a rendering of it: `comparisons.md` carries the only p-values the project has.
-SIDECARS = ("comparisons.md", "detectors.md")
+SIDECARS = (
+    "comparisons.md",
+    "detectors.md",
+    "reference_curve.md",
+    "recall_by_rate.csv",
+    "governance_by_rate.csv",
+    "governance_pairs_long.csv",
+)
 
 
 def _run(cmd: list[str]) -> str:

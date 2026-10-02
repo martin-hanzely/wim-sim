@@ -1,0 +1,55 @@
+# HELD OUT. Thermal class. No hyperparameter in this project was set while looking at this file.
+#
+# The thermal disturbance class of S2, drawn again from scratch. Every number below differs from
+# every S1-S8 value of the same key, and the differences are not small: a warmer site with a swing
+# half again as large, cooling rather than warming across the days, a slower probe and a
+# twice-as-fast alpha walk, denser traffic with heavier dynamic load at a higher frequency, and a
+# markedly less symmetric pulse.
+#
+# The point of the draw being wide is that a held-out set is only evidence if it could have failed.
+# A set drawn tightly around the development scenarios reproduces by construction.
+extends: _base_traffic
+name: H1_warm_front
+description: A warm site under a 36 h cooling trend with a large daily swing. Held-out thermal.
+station: endurance
+station_overrides:
+  sensor:
+    alpha_walk_sigma_per_sqrt_s: 5.5e-8
+duration_s: 129600.0        # 36 h
+seed: 20261001
+block_seconds: 60.0
+plant_rate_hz: 50.0
+traffic:
+  rate_per_hour: 310.0
+  min_headway_s: 2.6
+  dynamic_load: {enabled: true, amplitude: 0.09, freq_hz_mean: 2.6, freq_hz_std: 0.55}
+temperature:
+  mean_c: 23.5
+  daily_amplitude_c: 13.5
+  peak_hour_utc: 13.0
+  trend_c_per_day: -1.1
+  noise_sigma_c: 0.52
+  noise_tau_s: 1200.0
+zero_drift:
+  q0: 0.07
+  random_walk_sigma_per_sqrt_s: 0.0
+  linear_slope_per_hour: 0.0
+  steps: []
+  step_rate_per_hour: 0.0
+  temp_coupling_per_c: 1.9e-4
+noise:
+  white_sigma: 1.7e-4
+  pink_sigma: 2.4e-4
+  pink_f_min_hz: 0.0005
+  pink_f_max_hz: 20.0
+  mains: {enabled: true, freq_hz: 50.0, amplitude: 6.2e-4, harmonics: [0.22, 0.09]}
+pulse:
+  width_source: contact_patch
+  shape: emg
+  emg_tau_ratio: 0.72
+  support_widths: 7.0
+faults: []
+output:
+  truth_rate_hz: 0.2
+  samples: none
+  window_pad_s: 2.0

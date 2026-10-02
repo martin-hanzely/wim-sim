@@ -61,8 +61,10 @@ __all__ = [
     "coverage_rows",
     "detector_curves",
     "detector_points",
+    "governance_rate_points",
     "rate_curves",
     "recal_points",
+    "recall_rate_points",
     "reconvergence_rows",
     "write_figures",
 ]
@@ -113,6 +115,30 @@ FIGURES: dict[str, str] = {
         "knobs run in opposite directions (a LOWER CUSUM threshold and a HIGHER KS alpha are both "
         "more sensitive). The detector each arm is drawn for is read from the detectors it runs, "
         "not from its name. Medians across seeds."
+    ),
+    "recall_vs_rate": (
+        "Detection recall and detection delay against how often a reference vehicle arrives, one "
+        "panel column per scenario. Top: mean recall over the injected calibration faults "
+        "(fraction, dimensionless), one line per estimator plus a heavy line pooled over all of "
+        "them; the open circles are the per-run recalls, so the sample size is visible rather "
+        "than stated. Bottom: mean detection delay in seconds from fault onset, median across the "
+        "runs that detected anything, with the interquartile range as a band -- a run that "
+        "detected nothing contributes no delay rather than a zero. **Governed arm only**: with "
+        "the controller disabled the detectors are never constructed, so the ungoverned runs "
+        "carry structural zeros rather than misses. The point: detection is not uniformly broken. "
+        "It works at dense reference rates and ceases at a located rate, which is what makes the "
+        "reference rate the binding constraint rather than the detector."
+    ),
+    "governance_vs_rate": (
+        "What the control loop is worth, against how often a reference vehicle arrives. Governed "
+        "minus ungoverned over a byte-identical stream, paired by seed: one open marker per seed, "
+        "the line through the per-seed medians. Top row: MAE difference in kg, where negative is "
+        "the loop helping. Bottom row: SIGNED bias difference in kg, drawn beside the error and "
+        "never folded into it, because the loop can improve MAE while pushing the bias through "
+        "zero and out the other side. The dashed line at zero is 'the loop changed nothing', "
+        "which is where both adaptive estimators sit at every rate. The point: the loop is worth "
+        "tens of kilograms to static calibration at dense reference rates, decays to nothing as "
+        "references thin, and is worth nothing at any rate to an estimator that already tracks."
     ),
     "detectors": (
         "Recall against false alarms per hour of simulated operation: the trade-off an operator "
@@ -762,9 +788,248 @@ def _draw_detector_curve(frame: pd.DataFrame, title: str, path: Path) -> Path | 
     return _save(fig, path)
 
 
+def _rate_axis(ax: Any, rates: list[int]) -> None:
+    """Shared x axis for the two reference-rate figures: log, labelled "1 in N".
+
+    Log because the rates span fifty-fold and everything interesting is at the dense end. Minor
+    ticks off because matplotlib labels them "3 x 10^0" and they collide with the majors.
+    """
+    ax.set_xscale("log")
+    ax.set_xticks(rates)
+    ax.set_xticks([], minor=True)
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _p: f"1 in {v:g}"))
+    ax.grid(alpha=0.3, linewidth=0.5)
+
+
+def recall_rate_points(frame: pd.DataFrame) -> dict[str, dict[str, list[Any]]]:
+    """``scenario -> estimator -> cells``, the reduction the recall figure draws."""
+    from wimsim.experiments.reference_curve import recall_by_rate
+
+    out: dict[str, dict[str, list[Any]]] = {}
+    for cell in recall_by_rate(frame):
+        out.setdefault(cell.scenario, {}).setdefault(cell.estimator, []).append(cell)
+    return out
+
+
+def _draw_recall_vs_rate(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    from wimsim.experiments.reference_curve import POOLED
+
+    if "reference_every_n" not in frame or frame["reference_every_n"].nunique(dropna=True) < 2:
+        # A one-point curve is not a trend, and drawing it invites the reading it cannot support.
+        return None
+    by_scenario = recall_rate_points(frame)
+    if not by_scenario:
+        return None
+    # Nothing was ever injected: recall is undefined rather than zero, and an axis of zeros would
+    # report the detectors as failing at something they were never asked to do.
+    defined = any(
+        cell.recall_defined
+        for series in by_scenario.values()
+        for cells in series.values()
+        for cell in cells
+    )
+    if not defined:
+        return None
+
+    governed = _usable(frame)
+    if "control_enabled" in governed:
+        governed = governed[governed["control_enabled"].fillna(False).astype(bool)]
+
+    scenarios = list(by_scenario)
+    rates = sorted(
+        {c.reference_every_n for s in by_scenario.values() for v in s.values() for c in v}
+    )
+    fig, axes = plt.subplots(
+        2, len(scenarios), figsize=(4.6 * len(scenarios) + 1.0, 6.4), sharex=True, squeeze=False
+    )
+    fig.suptitle(title)
+    estimators = sorted({e for s in by_scenario.values() for e in s if e != POOLED})
+    markers = dict(zip(estimators, _MARKERS, strict=False))
+
+    for column, scenario in enumerate(scenarios):
+        top, bottom = axes[0][column], axes[1][column]
+        series = by_scenario[scenario]
+        for index, estimator in enumerate(estimators):
+            cells = sorted(series.get(estimator, []), key=lambda c: c.reference_every_n)
+            if not cells:
+                continue
+            xs = [c.reference_every_n for c in cells]
+            top.plot(
+                xs,
+                [c.recall_mean for c in cells],
+                "-",
+                color=f"C{index}",
+                linewidth=1.4,
+                marker=markers[estimator],
+                markersize=4,
+                label=estimator,
+                zorder=3,
+            )
+            delayed = [c for c in cells if c.n_delay]
+            if delayed:
+                dx = [c.reference_every_n for c in delayed]
+                bottom.plot(
+                    dx,
+                    [c.delay_median for c in delayed],
+                    "-",
+                    color=f"C{index}",
+                    linewidth=1.4,
+                    marker=markers[estimator],
+                    markersize=4,
+                    label=estimator,
+                    zorder=3,
+                )
+                bottom.fill_between(
+                    dx,
+                    [c.delay_q1 for c in delayed],
+                    [c.delay_q3 for c in delayed],
+                    color=f"C{index}",
+                    alpha=0.12,
+                    linewidth=0,
+                    zorder=2,
+                )
+        pooled = sorted(series.get(POOLED, []), key=lambda c: c.reference_every_n)
+        if pooled:
+            top.plot(
+                [c.reference_every_n for c in pooled],
+                [c.recall_mean for c in pooled],
+                "-",
+                color="k",
+                linewidth=2.6,
+                alpha=0.75,
+                zorder=4,
+                label=f"pooled, n={pooled[0].n_runs} per rate",
+            )
+        # Per-run recalls, so the sample behind each mean is visible rather than asserted.
+        rows = governed[governed["scenario"] == scenario]
+        if "recall" in rows:
+            top.scatter(
+                rows["reference_every_n"],
+                rows["recall"],
+                s=12,
+                facecolors="none",
+                edgecolors="0.4",
+                linewidths=0.5,
+                alpha=0.5,
+                zorder=1,
+            )
+        top.axhline(0.0, color="k", linestyle=":", linewidth=1.0, zorder=1)
+        top.set_title(scenario, fontsize=9)
+        top.set_ylim(-0.08, 1.08)
+        _rate_axis(top, rates)
+        _rate_axis(bottom, rates)
+        bottom.set_xlabel("how often a reference vehicle arrives")
+
+    axes[0][0].set_ylabel("detection recall (fraction)")
+    axes[1][0].set_ylabel("detection delay (s), median [IQR]")
+    axes[0][-1].legend(fontsize=7, framealpha=0.9, loc="upper right")
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def governance_rate_points(
+    frame: pd.DataFrame,
+) -> dict[tuple[str, str], dict[int, tuple[list[float], list[float]]]]:
+    """``(scenario, estimator) -> rate -> (per-seed dMAE, per-seed dBias)``."""
+    from wimsim.experiments.reference_curve import governance_differences
+
+    pairs = governance_differences(frame)
+    out: dict[tuple[str, str], dict[int, tuple[list[float], list[float]]]] = {}
+    if pairs.empty:
+        return out
+    for (scenario, estimator, rate), block in pairs.groupby(
+        ["scenario", "estimator", "reference_every_n"], sort=True
+    ):
+        out.setdefault((str(scenario), str(estimator)), {})[int(rate)] = (
+            [float(v) for v in block["d_mae_kg"]],
+            [float(v) for v in block["d_bias_kg"]],
+        )
+    return out
+
+
+def _draw_governance_vs_rate(frame: pd.DataFrame, title: str, path: Path) -> Path | None:
+    from wimsim.experiments.reference_curve import _GOVERNANCE_COLUMNS
+
+    # Not every sweep scores both arms, and not every sweep scores signed bias. Either absence
+    # means there is no difference to draw, which is a blank axis rather than a result.
+    if any(c not in frame.columns for c in _GOVERNANCE_COLUMNS):
+        return None
+    if frame["control_enabled"].nunique(dropna=True) < 2:
+        return None
+    if "reference_every_n" not in frame or frame["reference_every_n"].nunique(dropna=True) < 2:
+        return None
+    points = governance_rate_points(frame)
+    if not points:
+        return None
+
+    scenarios = list(dict.fromkeys(s for s, _e in points))
+    rates = sorted({r for series in points.values() for r in series})
+    estimators = sorted({e for _s, e in points})
+    markers = dict(zip(estimators, _MARKERS, strict=False))
+
+    fig, axes = plt.subplots(
+        2, len(scenarios), figsize=(4.6 * len(scenarios) + 1.0, 6.4), sharex=True, squeeze=False
+    )
+    fig.suptitle(title)
+
+    for column, scenario in enumerate(scenarios):
+        for row in (0, 1):
+            ax = axes[row][column]
+            for index, estimator in enumerate(estimators):
+                series = points.get((scenario, estimator))
+                if not series:
+                    continue
+                xs = sorted(series)
+                vals = [series[r][row] for r in xs]
+                ax.plot(
+                    xs,
+                    [float(np.median(v)) for v in vals],
+                    "-",
+                    color=f"C{index}",
+                    linewidth=1.5,
+                    marker=markers[estimator],
+                    markersize=4,
+                    label=f"{estimator}, n={len(vals[0])} seeds",
+                    zorder=3,
+                )
+                for rate, seeds in zip(xs, vals, strict=True):
+                    ax.scatter(
+                        [rate] * len(seeds),
+                        seeds,
+                        s=12,
+                        facecolors="none",
+                        edgecolors=f"C{index}",
+                        linewidths=0.5,
+                        alpha=0.45,
+                        zorder=2,
+                    )
+            ax.axhline(0.0, color="k", linestyle="--", linewidth=1.0, zorder=1)
+            _rate_axis(ax, rates)
+            if row == 0:
+                ax.set_title(scenario, fontsize=9)
+            else:
+                ax.set_xlabel("how often a reference vehicle arrives")
+
+    axes[0][0].set_ylabel("governed - ungoverned MAE (kg)")
+    axes[1][0].set_ylabel("governed - ungoverned SIGNED bias (kg)")
+    axes[0][0].annotate(
+        "zero: the loop changed nothing",
+        xy=(0.02, 0.0),
+        xycoords=("axes fraction", "data"),
+        xytext=(0, 4),
+        textcoords="offset points",
+        fontsize=7,
+    )
+    axes[0][-1].legend(fontsize=7, framealpha=0.9)
+    fig.tight_layout()
+    return _save(fig, path)
+
+
 _DRAW = {
     "accuracy": _draw_accuracy,
     "reference_rate": _draw_reference_rate,
+    "recall_vs_rate": _draw_recall_vs_rate,
+    "governance_vs_rate": _draw_governance_vs_rate,
     "coverage": _draw_coverage,
     "reconvergence": _draw_reconvergence,
     "detectors": _draw_detectors,

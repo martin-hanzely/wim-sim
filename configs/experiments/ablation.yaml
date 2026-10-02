@@ -1,0 +1,65 @@
+# Which disturbance does the Kalman estimator mishandle?
+#
+# THE FINDING THIS EXISTS TO EXPLAIN. On the influence-line instrument at thirty seeds, under
+# combined disturbances, the two adaptive estimators go opposite ways against frozen calibration:
+#
+#     S6_combined / static_affine -> kalman    median paired diff  +9.60 kg   (worse)
+#     S6_combined / static_affine -> rls       median paired diff -30.71 kg   (better)
+#
+# Nothing in the project says why. The manuscript states that the mechanism is unestablished, and
+# a reviewer is entitled to ask whether a filter that loses to its own frozen prior under the one
+# scenario built to be hard is a filter worth shipping.
+#
+# THE ABLATION. S6 overlaps four disturbance classes. Each arm removes exactly one of them and
+# leaves the rest alone, so the arm where the kalman-minus-static difference collapses is the class
+# the filter is mishandling. The arms:
+#
+#   S6_combined                    everything, the reference arm
+#   S6_ablate_thermal              no daily cycle, no multi-day trend, no alpha walk
+#   S6_ablate_zero_walk            no Brownian zero drift, no slope, no settling steps
+#   S6_ablate_outage               no ADC dropout, no link loss, no heartbeat gap
+#   S6_ablate_calibration_fault    no ramped gain loss, no sensor displacement
+#
+# THE CLOCK SKEW IS IN EVERY ARM. It is not an outage and belongs to none of the four classes the
+# brief names, so it is held constant rather than assigned arbitrarily to one of them. A
+# disturbance present in every arm cannot explain a difference between them.
+#
+# WHAT WOULD COUNT AS AN ANSWER. Either one arm's kalman-minus-static difference comes back to
+# zero while the others stay near +9.6 kg -- the mechanism is that class -- or no single removal
+# changes it, in which case the divergence is a product of the overlap rather than of any one
+# component, and that is the result to report. The second is a real possibility: S6 exists
+# precisely because the failure modes overlap in time.
+#
+# ON THE INFLUENCE-LINE INSTRUMENT, matching `cintron_ladder30` exactly -- same station, same edge
+# config, same reference rate, same pulse overrides, and Page-Hinkley pinned at the PRE-correction
+# 15.0. That pinning is not an oversight: it makes the `S6_combined` arm of this sweep a ten-seed
+# replicate of `cintron_ladder30`'s S6 cell, so the ablation can be checked against the result it
+# is explaining rather than merely compared with it.
+#
+# TEN SEEDS, which the brief sets as sufficient. It is enough to see a 30 kg effect collapse and
+# not enough to resolve a 2 kg one; the report says which of those it is looking at.
+
+experiment_id: ablation
+description: >
+  S6_combined and four one-component ablations of it, three estimators, ten seeds, on the
+  influence-line instrument -- to locate which disturbance the Kalman estimator mishandles.
+scenarios:
+  - S6_combined
+  - S6_ablate_thermal
+  - S6_ablate_zero_walk
+  - S6_ablate_outage
+  - S6_ablate_calibration_fault
+estimators: [static_affine, rls, kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+station: cintron_sim
+edge_config: cintron_sim
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides:
+  - scenario.output.samples=none
+  - scenario.pulse.shape=influence_line
+  - scenario.pulse.width_source=influence_length
+calibration_passes: 60
+fault_horizon_s: 1800.0

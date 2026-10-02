@@ -1,0 +1,19 @@
+# S6 with the THERMAL CYCLE removed. One of four ablations; see configs/experiments/ablation.yaml.
+#
+# WHAT IS DISABLED, exactly: the daily temperature swing, the multi-day trend, and the drift of the
+# sensor's own temperature coefficient. The weather noise is left in, so the temperature channel
+# still exists and still carries a signal -- removing it would ablate the probe as well as the
+# cycle, and the estimators read that probe.
+#
+# The zero line's temperature coupling (`temp_coupling_per_c`) is left at S6's value on purpose. It
+# is a path, not a source: with the cycle flat it has almost nothing to couple to, and zeroing it
+# here would move part of the zero-drift ablation into this one.
+extends: S6_combined
+name: S6_ablate_thermal
+description: S6 with the daily thermal cycle, the multi-day trend and the alpha walk removed.
+station_overrides:
+  sensor:
+    alpha_walk_sigma_per_sqrt_s: 0.0
+temperature:
+  daily_amplitude_c: 0.0
+  trend_c_per_day: 0.0

@@ -1,0 +1,26 @@
+# S6 with the OUTAGE group removed. One of four ablations; see configs/experiments/ablation.yaml.
+#
+# WHAT IS DISABLED, exactly: the three availability faults -- the ADC dropout, the link loss and the
+# heartbeat gap. The clock skew stays. It is not an outage and it is in none of the four classes
+# the ablation partitions S6 into, so it is held constant in every arm; a disturbance present
+# everywhere confounds nothing.
+extends: S6_combined
+name: S6_ablate_outage
+description: S6 with the ADC dropout, the connectivity loss and the heartbeat gap removed.
+faults:
+  - type: gain_instability
+    label: amp_creep
+    t_start_s: 43200.0
+    duration_s: null
+    factor: 0.955
+    ramp_s: 3600.0
+  - type: sensor_displacement
+    label: pad_shift
+    t_s: 122400.0
+    k_factor: 1.03
+    q_delta: 0.025
+  - type: clock_skew
+    label: ntp_slip
+    t_start_s: 86400.0
+    offset_s: 0.35
+    drift_ppm: 45.0
