@@ -3,6 +3,46 @@
 Every verdict below was checked against the repository at commit `f40ca51`. Where a claim is
 contradicted, what is true instead is stated, with a file or test to check it.
 
+## Added 2026-10-03 — what the final sweep contradicts
+
+Two of these contradict the brief that commissioned the work rather than the manuscript, one
+contradicts a table in this export's own §VI-G, and one is a latent hazard in a shipped command
+that no reported number went through. All four are at the top because a drafting decision rests
+on each.
+
+**The governed static arm's bias does not degrade; it overshoots.** The brief for this sweep
+stated that the static-calibration error gain "comes with a bias degradation". It does not. On
+`S4_step_fault` the ungoverned static arm carries −140.06 kg of bias at every reference rate and
+the governed arm carries −29.88 kg at one reference in two — the magnitude *improves* by a factor
+of 4.7. What is true, and is the thing worth writing, is that the loop drives the bias **through
+zero and out the other side**: +17.89 kg at one reference in ten, while MAE moves by 3 kg. A
+sentence about degradation would be wrong; a sentence about overcorrection is right. (§VI-G, A2)
+
+**"The loop is a coarse approximation of what recursive estimation does continuously" is half
+supported.** It is right that the benefit is confined to the estimator with no tracking, and that
+the governed static arm comes within 2 kg of both adaptive estimators at one reference in two. It
+is wrong that the loop is merely *redundant* where tracking exists: in the three cells where it
+fires on an adaptive estimator it is mildly **adverse** — +1.72 kg for rls at one in ten, +0.90 kg
+for kalman at one in twenty. A coarse version of something already being done should cost nothing.
+(§VI-G, A2)
+
+**The detection numbers in §VI-G are at the superseded threshold, and the corrected threshold
+changes the shape of the curve, not only its level.** At Page-Hinkley 15.0 the recall of
+`S7_sparse_reference` is *not* monotone in reference rate: 0.111 at one in two, below its 0.444 at
+one in five. At the corrected 7.5 the same cell is 1.000 and the curve is monotone on both
+scenarios. One cell going from 1 fault caught in 9 to 9 of 9 is the largest single effect the
+threshold correction has produced anywhere in this project. (§VI-G, A1)
+
+**`wimsim gap-report`'s fitted `--set` lines carry the recording's units, not the station's.**
+Reported separately rather than fixed, per the working agreement. `NoiseFit.as_overrides()` emits
+`scenario.noise.white_sigma` and `scenario.noise.mains.amplitude` as measured on the recording —
+which for this corpus is **strain**, while the scenario keys are in **mV/V**, a factor of 500 at
+gauge factor 2.0 on a quarter bridge. The lines load without error and configure a simulator 500×
+quieter than the instrument. Nothing in the export was produced through that path, and
+`sim_crossval.py` converts explicitly before fitting; the latent hazard is in the shipped command.
+
+---
+
 **The six that matter most, before the detail:**
 
 1. **The calibration map is two-parameter, not three.** There is no `θ₂·(s·ΔT)` term in any
@@ -244,20 +284,46 @@ check would actually fail if violated.
 **"Deployed unchanged on embedded hardware" is untested.** `SerialSource` is an explicit,
 documented stub. No code has run on a board. See §V-G.
 
+**Checked again 2026-10-03 and still BLOCKED — no hardware.** No Raspberry Pi or comparable board
+is reachable; the only remote hosts configured are x86 cloud instances, and running the footprint
+harness on one of those would not answer this claim — portability to an embedded board is not
+portability to another x86 host. Nothing was simulated or extrapolated, and Table I keeps its
+partial mark. One obstacle worth recording: `estimator_cost` has no CLI entry point, so running
+"the existing harness" on a board means writing a short script there. See `OPEN.md`.
+
 ---
 
 ## Section V — methods
 
 ### §V-C — simulator parameters fitted from real recordings, validated leave-one-out
 
-**PARTIALLY CONFIRMED, with the two halves belonging to different things.**
+**~~PARTIALLY CONFIRMED~~ NOW CONFIRMED, and the cross-validation found two things.** Added
+2026-10-03; full report in `export/sim_crossval.md`, command `wimsim validate-sim`.
 
-Fitting is real: `wimsim gap-report` fits `white_sigma`, `mains.amplitude` and `zero_drift.q0` from
-a recording and emits them as `--set` lines that load.
+Fitting was always real: `wimsim gap-report` fits `white_sigma`, `mains.amplitude` and
+`zero_drift.q0` from a recording and emits them as `--set` lines that load. What did not exist was
+the leave-one-out half — the procedure that did (`wimsim score-corpus`) cross-validates the
+*calibration*, not the simulator.
 
-**Leave-one-out was never applied to simulator parameters.** The leave-one-recording-out procedure
-that exists (`wimsim score-corpus`) cross-validates the *calibration*, not the simulator. No
-simulator parameter has been cross-validated.
+It exists now: eight recordings, eight folds, fit on seven and test on the eighth, with the
+synthetic trace generated on the held-out recording's own sample grid.
+
+**The noise model transfers.** White floor within 1 %, 50 Hz line within 4 %, on every fold — and
+held out as well as in sample, so one recording's noise statistics predict another's as well as
+they predict their own. §V-C's claim is supportable for the noise parameters.
+
+**Two statistics do not agree, and the in-sample column separates the reasons.** Baseline
+increments come out 2.1× too large on every fold *including the in-sample one*, so that is a bias
+in the method-of-moments fitting procedure rather than a failure to generalise: the simulator
+moves its zero line through 1/f noise and thermal coupling as well as the random walk, and a fit
+that assigns all the measured increment spread to the walk double-counts. And the event shape
+genuinely does not transfer — held out 0.31 against in sample 0.00, with FWHM spanning 0.372 s to
+1.104 s across eight recordings and the best-fitting shape family changing between them.
+
+**One mismatch is not a fitting problem at all.** Excess kurtosis of the real baseline increments
+runs from +1.5 to +1698 against the Gaussian 0 the model produces. The real zero line does not
+wander, it jumps, and `zero_drift` has no mechanism that reproduces it. That is a limitation to
+state rather than a parameter to retune, and nothing was retuned.
 
 ### §V-D — eight passes of two vehicles with reference masses
 
