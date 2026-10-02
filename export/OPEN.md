@@ -48,6 +48,78 @@ silent — every row carries `edge_config_hash` — and RESULTS.md carries the t
 at which threshold. `configs/estimators/detect_ph.yaml` is pinned at 15.0 so the detector ladders
 keep a fixed baseline.
 
+## What the 2026-10-02 final sweep superseded, and what it did not
+
+Part A is reanalysis of stored data and adds no runs, so it supersedes *readings* rather than
+files. B2 is new analysis of the eight real recordings. C is blocked. D was not started.
+
+### Superseded — still present, no longer the best evidence
+
+| artifact | superseded by | why |
+| --- | --- | --- |
+| §VI-G "Detection collapses with the rate" | §A1 | at Page-Hinkley 15.0, and the corrected 7.5 changes the **shape** of the curve rather than only its level: `S7_sparse_reference` is non-monotone at 15.0 and monotone at 7.5, with one cell moving from 1 fault caught in 9 to 9 of 9. The old table also reports counts with no detection delay beside them, and the delay is what shows the mechanism |
+| the elimination argument in §VII-C | §A1 | the reference rate is now *measured* as the binding constraint rather than reached by excluding everything else, and the measurement locates the failure between one reference in ten and one in twenty rather than merely attributing it |
+| §V-C's "no simulator parameter has been cross-validated" | §B2 | eight folds; the noise parameters cross-validate and the event shape does not |
+
+### Unaffected — nothing about these changed
+
+Every accuracy, coverage, reconvergence and footprint number in §VI-A to §VI-F and §VI-H is
+untouched: Part A reads the `reference_rate` sweeps and changes no run, and B2 touches only the
+real recordings. `ladder30`, `cintron_ladder30`, `theta2`, `recal_coverage`, `detectors`,
+`detector_thresholds` and `governance` are all unaffected, as are their figures, comparison files
+and long-format CSVs.
+
+The `reference_rate` and `reference_rate_ph75` parquets are **unchanged** — their figure
+directories gained two figures each and three sidecar files each, drawn from the same rows.
+
+### A correctness note about every sweep run after 2026-10-03
+
+`Preprocessor._track_zero` was made 1.6× faster on 2026-10-03. The change is **bit-identical**:
+one partition now serves the four order statistics that two numpy calls used to compute, with
+`_lerp` reproduced exactly including its branch. Verified over 4,000 random windows and against a
+full 16 h run whose 48 result columns, config hash and edge-config hash all compare equal to the
+pre-change run. Sweeps run before and after that commit are therefore directly comparable, which
+is the only reason the change was made rather than deferred.
+
+### Still not done, and what it would take
+
+**No rate between one in ten and one in twenty.** The zero crossing of detection recall is the
+sharpest result in Part A and it is located only to within a factor of two, because the ladder
+jumps from 10 to 20. A single added rate — `reference_rate: 15` — would halve that interval at
+one seventh of the sweep's cost. It is not in `reference_rate30` because the brief fixed the
+ladder, and the gap is recorded here rather than filled silently.
+
+**`estimator_cost` has no CLI entry point.** The footprint figures in §VI-H were produced by
+calling `wimsim.experiments.control_scoring.estimator_cost` directly. "Run the existing footprint
+harness on the board" therefore means writing a short script on the board rather than running a
+shipped command, which is friction between the project and the one measurement §IV-K needs. A
+`wimsim footprint` command would remove it; it was not added because the brief said to stop at
+BLOCKED.
+
+**`gap-report`'s fitted `--set` lines are in the recording's units, not the station's.** See
+`CONTRADICTIONS.md`. A latent factor of 500 on this corpus. No reported number went through that
+path and `sim_crossval.py` converts explicitly, so this is a hazard rather than an error, and it
+is reported rather than fixed per the working agreement.
+
+**The baseline increment distribution has no model.** B2 measured excess kurtosis from +1.5 to
++1698 in the real recordings against the Gaussian 0 the simulator produces. `zero_drift` offers a
+Gaussian walk, a linear slope and a Poisson step process; nothing in a sixty-second recording
+separates a settling step from a residual crossing edge, so the step process could not be fitted
+here either. Closing this needs longer recordings, not a different estimator.
+
+**The simulator's zero-line fit overshoots by 2.1× and the procedure is still in use.**
+`docs/sim-to-real.md` assigns the whole measured increment spread to the random walk, and the
+model also moves its zero line through 1/f noise and thermal coupling. The correction is
+arithmetic — subtract the other contributions in quadrature — but applying it would change the
+shipped scenario parameters and therefore every stored result, so it is recorded and not applied.
+
+**Population mode is still a label.** D1 is a scoping note in `RESULTS.md` and nothing else; no
+code was written for it.
+
+**No board.** §IV-K and §V-G are unchanged.
+
+---
+
 ## Constants
 
 The values actually in the code, not the intended ones.
