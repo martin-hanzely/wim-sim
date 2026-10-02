@@ -1,10 +1,0 @@
-reference_rate30
-  scenarios                S4_step_fault, S7_sparse_reference
-  estimators               static_affine, rls, kalman
-  seeds                    1, 2, 3
-  reference rates          1, 2, 3, 5, 10, 20, 50
-  controller               on, off
-  runs                     252
-  edge config              default
-  The reference rate swept from every vehicle to one in fifty, controller on and off over the identical stream, three estimators, thirty seeds, Page-Hinkley at the shipped 7.5.
-  [  1/252] S4_step_fault__static_affine__seed1__ref1__control   0.1 min elapsed, ~  0.0 left     [  2/252] S4_step_fault__static_affine__seed1__ref1__open   3.9 min elapsed, ~975.8 left     [  3/252] S4_step_fault__static_affine__seed1__ref2__control   7.1 min elapsed, ~891.0 left     [  4/252] S4_step_fault__static_affine__seed1__ref2__open  10.7 min elapsed, ~889.2 left     [  5/252] S4_step_fault__static_affine__seed1__ref3__control  14.4 min elapsed, ~891.5 left     [  6/252] S4_step_fault__static_affine__seed1__ref3__open  18.7 min elapsed, ~924.4 left     [  7/252] S4_step_fault__static_affine__seed1__ref5__control  23.0 min elapsed, ~941.4 left     [  8/252] S4_step_fault__static_affine__seed1__ref5__open  27.2 min elapsed, ~951.7 left     [  9/252] S4_step_fault__static_affine__seed1__ref10__control  31.1 min elapsed, ~947.1 left     [ 10/252] S4_step_fault__static_affine__seed1__ref10__open  34.7 min elapsed, ~936.6 left   

@@ -26,3 +26,4 @@ data/real/*
 # export/ IS tracked, CSVs included. They are NOT regenerable by someone who clones this repo --
 # data/results/ is ignored, so the parquets they are built from are not here. The export is the
 # deliverable for a reader without the runs.
+data/logs/
