@@ -255,6 +255,293 @@ cells in which nothing happened.
 
 ---
 
+## The final sweep, 2026-10-02 — Parts A to D
+
+Commit `a4b2962`. Part A is reanalysis of data already stored; it adds no runs. Parts B1, B3 and
+B4 are new sweeps. B2 is a new analysis of the eight real recordings. C is blocked. D was not
+started.
+
+New artefacts: `export/reference_rate__reference_curve.md` and
+`export/reference_rate_ph75__reference_curve.md` (the A1 and A2 tables per sweep),
+`export/sim_crossval.md` (B2), figures `*__recall_vs_rate.png` and `*__governance_vs_rate.png`,
+and per-seed CSVs `*__recall_by_rate.csv`, `*__governance_by_rate.csv`,
+`*__governance_pairs_long.csv`, `sim_crossval_long.csv`, `sim_crossval_measured.csv`.
+
+### A1 — detection recall against reference rate, measured rather than argued by elimination
+
+Section VII-C reaches the reference rate by exclusion: nothing else that was varied moved the
+result, so the rate must be what binds. Both `reference_rate` sweeps already contained the direct
+measurement and neither this document nor any figure reported it.
+
+**The definition actually used.** Recall is `detected / (detected + missed)` over the calibration
+faults the scenario injects, crediting only alarms that fired *after* a fault and inside the
+1800 s scoring horizon. It is read from the **governed arm only**: with `edge.control.enabled`
+false the detectors are never constructed, and all 90 ungoverned runs in each sweep report
+`alarms 0, detected 0, recall 0.000`. Those are structural zeros. Pooling the two arms would halve
+every figure below and would present "the detector was not running" as "the detector missed".
+
+Nine runs per cell (three estimators × three seeds), pooled over estimators. Per-estimator rows are
+in the sidecar files.
+
+**Mean recall, Page-Hinkley at the corrected 7.5** (`reference_rate_ph75`, n = 9 per cell):
+
+| scenario | 1 in 2 | 1 in 5 | 1 in 10 | 1 in 20 | 1 in 50 |
+|---|---|---|---|---|---|
+| S4_step_fault | 0.611 | 0.444 | 0.333 | **0.000** | **0.000** |
+| S7_sparse_reference | 1.000 | 0.333 | 0.222 | **0.000** | **0.000** |
+
+**The same at the shipped-at-the-time 15.0** (`reference_rate`, n = 9 per cell):
+
+| scenario | 1 in 2 | 1 in 5 | 1 in 10 | 1 in 20 | 1 in 50 |
+|---|---|---|---|---|---|
+| S4_step_fault | 0.667 | 0.556 | 0.167 | **0.000** | **0.000** |
+| S7_sparse_reference | 0.111 | 0.444 | 0.111 | **0.000** | **0.000** |
+
+Both are monotone at 7.5. At 15.0, S7 is not: 0.111 at one reference in two is *below* its value at
+one in five, and the corrected threshold moves that same cell to 1.000. One cell of nine runs
+moving from 1 fault caught in 9 to 9 of 9 is the largest single effect the threshold correction has
+produced anywhere in this project, and it is on the scenario the detector is worst at.
+
+**Where recall crosses zero.** Between **one reference in ten and one in twenty**, in all four
+combinations of scenario and threshold. That is four independent brackets agreeing, which is the
+strongest part of the result. It is located to **within a factor of two and no better**: no rate was
+run between 10 and 20, and interpolating a point inside the bracket would assume a curve shape
+nothing here measures. See `OPEN.md` for the one rate that would halve the interval.
+
+**Detection delay roughly doubles over the same span**, which is new and is not in any previous
+table. Pooled medians with IQR, S4 at the corrected threshold, over the runs that detected anything
+(a run that detected nothing contributes no delay rather than a zero):
+
+| scenario | 1 in 2 | 1 in 5 | 1 in 10 |
+|---|---|---|---|
+| S4_step_fault | 544 s [451, 544], n=9 | 580 s [566, 593], n=6 | 1123 s [959, 1181], n=6 |
+| S7_sparse_reference | 874 s [297, 1406], n=9 | 993 s [977, 993], n=3 | 1424 s [1424, 1424], n=2 |
+
+So detection does not fail abruptly at the crossing: it gets slower first, and the delay at one in
+ten is already most of the 1800 s horizon. Both effects have the same cause — the confirmation gate
+needs a *run* of reference passes — and the delay is the part that shows the mechanism rather than
+only its endpoint.
+
+**What this changes in the argument.** The elimination argument concludes "the reference rate is
+what binds". The measurement says something narrower and more usable: detection is not broken, it
+works at dense reference rates and ceases between one reference in ten and one in twenty, and the
+approach to that point is visible as a doubling of delay. A site that supplies references more often
+than the crossing gets drift detection; one that does not gets an estimator with a detector
+attached that never fires.
+
+**Statistical status: descriptive.** Three seeds. The smallest two-sided p Wilcoxon can produce at
+n = 3 is 0.25, so no comparison here can reach 0.05 however large the effect. B1 is the powered
+version.
+
+### A2 — the governance effect against reference rate
+
+**The definition actually used.** Governed minus ungoverned over a byte-identical stream, **paired
+by seed**: the median of the per-seed differences, which is not the difference of the medians. Both
+are in the sidecar so the two can be seen not to be the same number. Negative is the loop helping.
+Three pairs per cell.
+
+**MAE difference, kg, Page-Hinkley 7.5, S4_step_fault** (median [Q1, Q3] of per-seed differences):
+
+| estimator | 1 in 2 | 1 in 5 | 1 in 10 | 1 in 20 | 1 in 50 |
+|---|---|---|---|---|---|
+| static_affine | **−40.51** [−43.90, −40.38] | **−29.97** [−33.56, −14.98] | **−3.08** [−5.86, −1.04] | 0.00 [−1.32, 0.00] | 0.00 |
+| rls | −0.72 [−0.98, −0.36] | 0.00 [−1.59, +0.33] | **+1.72** [+0.86, +3.39] | 0.00 [0.00, +0.16] | 0.00 |
+| kalman | 0.00 [0.00, +0.33] | 0.00 [−1.51, +2.03] | 0.00 | **+0.90** [+0.45, +2.68] | 0.00 |
+
+On S7_sparse_reference the static column is 0.00, 0.00, **−17.62** [−18.22, −8.81], 0.00, 0.00 and
+both adaptive columns are 0.00 at every rate. The S7 zeros at one in two and one in five are two of
+three seeds identical and one seed moving by about 9 kg — at three seeds that is a median of zero
+over a cell that is not uniformly zero, which is exactly the kind of cell B1 exists to resolve.
+
+**Signed bias, carried beside the error and never folded into it.** The brief for this sweep
+expected the static-calibration error gain to come with a bias degradation. **It does not, and the
+contradiction is flagged here rather than buried.** On S4 the ungoverned static arm sits at
+−140.06 kg of bias at every rate; the governed arm is −29.88 kg at one in two, −20.48 kg at one in
+five and **+17.89 kg** at one in ten. The magnitude improves by a factor of 4.7 at the dense end.
+
+What does happen, and is worth the manuscript's attention, is that **the loop drives the bias
+through zero and out the other side**: at one reference in ten it has overcorrected from −140 kg to
++18 kg while leaving MAE essentially unmoved (−3.08 kg). A table of `|bias|`, or of error alone,
+would show that as a small improvement. The sign flip is the finding, not a degradation in
+magnitude.
+
+**Is the loop a coarse approximation of what recursive estimation does continuously?** The brief
+asks this reading to be tested rather than asserted. The evidence runs both ways and is reported
+that way.
+
+*For.* The benefit is confined entirely to the estimator with no tracking of its own. Both adaptive
+estimators are at 0.00 kg in 17 of 20 scenario × rate cells, and at one reference in two the
+governed static arm reaches 137.59 kg against rls 135.56 and kalman 138.30 — within 2 kg of
+estimators that track continuously. The benefit also decays monotonically as recalibration
+opportunities thin, which is what a discrete approximation of a continuous process should do.
+
+*Against.* Three things. First, where the loop does fire on an adaptive estimator it is not neutral
+but mildly **adverse** — +1.72 kg for rls at one in ten, +0.90 kg for kalman at one in twenty — and
+redundancy should cost nothing rather than a kilogram. Second, the approximation degrades faster
+than the recalibration count does: between one in two and one in five the loop still performs two
+recalibrations in the median run, yet the governed static arm falls from 137.59 kg to 148.13 kg
+while rls moves by 4.6 kg. Third, the overcorrection above has no counterpart in the recursive
+estimators, whose bias moves smoothly; a discrete corrector that overshoots is not a coarse version
+of a continuous one, it is a different mechanism with a different failure.
+
+The supportable statement is therefore narrower than the reading offered: **the loop substitutes for
+tracking only where recalibration opportunities are dense, and it substitutes badly rather than
+partially where they are not.** Three seeds; see B1 for the powered version.
+
+### B2 — simulator cross-validation, leave one recording out
+
+§V-C concedes that no simulator parameter has ever been cross-validated: everything in
+`docs/sim-to-real.md` was fitted on the recordings and then reported against the recordings, so
+nothing distinguished "the simulator reproduces this instrument" from "the simulator was fitted to
+these eight minutes of it". This is that test. Full report in `export/sim_crossval.md`, per-fold
+values in `export/data/sim_crossval_long.csv`.
+
+**Eight recordings, eight folds, seven training recordings each.** The brief said six and a
+seventh; there are eight 60 s recordings at 25 kHz in `data/real/`, all carrying `Tenzo2`.
+`data/real/EXAMPLE` is the schema sample, carries a synthetic channel `S1`, and is excluded by
+name on screen rather than silently. `20260209_fabia2` has no detectable crossing and so has no
+event shape, which is reported as missing rather than as a zero; it contributes to every other
+statistic.
+
+**The construction.** Fit the noise, drift and pulse parameters on seven recordings by
+method-of-moments pooling (median), synthesise a trace carrying those parameters **on the held-out
+recording's own sample grid**, and compare the two sets of statistics. The grid matters:
+`noise.white_sigma` is a per-sample quantity, so comparing PSDs computed on different grids would
+show differences that are an artefact of the grids. Agreement is `log2(synthetic / real)` — 0 is
+exact, ±1 is a factor of two — because a plain ratio makes 0.5× look smaller than 2×.
+
+**Three definitions, each stated because each could flatter the result.**
+
+*Crossings are excised from both traces before any noise or drift statistic*, by the same mask,
+against a **local** baseline rather than a global median. The quiescent share of each recording is
+reported (0.35 to 0.80) so a weak measurement is visible.
+
+*The random walk is fitted from a robust increment spread with the white-noise contribution
+subtracted in quadrature.* Both corrections are load-bearing. The white part is 1.45e-5 of a total
+1.9e-5 — three quarters of the increment spread is the white noise averaging down, not the zero
+line moving. And three of the eight recordings have an increment **sd** five times their robust
+scale, so an sd-based fit would set the simulator's random walk from a handful of samples.
+
+*The recordings are in strain and the simulator works in mV/V*, a factor of 500 at gauge factor
+2.0 on a quarter bridge. The bridge configuration is **assumed, not measured** — see the sensor
+block of `configs/stations/cintron_platform.yaml`. Every absolute agreement below carries that
+assumption; no comparison *between* folds does, because it is one constant applied identically to
+all eight.
+
+#### Held-out agreement, median absolute `log2(sim/real)` across the eight folds
+
+| statistic | held out | in sample | reading |
+|---|---|---|---|
+| white noise floor | **0.00** | 0.00 | agrees to within 1 % on every fold |
+| 50 Hz line amplitude | **0.04** | 0.04 | agrees to within 4 % on every fold |
+| baseline increment spread (robust) | 1.08 | 1.07 | simulator 2.1× the recording, **on every fold including in-sample** |
+| low-frequency slope (difference, not ratio) | 0.63 | 0.62 | |
+| increment excess kurtosis (difference) | 35.8 | 32.7 | simulator Gaussian; recordings +1.5 to +1698 |
+| influence length | 0.31 | **0.00** | the only statistic where holding out costs anything |
+
+**The noise model transfers and is not memorising.** The white floor and the mains line agree held
+out as well as in sample, to 1 % and 4 %. One recording's noise statistics predict another
+recording's as well as they predict their own. That is the result §V-C was missing, and it is a
+positive one.
+
+**The increment disagreement is a fit bias, not a generalisation failure, and the in-sample column
+is what proves it.** Held out 1.08 against in sample 1.07: fitting on the very recording being
+predicted does not help at all. So the simulator is not failing to generalise — the method-of-moments
+round trip overshoots by a constant factor of about 2.1 on every fold. The cause is identifiable
+from the model: the simulator moves its zero line through 1/f noise and temperature coupling as
+well as through the random walk, and a fit that attributes all of the measured increment spread to
+the walk double-counts the rest. **This is a defect in the fitting procedure that
+`docs/sim-to-real.md` uses, not in the simulator**, and it would have been invisible without the
+held-out/in-sample contrast.
+
+**The simulator cannot produce the baseline the instrument has.** Excess kurtosis of the real
+increments runs from +1.5 to +1698 against the Gaussian 0 the model generates — three recordings
+(`cintron4`, `fabia1`, `fabia2`) are above +800. The real zero line does not wander, it jumps. The
+model has no mechanism for that: `zero_drift` offers a Gaussian random walk, a linear slope and a
+Poisson step process, and the step process was not fitted here because nothing in the corpus
+separates a settling step from a residual crossing edge at this length. **This is the clearest
+simulator/instrument mismatch the project has measured**, and it is a limitation to state rather
+than a parameter to retune.
+
+**The event shape is the one parameter that does not transfer.** Held out 0.31 against in sample
+0.00 — in sample is perfect by construction, since the fit is that recording's own FWHM. The
+measured FWHM spans 0.372 s to 1.104 s across the eight recordings, a factor of three, and the
+best-fitting shape family is not even constant: triangle on four recordings, raised cosine on two,
+parabola on one, undefined on one. Predicting one recording's event shape from the other seven is
+good to about 25 % typically and wrong by a factor of 2.3 at worst (`cintron5`).
+
+Note that the influence length inherits an inference rather than a measurement: it is FWHM × a
+crossing speed of 0.78 m/s that was never measured and is not re-measurable. Its fold-to-fold
+agreement is a statement about FWHM reproducibility, not about length in metres.
+
+**Nothing was refitted in response to any of this.** The brief is explicit that poor agreement is a
+finding and not a reason to refit, and no station or scenario parameter was changed.
+
+### C1 — embedded bench
+
+**BLOCKED — no hardware.**
+
+No Raspberry Pi or comparable board is available to this session. The machine is an x86 Windows
+workstation; the only remote hosts configured in `~/.ssh` are x86 cloud instances, which would not
+answer the question §IV-K asks — portability to an embedded board is not portability to another
+x86 host, and running the harness on a cloud VM and reporting it beside the workstation figures
+would be a number that looks like evidence and is not.
+
+Nothing was simulated, extrapolated or estimated. Table I keeps its partial mark and §IV-K keeps
+its structural claim.
+
+**What would close it**, recorded so the measurement is one command away when a board exists. The
+harness is `wimsim.experiments.control_scoring.estimator_cost(estimator, observations)`, which
+returns mean microseconds per `update()` and the serialised state size in bytes — the state as the
+JSON the profile store would write, which is the form that actually has to survive a restart. The
+existing figures (x86 laptop, Intel64 Family 6 Model 154 Stepping 4, Python 3.13.13, numpy 2.5.2,
+2000 sequential updates) are static_affine 1.44 µs / 199 B, rls 17.29 µs / 403 B, kalman
+24.24 µs / 456 B. To be comparable, a board run needs the same 2000 updates, the board thermally
+settled and otherwise unloaded, and the board, OS, Python and numpy versions recorded alongside.
+
+One obstacle is worth naming because it is not visible from the brief: **`estimator_cost` has no
+CLI entry point.** The x86 figures were produced by calling it directly, so "run the existing
+footprint harness on the board" currently means writing a short script on the board rather than
+running a shipped command. That is recorded in `OPEN.md` rather than fixed here, because building
+tooling was not part of this brief and the brief said to stop.
+
+### D1 — population-based residual source: scoping note only, not started
+
+**Not started, by instruction.** The brief gates this and asks only for a scoping note if Parts A–C
+complete. Nothing in `src/` was changed for it and no run was made.
+
+*What would be implemented.* A residual source that calibrates from the vehicle population rather
+than from identified reference vehicles. The lever the manuscript identifies is steering-axle
+invariance: across a large enough sample of a vehicle class the front-axle load distribution is
+stable, so the mean of the measured steering-axle feature over a window is an estimate of a known
+quantity, and the ratio of the two estimates the gain. `vehicles.py` already carries per-axle loads
+in truth, so the invariance is simulatable without new plant physics; what does not exist is the
+estimator-side half — axle classification from the event stream, a windowed population statistic
+with a convergence criterion, and the interface by which it supplies a `ReferenceObservation`
+without ever seeing truth.
+
+*What it would be evaluated against.* The A1 curve is the natural benchmark, because the claim is
+precisely that it relieves the binding constraint. The test is whether detection recall at one
+reference in twenty and one in fifty — currently 0.000 at every threshold tried — becomes nonzero,
+and whether the governed-minus-ungoverned MAE difference for static calibration extends past the
+one-in-ten point where it currently reaches zero. S7_sparse_reference exists for this and is
+already in the grid.
+
+*What could go wrong.* Three things, in order of how likely they are to sink it. The population
+statistic is a mean over a class whose composition drifts, so a fleet-composition shift is
+indistinguishable from a gain change — and no scenario in this project varies fleet composition, so
+the failure mode cannot currently be measured at all. Second, the invariance is a property of a
+population the simulator generates from a configured distribution, so a result on synthetic data
+would partly be a measurement of that configuration rather than of the method; the real corpus is
+eight minutes of two cars and cannot check it. Third, principle 1 is at risk in a way the reference
+path is not: the per-axle loads this would exploit are truth-side, and an implementation that
+reaches them through anything but a configured prior would be estimating from the answer.
+
+*Cost.* Multi-week, and a different order of work from Parts A–C. It is an implementation project
+with its own validation problem, not an experiment.
+
+---
+
 ## Read this first: did the method beat B2?
 
 **No — not on mean absolute error, on any scenario tested, at any reference rate.**
@@ -561,6 +848,13 @@ Faults answered inside the 30-minute horizon, out of 6, controller on, S4:
 This is the confirmation gate behaving as its sensitivity floor predicts —
 `confirm_sigma × 1.2533 × σ / √passes` needs a *run* of reference passes, and at one in fifty they
 arrive fifty times more slowly than the faults do.
+
+**Superseded in two ways by A1 above; the table is kept because it is what `reference_rate` ran.**
+It is at Page-Hinkley **15.0**, and at the corrected 7.5 the same cells read 0.611, 0.444, 0.333,
+0.000, 0.000 as a recall — one in ten goes from 1 fault in 18 to 6. It also reports counts without
+the detection delay beside them, and the delay is what shows that detection degrades before it
+stops: it doubles between one reference in two and one in ten, to 1123 s against an 1800 s
+horizon.
 
 ### Crossover where population mode overtakes sparse supervised
 
