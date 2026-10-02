@@ -1,0 +1,64 @@
+# `reference_rate` at power, with a denser ladder at the dense end.
+#
+# WHY A NEW SWEEP RATHER THAN MORE SEEDS ON THE OLD ONE. `reference_rate` and `reference_rate_ph75`
+# are the record of what was run at three seeds, and in this project a three-seed result has already
+# proved both biased and, on one cell, wrong-signed: `cintron_ladder` at three seeds reported
+# -13.66 kg on S6/kalman where thirty seeds report +9.60 kg and significantly worse. Extending the
+# old directory in place would overwrite the evidence for that caution.
+#
+# WHAT THIS IS FOR. Two relationships measured on the three-seed data now carry the paper's central
+# argument in SS VII-C and rest on nine runs per cell:
+#
+#   detection recall falls monotonically as references thin -- on S4, 0.611, 0.444, 0.333, 0.000,
+#   0.000 at one in 2, 5, 10, 20, 50; on S7, 1.000, 0.333, 0.222, 0.000, 0.000
+#
+#   the governed-minus-ungoverned MAE difference is monotonic for static calibration -- -40.5,
+#   -30.0, -3.1, 0.0, 0.0 kg on S4 -- and is zero at every rate for both adaptive estimators
+#
+# Thirty seeds makes those paired comparisons testable rather than descriptive: Wilcoxon signed-rank
+# at n=30 has a minimum attainable p below 1e-8, against 0.25 at n=3.
+#
+# THE TWO NEW RATES. One reference in one and one in three are added at the dense end, which the old
+# ladder did not reach: 2 was its densest point and both relationships are still moving there.
+# Recall at 1.000 on S7 at one-in-two cannot be distinguished from a ceiling without a denser point,
+# and the static-calibration gain of -40.5 kg may or may not keep growing. The sparse end is
+# unchanged: recall is already 0.000 at one in 20 and one in 50.
+#
+# WHAT THIS DOES NOT SETTLE. The zero crossing is located only to within 10 < n <= 20, because no
+# rate is run between them. A rate of 15 would halve that interval; it is not in this grid because
+# the brief fixed the ladder, and the gap is recorded in OPEN.md rather than filled silently.
+#
+# THE THRESHOLD IS PINNED HERE rather than inherited. The shipped default is now 7.5, so inheriting
+# would be correct today and would silently mean 15.0 if the default ever moves back. The two
+# relationships above were measured at 7.5 and this sweep is their powered version, so 7.5 is the
+# operating point and the file records it.
+
+experiment_id: reference_rate30
+description: >
+  The reference rate swept from every vehicle to one in fifty, controller on and off over the
+  identical stream, three estimators, thirty seeds, Page-Hinkley at the shipped 7.5.
+
+scenarios:
+  - S4_step_fault          # two abrupt sensitivity steps -- what the detector is built for
+  - S7_sparse_reference    # a 3 % gain loss ramped over two hours -- what it is worst at
+
+estimators: [static_affine, rls, kalman]
+
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+        16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+
+# 1 and 3 are new. 2, 5, 10, 20 and 50 are `reference_rate.yaml` unchanged, so the old sweep is a
+# subset of this one on five of its seven rates and the two are directly comparable there.
+reference_rates: [1, 2, 3, 5, 10, 20, 50]
+
+control_arms: [true, false]
+
+edge_config: default
+edge_overrides:
+  - edge.drift.page_hinkley_threshold=7.5
+
+overrides:
+  - scenario.output.samples=none
+
+calibration_passes: 60
+fault_horizon_s: 1800.0
