@@ -194,6 +194,11 @@ docs/                 signal-model.md, observability.md, experiments.md, sim-to-
   figures, the sim-to-real gap report, and the three separate reasons the default pipeline detected
   nothing at all on the real recordings.
 - [`docs/determinism.md`](docs/determinism.md) -- how reproducibility is actually enforced.
+- [`docs/simulacia-sk.md`](docs/simulacia-sk.md) and
+  [`docs/experimenty-sk.md`](docs/experimenty-sk.md) -- the generative model, the edge
+  pipeline, the control loop and the experiment machinery, **in Slovak**, with mermaid
+  diagrams. A walkthrough rather than a specification: where they disagree with the code,
+  the code and the English docs win.
 - [`export/`](export/README.md) -- the results package for the manuscript: every drafted claim in
   Sections III-V checked against the code, the numbers behind Section VI, and the machine-readable
   per-seed data. Self-contained; start at [`export/CONTRADICTIONS.md`](export/CONTRADICTIONS.md).
