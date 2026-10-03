@@ -523,3 +523,20 @@ def test_the_curve_figure_is_not_drawn_when_there_is_one_arm(tmp_path: Path) -> 
 def test_the_curve_figure_is_drawn_for_a_threshold_sweep(tmp_path: Path) -> None:
     written = write_figures(_threshold_frame(), out_dir=tmp_path, experiment_id="thr")
     assert any(p.name == "detector_curve.png" for p in written)
+
+
+def test_figures_are_written_at_publication_resolution(tmp_path: Path) -> None:
+    """`export/figures/FIGURES.md` claimed 300 dpi while `_save` passed 150, so the document
+    described a figure the code did not produce. 300 is the floor most journals set for a raster
+    figure; this pins the two together so the claim cannot drift from the file again."""
+    from PIL import Image
+
+    from wimsim.experiments.figures import _DPI
+
+    assert _DPI == 300
+
+    written = write_figures(_frame(), out_dir=tmp_path, experiment_id="t")
+    png = next(p for p in written if p.suffix == ".png")
+    with Image.open(png) as image:
+        dpi = image.info.get("dpi")
+    assert dpi is not None and round(dpi[0]) == 300, f"{png.name} reports {dpi}"

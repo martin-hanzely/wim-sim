@@ -30,6 +30,9 @@ is not a footnote — it is part of the definition of every detection number her
 | `recal_coverage` | 15.0 | `confirm_sigma` is the swept knob, not the detector threshold |
 | `detectors` | 15.0 | the Page-Hinkley arm; the CUSUM, ADWIN and KS arms do not run Page-Hinkley at all |
 | `detector_thresholds` | 15.0, 7.5, 3.75, 1.875 | the sweep that found the correction |
+| `reference_rate30` | **7.5, pinned explicitly** | the powered rate ladder; pinned so the shipped default moving again cannot change what the file means |
+| `heldout30` | **7.5, pinned explicitly** | the shipped value. `ladder30`, whose comparisons it tests, ran at 15.0 -- the one difference between them, named in the config |
+| `ablation` | **15.0, pinned explicitly** | held at the old value so its `S6_combined` arm is a ten-seed replicate of `cintron_ladder30`'s S6 cell |
 
 **A reproducibility hazard this creates, stated plainly.** The experiment configs for the sweeps
 above still say `edge_config: default`, and that default now resolves to 7.5. **Re-running them today
@@ -39,11 +42,23 @@ against this document must expect different detection figures. `configs/estimato
 pinned at 15.0 for the same reason: left inherited it would now equal `detect_ph_h7p5` and collapse
 the threshold ladder's baseline into its own first step.
 
-**Dispersion.** Median with [Q1, Q3] over three seeds throughout. With n = 3 an IQR spans the whole
-sample; it is reported because a bare figure is unusable, not because it is a confidence interval.
-**Significance testing now exists**, on `ladder30` only — thirty seeds, Wilcoxon signed-rank paired
-by seed, Holm-corrected, with rank-biserial effect sizes. Everything from the three-seed sweeps below
-remains descriptive and is labelled as such. See the new section immediately below.
+**Dispersion.** Median with [Q1, Q3] throughout, over whatever seeds the sweep ran. **The seed
+count is not uniform and the sections are not interchangeable**, so it is stated at the head of
+each:
+
+| seeds | sweeps |
+| ---: | --- |
+| 30 | `ladder30`, `cintron_ladder30`, `theta2`, `heldout30` |
+| 15 | `reference_rate30` |
+| 10 | `detectors`, `detector_thresholds`, `recal_coverage`, `ablation` |
+| 3 | `ladder`, `cintron_ladder`, `governance`, `reference_rate`, `reference_rate_ph75` |
+
+**With n = 3 nothing can reach significance**: the smallest attainable two-sided Wilcoxon p is
+0.25. Those five sweeps are descriptive and are labelled as such wherever they are quoted. At
+n = 10 the floor is 0.00195, at n = 15 it is 6.1e-5 and at n = 30 below 1e-8, so every sweep above
+three seeds can clear Holm correction. Where a powered sweep and a three-seed sweep disagree, **the
+powered one is the result and the disagreement is reported as a finding** -- see A1 against B1
+below, where two three-seed statements do not survive.
 
 ---
 
@@ -269,6 +284,13 @@ and per-seed CSVs `*__recall_by_rate.csv`, `*__governance_by_rate.csv`,
 
 ### A1 — detection recall against reference rate, measured rather than argued by elimination
 
+> **Superseded in part by B1 below, which ran the same question at fifteen seeds.**
+> Two statements in this section are three-seed artefacts: recall does **not** reach zero —
+> on S7 it is 0.200 at one reference in twenty and 0.067 at one in fifty — and S4's curve is
+> not monotone at power. The direction, the magnitude of the fall and the delay result all
+> hold. The section is kept because it is what the three-seed sweeps say, and the gap between
+> it and B1 is the clearest evidence in this export for why three seeds are not enough.
+
 Section VII-C reaches the reference rate by exclusion: nothing else that was varied moved the
 result, so the rate must be what binds. Both `reference_rate` sweeps already contained the direct
 measurement and neither this document nor any figure reported it.
@@ -335,6 +357,10 @@ version.
 
 ### A2 — the governance effect against reference rate
 
+> **Superseded in part by B1 below.** The S4 static-calibration effect holds and becomes
+> the project's first governed-versus-ungoverned result to survive Holm correction. The S7
+> effect does not: the −17.62 kg at one reference in ten is 0.00 at fifteen seeds.
+
 **The definition actually used.** Governed minus ungoverned over a byte-identical stream, **paired
 by seed**: the median of the per-seed differences, which is not the difference of the medians. Both
 are in the sidecar so the two can be seen not to be the same number. Negative is the loop helping.
@@ -387,6 +413,119 @@ of a continuous one, it is a different mechanism with a different failure.
 The supportable statement is therefore narrower than the reading offered: **the loop substitutes for
 tracking only where recalibration opportunities are dense, and it substitutes badly rather than
 partially where they are not.** Three seeds; see B1 for the powered version.
+
+### B1 — the reference-rate ladder at power
+
+**Read this before A1 and A2 above. The powered run contradicts the three-seed run on the single
+claim A1 rests on, and the contradiction is the finding.**
+
+`configs/experiments/reference_rate30.yaml`, **1260 runs, 0 failed**, commit `1d45293`, clean
+tree, 28.3 h of compute, Page-Hinkley pinned at the shipped 7.5. Seven rates — one in one and one
+in three added at the dense end — two scenarios, three estimators, both control arms.
+
+**Fifteen seeds, not thirty.** The brief said thirty; this is half of it, and the reason is
+compute rather than judgement about what is needed. At n = 15 the smallest attainable two-sided
+Wilcoxon p is 6.1e-5, so every comparison below can clear Holm correction over a 42-test family —
+the sweep is powered, not provisional. Seeds 16–30 were not run; the config and shard scripts are
+in place and merging them later requires re-running nothing. Every figure below says n = 15.
+
+#### A1 at power: the recall floor is not zero, and two of the three-seed statements fail
+
+Mean recall, governed arm, **45 runs per cell** (three estimators × fifteen seeds), against the
+three-seed figures from `reference_rate_ph75` in brackets:
+
+| scenario | 1 in 1 | 1 in 2 | 1 in 3 | 1 in 5 | 1 in 10 | 1 in 20 | 1 in 50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| S4_step_fault | 0.611 | 0.422 *(0.611)* | 0.367 | 0.244 *(0.444)* | 0.322 *(0.333)* | **0.022** *(0.000)* | 0.000 *(0.000)* |
+| S7_sparse_reference | 0.933 | 0.711 *(1.000)* | 0.311 | 0.267 *(0.333)* | 0.222 *(0.222)* | **0.200** *(0.000)* | **0.067** *(0.000)* |
+
+**1. "Recall reaches zero between one reference in ten and one in twenty" does not survive.** On
+S7 recall is above zero at **every rate run**, including 0.200 at one in twenty and 0.067 at one
+in fifty. On S4 the crossing moves out by a factor of 2.5, to between one in twenty and one in
+fifty. The three-seed zeros were **sampling zeros**: with nine runs and two injected faults per
+run, a cell is eighteen chances, and a true rate of 0.022 produces an expected 0.4 hits — observing
+none is unremarkable. A1 above now reads as a statement about three seeds and should be cited as
+superseded.
+
+**2. Recall does not saturate at 1.0, which was the reason the dense rates were added.** At one
+reference in *one* — every vehicle a reference vehicle, the densest configuration the system can
+have — S4 detects **0.611** of its injected faults and S7 detects **0.933**. Supplying infinite
+references does not make this detector reliable on an abrupt sensitivity step; 39 % of them go
+unanswered inside the horizon. That is a ceiling on the detector, not on the reference supply, and
+it is the sharpest thing this sweep found.
+
+**3. S4's recall is not monotone.** 0.611, 0.422, 0.367, 0.244, **0.322**, 0.022, 0.000 — the
+one-in-ten cell sits above one-in-five. S7 is monotone across all seven rates. So the monotonicity
+claimed in A1 holds for one of the two scenarios at power and not the other.
+
+**What does survive, and is strengthened.** Recall falls steeply with reference rate on both
+scenarios — by a factor of 28 on S4 and 14 on S7 between the densest and sparsest rate — and
+detection delay rises as references thin, reaching 1697 s on S4 at one in twenty against an 1800 s
+horizon, i.e. detection arrives essentially at the moment it stops counting. The *direction* and
+the operational reading of A1 are intact. The specific claim that recall reaches zero is not.
+
+#### A2 at power: the first governed-versus-ungoverned result in this project to survive correction
+
+Governed minus ungoverned, paired by seed, median [Q1, Q3] of the per-seed differences, kg.
+**S4_step_fault:**
+
+| estimator | 1 in 1 | 1 in 2 | 1 in 3 | 1 in 5 | 1 in 10 | 1 in 20 | 1 in 50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| static_affine | **−40.34** | **−33.38** | **−31.43** | −8.37 | −8.63 | 0.00 | 0.00 |
+| rls | −0.20 | −0.36 | −0.09 | 0.00 | 0.00 | 0.00 | 0.00 |
+| kalman | −0.19 | 0.00 | +0.06 | 0.00 | 0.00 | 0.00 | 0.00 |
+
+`S4 / one in two / static_affine` is **−33.4 kg, p_holm = 0.00769** over a family of 42 tests —
+**the first governed-versus-ungoverned comparison anywhere in this project to survive correction.**
+One in one is larger at −40.3 kg but reaches only p_holm = 0.0604, because Wilcoxon discards the
+two pairs that came out identical and the test runs on thirteen.
+
+On **S7_sparse_reference every static_affine median is 0.00** at all seven rates. The three-seed
+−17.62 kg at one in ten does not survive: at fifteen seeds that cell is 0.00 with eight of fifteen
+pairs byte-identical. Several S7 cells have a rank-biserial of −1.00 — every nonzero pair pointing
+the same way — but with four to eight nonzero pairs they do not clear a 42-test correction. S7's
+governance effect is **unresolved**, not absent.
+
+**The governance effect does not keep growing at the dense end.** That was the other reason for
+adding one in one and one in three: −40.34 kg against −33.38 kg at one in two is a plateau, not a
+continuing rise.
+
+**Both adaptive estimators remain at zero everywhere.** The largest effect across all fourteen
+adaptive cells is −0.36 kg. Governance does not move MAE for an estimator that already tracks, at
+any reference rate, at power. The project's central negative result holds.
+
+#### How much of the gap the loop closes — the A2 reading, quantified
+
+Comparing the governed static arm against the ungoverned adaptive arms on S4 gives the
+"approximation" reading a number rather than a direction:
+
+| rate | gap, frozen → kalman, ungoverned | gap, governed static → kalman | gap closed |
+|---|---:|---:|---:|
+| 1 in 1 | 49.4 kg | 14.0 kg | **72 %** |
+| 1 in 2 | 46.7 kg | 10.8 kg | **77 %** |
+| 1 in 3 | 45.2 kg | 10.9 kg | **76 %** |
+| 1 in 5 | 44.1 kg | 34.8 kg | 21 % |
+| 1 in 10 | 40.9 kg | 31.4 kg | 23 % |
+| 1 in 20 | 33.3 kg | 34.2 kg | **−3 %** |
+| 1 in 50 | 15.3 kg | 15.3 kg | 0 % |
+
+**The loop recovers about three quarters of what continuous tracking is worth, and only while
+references arrive at least one vehicle in three.** It never recovers all of it: even at one
+reference in one, frozen calibration under governance is still 14 kg behind an estimator that
+tracks. That is the supportable form of "a coarse approximation of what recursive estimation does
+continuously" — coarse by about a quarter at the dense end, worthless by one in twenty, and very slightly negative there.
+
+**The bias overshoot is confirmed and is larger at power.** On S4 the ungoverned static arm sits
+at −144.10 kg at every rate; the governed arm is **+28.21 kg** at one in one and +13.11 kg at one
+in two. The loop does not reduce the bias towards zero, it crosses it.
+
+#### Statistical note
+
+42 tests in the control-arm family, Holm-corrected together. The report states, correctly, that
+the smallest test in the family rests on a single nonzero pair, so some null verdicts in it are
+statements about the number of pairs that moved rather than about the system — which is precisely
+why the per-cell `identical` counts are in `reference_rate30__reference_curve.md` beside every
+median.
 
 ### B2 — simulator cross-validation, leave one recording out
 

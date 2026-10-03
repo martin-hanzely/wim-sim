@@ -52,6 +52,19 @@ SWEEPS = {
 
 #: Analysis products written beside a sweep's parquet. Copied into the export because they are the
 #: result, not a rendering of it: `comparisons.md` carries the only p-values the project has.
+
+#: Analysis products that are not sweeps. `sim_crossval` has no results.parquet -- it is a
+#: leave-one-out over the real recordings, not a grid of runs -- so it is copied by name rather
+#: than discovered with the sweeps.
+EXTRAS: dict[str, tuple[str, ...]] = {
+    "sim_crossval": ("sim_crossval.md", "sim_crossval_long.csv", "sim_crossval_measured.csv"),
+}
+
+#: Figure formats this code actually writes. PDF and SVG were written by an earlier version and
+#: survived into the export as renders of data by code that no longer exists; any left over are
+#: deleted on rebuild rather than left to be read as current.
+STALE_FIGURE_SUFFIXES = (".pdf", ".svg")
+
 SIDECARS = (
     "comparisons.md",
     "detectors.md",
@@ -180,6 +193,13 @@ def main() -> int:
             shutil.copy2(png, target)
             copied.append(target.name)
 
+    # -- stale vector renders, from a version of the figure code that no longer exists ----------
+    removed = []
+    for suffix in STALE_FIGURE_SUFFIXES:
+        for path in sorted(FIGS.glob(f"*{suffix}")):
+            path.unlink()
+            removed.append(path.name)
+
     # -- analysis sidecars -----------------------------------------------------------------------
     for name in frames:
         for sidecar in SIDECARS:
@@ -188,6 +208,18 @@ def main() -> int:
                 target = EXPORT / f"{name}__{sidecar}"
                 shutil.copy2(src, target)
                 copied.append(target.name)
+
+    # -- analyses that are not sweeps -------------------------------------------------------------
+    missing_extras = []
+    for name, files in EXTRAS.items():
+        for file in files:
+            src = ROOT / "data" / "results" / name / file
+            if not src.is_file():
+                missing_extras.append(f"{name}/{file}")
+                continue
+            target = (DATA if src.suffix == ".csv" else EXPORT) / file
+            shutil.copy2(src, target)
+            copied.append(target.name)
 
     # -- manifest ---------------------------------------------------------------------------------
     manifest = {
@@ -198,6 +230,9 @@ def main() -> int:
         "packages": {},
         "sweeps": {},
         "missing_sweeps": missing,
+        "missing_analyses": missing_extras,
+        "stale_figures_removed": removed,
+        "figure_dpi": 300,
         "figures": copied,
         "container_digest": "not applicable -- runs are local, not containerised",
     }

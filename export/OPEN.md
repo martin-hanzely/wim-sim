@@ -60,17 +60,26 @@ files. B2 is new analysis of the eight real recordings. C is blocked. D was not 
 | §VI-G "Detection collapses with the rate" | §A1 | at Page-Hinkley 15.0, and the corrected 7.5 changes the **shape** of the curve rather than only its level: `S7_sparse_reference` is non-monotone at 15.0 and monotone at 7.5, with one cell moving from 1 fault caught in 9 to 9 of 9. The old table also reports counts with no detection delay beside them, and the delay is what shows the mechanism |
 | the elimination argument in §VII-C | §A1 | the reference rate is now *measured* as the binding constraint rather than reached by excluding everything else, and the measurement locates the failure between one reference in ten and one in twenty rather than merely attributing it |
 | §V-C's "no simulator parameter has been cross-validated" | §B2 | eight folds; the noise parameters cross-validate and the event shape does not |
+| **§A1's zero crossing** | **§B1** | **withdrawn.** At fifteen seeds recall is 0.200 at one reference in twenty and 0.067 at one in fifty on S7 — above zero at every rate run. The three-seed zeros were sampling zeros |
+| **§A1's monotonicity** | **§B1** | holds on S7 at power and **not** on S4, whose one-in-ten cell sits above its one-in-five |
+| **§A2's S7 governance effect** | **§B1** | the −17.62 kg at one reference in ten is 0.00 at fifteen seeds, with eight of fifteen pairs byte-identical |
+| `reference_rate__*` and `reference_rate_ph75__*` figures and sidecars | `reference_rate30__*` | three seeds against fifteen, and five rates against seven. Kept: they are the record of what was run, and the gap between them and B1 is this export's clearest evidence for why three seeds are not enough |
 
 ### Unaffected — nothing about these changed
 
 Every accuracy, coverage, reconvergence and footprint number in §VI-A to §VI-F and §VI-H is
-untouched: Part A reads the `reference_rate` sweeps and changes no run, and B2 touches only the
-real recordings. `ladder30`, `cintron_ladder30`, `theta2`, `recal_coverage`, `detectors`,
-`detector_thresholds` and `governance` are all unaffected, as are their figures, comparison files
+untouched. `ladder30`, `cintron_ladder30`, `theta2`, `recal_coverage`, `detectors`,
+`detector_thresholds` and `governance` are unaffected as results, as are their comparison files
 and long-format CSVs.
 
-The `reference_rate` and `reference_rate_ph75` parquets are **unchanged** — their figure
-directories gained two figures each and three sidecar files each, drawn from the same rows.
+No stored parquet was modified by any part of this sweep. Three sweeps were **added**
+(`heldout30`, `ablation`, `reference_rate30`) and the `reference_rate` and `reference_rate_ph75`
+directories gained two figures and three sidecar files each, all drawn from their existing rows.
+
+**Every figure in the export was re-rendered** at 300 dpi from its stored parquet, because the
+code wrote 150 while `figures/FIGURES.md` claimed 300. Only the rendering changed. Twenty-six
+stale PDF and SVG files were deleted: they were produced by figure code that no longer exists and
+could not be verified against the current parquets.
 
 ### A correctness note about every sweep run after 2026-10-03
 
@@ -83,11 +92,43 @@ is the only reason the change was made rather than deferred.
 
 ### Still not done, and what it would take
 
-**No rate between one in ten and one in twenty.** The zero crossing of detection recall is the
-sharpest result in Part A and it is located only to within a factor of two, because the ladder
-jumps from 10 to 20. A single added rate — `reference_rate: 15` — would halve that interval at
-one seventh of the sweep's cost. It is not in `reference_rate30` because the brief fixed the
-ladder, and the gap is recorded here rather than filled silently.
+**`reference_rate30` ran fifteen seeds, not the thirty the brief asked for.** Compute, not
+judgement: the sweep took 28.3 h for 1260 runs. At n = 15 the minimum attainable two-sided
+Wilcoxon p is 6.1e-5, so it is powered rather than provisional, and the one comparison that
+matters most cleared a 42-test Holm correction at p = 0.0077. Seeds 16–30 were not run.
+`configs/experiments/reference_rate30.yaml` and the shard scripts are in place; running them and
+merging requires re-running nothing, and `merge_shards` will refuse the merge if the commit has
+moved.
+
+**Where recall actually reaches zero is still not located.** B1 withdrew the three-seed answer
+rather than replacing it. On S4 the crossing is now bracketed between one reference in twenty and
+one in fifty, a factor of 2.5. On S7 it is **outside the grid entirely** — recall is still 0.067
+at one in fifty, the sparsest rate run — so the ladder would have to be extended to one in a
+hundred or beyond to find it, and at 0.067 a cell needs far more than fifteen seeds to separate
+from zero. A rate of 15 would no longer help; the useful additions are at the sparse end.
+
+**Why recall tops out at 0.611 on S4 with every vehicle a reference is unexplained.** That is a
+property of the detector or of the confirmation gate, not of reference supply, and nothing in
+this project isolates which. It bounds every claim about what more references would buy.
+
+**The held-out set is not matched in difficulty to the development set.** H1 lands at 5.7× the
+dynamic floor where its counterpart S2 is at 1.02×, and H3 at 2.5× against S7's 1.1×; H2 and H4
+are comparable to theirs. The two classes whose comparisons fail to reproduce are exactly the two
+drawn harder, so "does not generalise" is confounded with "does not extend to harder instances",
+and B4 cannot separate them. **The experiment that would:** a second held-out draw for the thermal
+and slow-ramp classes with parameters tuned to land at a comparable multiple of the floor, which
+one pilot seed per candidate is enough to check before committing thirty. This is the single most
+useful run this sweep leaves undone.
+
+**Why the Kalman filter adds variance is not established.** B3 and B4 agree that it is a fixed
+cost paid wherever there is nothing to track, and they differ eightfold on its size (+29 kg
+against +251 kg) on different instruments and thermal amplitudes. Nothing here varies the filter's
+Q or R, which is where the answer would be.
+
+**No single-component explanation for the S6 divergence exists, and the ablation could not have
+found a partial one.** All eight difference-in-differences came back null at ten seeds with
+inconsistent per-seed signs. A twenty- or thirty-seed ablation would resolve shifts of the size
+observed (~20 kg); ten did not.
 
 **`estimator_cost` has no CLI entry point.** The footprint figures in §VI-H were produced by
 calling `wimsim.experiments.control_scoring.estimator_cost` directly. "Run the existing footprint

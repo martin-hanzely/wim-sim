@@ -1,136 +1,166 @@
 # Figures
 
-Thirteen figures, each in PNG (300 dpi), PDF and SVG. Named `<sweep>__<figure>.{png,pdf,svg}`.
+**80 PNGs at 300 dpi.** Named `<sweep>__<figure>.png`. Nine figure kinds across fourteen sweeps;
+a figure is drawn only for a sweep whose grid supports it, so the absence of a file is
+informative rather than an omission. Each sweep's own captions are in
+`data/results/<sweep>/figures/README.md`, generated beside the PNGs from the same source as the
+descriptions here.
+
+**PNG only.** Earlier versions of this export also carried PDF and SVG for three sweeps. Those
+were renders produced by figure code that no longer exists and were therefore unverifiable
+against the current parquets; the rebuild deletes them and records how many it removed in
+`data/manifest.json`.
 
 Common to all of them:
 
-- **Markers are per seed**, never averaged. Three seeds per configuration, so three markers per
-  series per x position. Lines, where present, are medians.
+- **Markers are per run, never averaged.** Lines, where present, are medians across seeds.
 - **Marker shape distinguishes the estimator** as well as colour, because these get printed.
-- **The title carries the run count** — `[ladder -- 63 of 63 runs]` — so a figure pasted into a slide
-  still says how many runs are behind it and how many failed.
-- A figure with nothing to draw is **not written at all**, so the absence of a file is informative.
-  `governance__reference_rate.png` does not exist because that sweep holds the rate fixed.
+- **The title carries the run count** — `[ladder30 -- 630 of 630 runs]` — so a figure pasted into
+  a slide still says how many runs are behind it and how many failed.
+- **No timestamp in the metadata**, so two renders of the same data diff as identical.
+- A figure with nothing to draw is **not written at all**.
 
-**No error bars anywhere.** With three seeds, markers *are* the dispersion.
-
----
-
-## `ladder__accuracy` · `reference_rate__accuracy` · `governance__accuracy`
-
-**Plotted:** MAE divided by the dynamic floor, on a **log y-axis**, against scenario on x.
-
-- **y:** MAE ÷ dynamic floor, dimensionless. Ticks are labelled `1x`, `1.1x`, `1.25x`, … A dashed
-  line at `1.0` is annotated *"the floor: error the vehicles brought with them"*.
-- **x:** scenario, categorical, with estimators offset within each scenario.
-- **series:** one colour and marker per estimator — kalman (circle), rls (square), static_affine
-  (triangle).
-- **n:** 3 markers per estimator per scenario.
-
-**The point:** how far above the irreducible error each estimator sits. MAE in kilograms would
-compare *scenarios* rather than estimators, because the floor spans two orders of magnitude across
-the set. The log axis exists because S6 reaches 3.9× while everything else lies between 1.00 and
-1.40 — on a linear axis the comparison the figure is for is a few pixels tall.
-
-**Scenarios with a zero floor are absent** (S1 has no dynamic load, so the ratio is a division by
-zero, not an impressive number).
+**Sample size varies by sweep and is not interchangeable.** `ladder30`, `cintron_ladder30`,
+`heldout30` and `theta2` are 30 seeds; `reference_rate30` is 15; `ablation`, `detectors`,
+`detector_thresholds` and `recal_coverage` are 10; `ladder`, `cintron_ladder`, `governance`,
+`reference_rate` and `reference_rate_ph75` are 3. **Three seeds cannot produce a significant
+result**, so markers from those five sweeps are dispersion and nothing more.
 
 ---
 
-## `ladder__coverage` · `reference_rate__coverage` · `governance__coverage`
+## `*__accuracy` — 14 sweeps
 
-**Plotted:** empirical coverage of the prediction interval against scenario.
+**Plotted:** MAE divided by the dynamic floor, log y-axis, against scenario on x.
 
-- **y:** empirical coverage, fraction in [0, 1]. A dashed line marks the **nominal 0.95**, read from
-  the config rather than hard-coded so the line moves if the target does.
-- **x:** scenario, categorical, estimators offset within.
-- **n:** 3 markers per estimator per scenario.
+- **y:** MAE ÷ dynamic floor, dimensionless. A dashed line at `1.0` is annotated *"the floor:
+  error the vehicles brought with them"*. Ticks are labelled `1x`, `1.1x`, `1.25x`, …
+- **x:** scenario, categorical, estimators offset within each scenario.
+- **series:** one colour and marker per estimator.
+- **n:** one marker per run; see the sweep's seed count above.
 
-**The point:** whether the interval delivers what it promises. Above the line is conservative; below
-it is an interval that promises more than it delivers. 0.91 is a good number or a bad one depending
-entirely on what was promised, which is why the promise is drawn.
+**The point.** The floor is the load error the vehicles brought with them, which no calibration
+can remove, so the distance above `1.0` is the only part any method can compete for. Scenarios
+with no dynamic load have no floor to divide by and are absent rather than drawn at zero.
 
-**Watch for:** static_affine on S7 at 0.89 — it under-covers exactly where it is biased (−96.8 kg),
-because the interval does not know about a bias it was not shown.
+## `*__coverage` — 14 sweeps
 
----
+**Plotted:** empirical coverage of the prediction interval against its nominal target.
 
-## `ladder__reconvergence` · `governance__reconvergence`
+- **y:** fraction of events whose true mass fell inside the interval, dimensionless, 0–1. The
+  dashed line is the configured nominal (0.95).
+- **x:** scenario, categorical, estimators offset.
+- **n:** one marker per run.
 
-**Plotted:** seconds from the first injected fault until the signed median error returned to within
-3 standard errors of its pre-fault value and stayed there.
+**The point.** Above the line is conservative; below it is an interval that promises more than it
+delivers. An accuracy figure alone cannot distinguish a good estimate from a lucky one.
 
-- **y:** time to reconverge, **seconds**, linear from 0.
-- **x:** scenario, categorical, estimators offset within.
-- **n:** up to 3 markers per estimator; fewer where a seed never reconverged.
+## `*__reconvergence` — 14 sweeps
 
-**The point:** how long the site is wrong after a fault. On S4: kalman median 3406 s, rls 7923 s,
-static_affine 11180 s — static takes 3.3× as long and over three hours on every seed.
+**Plotted:** seconds from the first injected fault until the signed median error returned to its
+pre-fault band and stayed there.
 
-**Two things to know before writing a caption:**
+- **y:** seconds. **x:** scenario, categorical. **n:** one marker per run.
 
-- **Scenarios with no calibration fault are absent entirely**, not drawn at zero. A zero bar would
-  read as "reconverged instantly" rather than "the question was never asked". Only S4, S6 and S7
-  appear.
-- **Runs that never reconverged are counted in the x-axis label**, not dropped — dropping them would
-  make a system that never recovers look identical to one that was not measured.
+**The point.** The headline control metric. Scenarios with no faults are absent rather than drawn
+at zero; runs that never reconverged are **counted in the axis label** rather than dropped,
+because dropping them makes a system that never recovers look identical to one that was not
+measured.
 
----
+## `*__detectors` — 14 sweeps
 
-## `ladder__detectors` · `reference_rate__detectors` · `governance__detectors`
+**Plotted:** detection recall against false alarms per hour of simulated operation.
 
-**Plotted:** detector recall against false-alarm rate, as a scatter.
+- **y:** recall, fraction of injected calibration faults answered inside the 1800 s horizon.
+- **x:** false alarms per hour, 1/h. **n:** one marker per run.
 
-- **x:** false alarms per hour of simulated operation, **1/h**.
-- **y:** recall, fraction of injected calibration faults answered inside the 30-minute horizon.
-- **series:** colour and marker per estimator.
-- **n:** 3 markers per estimator per scenario, pooled across scenarios on one pair of axes.
+**The point.** The trade-off an operator actually faces; either axis alone can be made perfect by
+a detector that is useless in the other direction. Scenarios with no injected fault have
+**undefined** recall and appear on the false-alarm axis only, as ticks *below* the zero line —
+undefined is not zero.
 
-**The point:** the trade-off an operator faces. Either axis alone can be made perfect by a detector
-that is useless in the other direction, so they belong together.
+## `*__recal_tradeoff` — 13 sweeps
 
-**Critical for the caption:** the **tick marks below the zero line** are runs where recall is
-*undefined* — scenarios with no calibration-affecting fault, where there was nothing to detect and
-every alarm is a pure false alarm. They are drawn below the axis rather than at y = 0 because at
-zero they would be pixel-for-pixel identical to a detector that missed everything, which is the one
-confusion this figure exists to avoid.
+**Plotted:** three panels against the number of recalibrations a run performed (count, x on all
+three).
 
-**Also for the caption:** only **two detectors** are enabled (CUSUM and Page–Hinkley). This is not a
-per-detector figure and cannot be read as one.
+- **left y:** delivered coverage, fraction, with the nominal as a dashed line.
+- **middle y:** share of events emitted on the estimator's fallback interval, fraction.
+- **right y:** MAE ÷ dynamic floor, dimensionless.
+- **n:** one marker per run.
 
----
+**The point.** A recalibration has a cost and a benefit and they are in different panels. The
+left panel alone shows recalibration as pure cost, the right alone as pure benefit. The x axis is
+the **measured consequence** of `confirm_sigma`, not the setting.
 
-## `reference_rate__reference_rate` — the most informative figure in the set
+## `*__reference_rate` — 3 sweeps (`reference_rate`, `reference_rate_ph75`, `reference_rate30`)
 
-**Plotted:** MAE ÷ dynamic floor against how often a reference vehicle arrives. **Two panels**, one
-per scenario (S4_step_fault, S7_sparse_reference), sharing a y-axis.
+**Plotted:** MAE ÷ dynamic floor against how often a reference vehicle arrives.
 
-- **x:** reference rate, **log scale**, ticks labelled `1 in 2`, `1 in 5`, `1 in 10`, `1 in 20`,
-  `1 in 50`.
-- **y:** MAE ÷ dynamic floor, dimensionless, with a dotted line at 1.0 annotated *"the floor"*.
-- **series:** **solid = control loop on, dashed = control loop off**, colour per estimator. Six lines
-  per panel. Faint markers behind the lines are the individual seeds; the lines are medians.
-- **n:** 3 seeds per point; 180 runs across the figure.
+- **x:** reference interval, log scale, labelled `1 in N`. **y:** dimensionless.
+- **series:** one colour per estimator; **solid** is the loop on, **dashed** is the loop off, over
+  the identical sample stream.
+- **n:** one marker per seed per rate.
 
-**The point:** *the vertical gap between a matched solid/dashed pair is what the control loop is
-worth at that reference rate.* Where the pair meets, the loop is worth nothing and the estimator
-underneath is carrying the run.
+**The point.** The gap between a solid and dashed pair of the same colour is what the control loop
+is worth at that rate. Where they meet it is worth nothing and the estimator is doing the work
+alone.
 
-**What to look for:** in the S4 panel the green (static_affine) pair separates widely at `1 in 2`
-and converges completely by `1 in 10`, meeting exactly at `1 in 50`. The blue and orange pairs
-(kalman, rls) are **coincident throughout** — the loop does not change their MAE at any rate. This
-figure is the single clearest statement of the B2 result in `RESULTS.md`.
+## `*__recall_vs_rate` — 3 sweeps *(new 2026-10-02)*
 
-**Panels are separate for a reason worth stating**: an earlier version pooled S4 and S7 into one
-median, and since static_affine sits at 1.41× its floor on S4 and 1.16× on S7, the pooled line came
-out at 1.27× — a number describing neither scenario.
+**Plotted:** two rows against reference interval (log x, labelled `1 in N`).
+
+- **top y:** mean detection recall, fraction. One line per estimator plus a **heavy black line
+  pooled over all of them**, labelled with its per-cell run count. Open grey circles are the
+  per-run recalls, so the sample is visible rather than asserted.
+- **bottom y:** detection delay in **seconds** from fault onset — median across the runs that
+  detected anything, with the interquartile range as a band. A run that detected nothing
+  contributes no delay rather than a zero.
+- **n:** 9 runs per cell at 3 seeds, 45 at 15 seeds. Stated in the pooled line's label.
+- **Governed arm only**: with the controller disabled the detectors are never constructed, so the
+  ungoverned runs carry structural zeros rather than misses.
+
+**The point.** Detection is not uniformly broken — it works at dense reference rates and degrades
+with a *measurable* delay before it fails. On `reference_rate30` the bottom panel is the stronger
+half: delay reaches 1697 s against an 1800 s horizon at one reference in twenty, i.e. detection
+arrives at the moment it stops counting.
+
+## `*__governance_vs_rate` — 3 sweeps *(new 2026-10-02)*
+
+**Plotted:** two rows against reference interval (log x, labelled `1 in N`).
+
+- **top y:** governed − ungoverned **MAE**, kg. Negative is the loop helping.
+- **bottom y:** governed − ungoverned **signed bias**, kg. Drawn beside the error and never folded
+  into it, because the loop can improve MAE while pushing bias through zero and out the far side.
+- **series:** one colour and marker per estimator; the line runs through the per-seed medians and
+  each open marker is one seed, so a median of zero over a cell that is not uniformly zero is
+  visible as such.
+- **A dashed line at zero** is annotated *"the loop changed nothing"*, which is where both adaptive
+  estimators sit at every rate.
+- **n:** one marker per seed; the legend states the count.
+
+**The point.** The loop is worth tens of kilograms to frozen calibration at dense reference rates,
+decays to nothing as references thin, and is worth nothing at any rate to an estimator that
+already tracks.
+
+## `*__detector_curve` — 2 sweeps (`detectors`, `detector_thresholds`)
+
+**Plotted:** recall against false alarms per hour, with each detector's threshold stepped from the
+shipped value through three more sensitive ones (four for ADWIN, whose knob is logarithmic).
+
+- **x:** false alarms per hour, 1/h. **y:** recall, fraction. **n:** medians across 10 seeds.
+- **series:** one line per detector, one marker per threshold, **ordered by the false-alarm rate
+  actually measured** rather than by the setting — the knobs run in opposite directions, since a
+  *lower* CUSUM threshold and a *higher* KS alpha are both more sensitive.
+
+**The point.** The trade-off curve rather than the single point the shipped configuration sits on.
+The detector each arm is drawn for is read from the detectors it **runs**, not from its name.
 
 ---
 
 ## What is *not* here
 
-- **No figure of the real-data results.** The leave-one-recording-out numbers in `RESULTS.md` §VI-I
-  are tabular only; with 23 observations across 7 folds, a plot would be decoration.
-- **No per-detector figure.** Only two detectors ran.
-- **No parameter-tracking figure** for §VI-B — that analysis does not exist (see `RESULTS.md`).
-- **No computational-footprint figure** — three numbers do not need one.
+- **No error bars anywhere.** Markers are the dispersion. At three seeds an interval would be
+  wider than the data.
+- **No figure for the real recordings.** `sim_crossval.md` reports them as tables; eight
+  sixty-second recordings do not support a figure that says more than the table does.
+- **No footprint figure.** Three numbers per estimator on one host is a table.

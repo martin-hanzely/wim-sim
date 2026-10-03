@@ -435,9 +435,16 @@ def rate_curves(frame: pd.DataFrame) -> dict[_RateKey, dict[int, list[float]]]:
 # -- drawing ---------------------------------------------------------------------------------------
 
 
+#: Raster resolution. 300 is the floor most journals set for a figure that is not vector, and
+#: `export/figures/FIGURES.md` claimed 300 while this said 150 -- the document was describing a
+#: figure the code did not produce. Changed here rather than in the document, because the brief
+#: asks for publication resolution and 150 is not it.
+_DPI = 300
+
+
 def _save(fig: Any, path: Path) -> Path:
     # No timestamp in the metadata: a figure that changes between renders cannot be diffed.
-    fig.savefig(path, dpi=150, bbox_inches="tight", metadata={"Software": "wimsim"})
+    fig.savefig(path, dpi=_DPI, bbox_inches="tight", metadata={"Software": "wimsim"})
     plt.close(fig)
     return path
 

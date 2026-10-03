@@ -10,6 +10,42 @@ contradicts a table in this export's own §VI-G, and one is a latent hazard in a
 that no reported number went through. All four are at the top because a drafting decision rests
 on each.
 
+**Detection recall does not reach zero, and the three-seed sweeps said it did.** This is the
+sharpest contradiction in the export and it is between two of its own sections. `reference_rate`
+and `reference_rate_ph75`, at three seeds, report recall of exactly 0.000 at one reference in
+twenty and one in fifty on both scenarios, and A1 reads a zero crossing off that. At fifteen seeds
+`reference_rate30` finds **0.200 at one in twenty and 0.067 at one in fifty on S7**, above zero at
+every rate it ran. The three-seed zeros were sampling zeros: nine runs with two injected faults is
+eighteen chances, and a true rate of 0.022 produces an expected 0.4 hits. **A1's zero crossing is
+withdrawn; B1 replaces it.** (§VI-G, §VII-C)
+
+**Recall does not saturate even when every vehicle is a reference.** At one reference in *one* —
+the densest configuration the system can have — S4 detection recall is **0.611** and S7's is
+0.933. The reference rate is a binding constraint, but removing it entirely still leaves 39 % of
+abrupt sensitivity faults unanswered on S4. Any claim that more references would fix detection is
+bounded by this. (§VII-C)
+
+**Three of §VI-B's five surviving comparisons reproduce on scenarios nothing was tuned on; two do
+not.** The two S4 comparisons reproduce on H2 at 1.4–1.5× their original magnitude and S6/rls
+reproduces on H4. Both S7 comparisons fail on H3 — the kalman one **flips sign** to +28.0 kg. The
+failures are confounded with difficulty: the two held-out scenarios that fail are the two drawn
+several times harder than their development counterparts, and RESULTS.md §B4 says so before it
+draws any conclusion. (§V-E, §VI-B)
+
+**The Kalman estimator is reliably worse than its own frozen prior wherever there is nothing to
+track.** Two independent experiments: on the held-out thermal scenario with no injected fault,
++251 kg with a rank-biserial of +1.00 (not one of thirty seeds went the other way); and in the
+ablation arm with the calibration faults removed, +29.3 kg, significant, where the full scenario
+is not separated. This is a fixed variance cost, not a response to any particular disturbance —
+the ablation removed each of four disturbance classes in turn and **none** of them accounts for
+it. (§IV-D, §VI-J)
+
+**Governance has, for the first time, produced a significant improvement.** `reference_rate30` /
+S4 / one reference in two / static_affine is −33.4 kg with p_holm = 0.00769 over a family of 42
+tests. Every previous governed-versus-ungoverned comparison in this project was descriptive or
+null. It applies only to frozen calibration and only at dense reference rates; both adaptive
+estimators remain at zero at every rate, so the central negative result stands. (§VI-G)
+
 **The governed static arm's bias does not degrade; it overshoots.** The brief for this sweep
 stated that the static-calibration error gain "comes with a bias degradation". It does not. On
 `S4_step_fault` the ungoverned static arm carries −140.06 kg of bias at every reference rate and
@@ -360,6 +396,16 @@ hyperparameters (λ, Q, thresholds) were set by hand from measurements recorded 
 There is no tuning/evaluation seed split anywhere.
 
 *This is a real threat to validity and the manuscript must state it.*
+
+**Partly addressed 2026-10-02 by a held-out scenario set, which is the evaluation half of the
+problem and not the tuning half.** `heldout30` evaluates the shipped configuration, with nothing
+retuned, on four scenarios whose parameters were written without consulting any tuning result.
+Three of §VI-B's five surviving comparisons reproduce there and two do not. That is real evidence
+on whether the results are artefacts of the development suite — but it leaves the **budget**
+untouched: no baseline received an equalised amount of tuning, and nothing in this project
+measures how much the hand-tuning was worth. B1 is still a sweep over a knob that was itself set
+by hand. See RESULTS.md §B4, including the difficulty confound that limits what the two failures
+prove.
 
 ### §V-F — metric definitions including ε, W_c, H
 
