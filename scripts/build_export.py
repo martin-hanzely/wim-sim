@@ -41,6 +41,13 @@ SWEEPS = {
     "result transfers to the real instrument; Page-Hinkley pinned at the pre-correction 15.0",
     "reference_rate_ph75": "the governed-vs-ungoverned sweep at the CORRECTED Page-Hinkley "
     "threshold of 7.5 -- governance's best available configuration",
+    "heldout30": "four scenarios whose parameters were drawn without consulting any tuning "
+    "result, evaluated with the shipped configuration and nothing retuned, 30 seeds -- the test "
+    "of whether section VI-B's surviving comparisons generalise off the development suite",
+    "ablation": "S6_combined with each disturbance class removed in turn, 10 seeds, on the "
+    "influence-line instrument -- to locate which one the Kalman estimator mishandles",
+    "reference_rate30": "the reference-rate ladder at power, with one in one and one in three "
+    "added at the dense end -- the powered version of the two relationships in section VII-C",
 }
 
 #: Analysis products written beside a sweep's parquet. Copied into the export because they are the
