@@ -875,7 +875,17 @@ with its own validation problem, not an experiment.
 
 ## Read this first: did the method beat B2?
 
-**No — not on mean absolute error, on any scenario tested, at any reference rate.**
+**No — not on mean absolute error, on any scenario tested, at any reference rate.** Re-checked at
+fifteen seeds and seven rates by `reference_rate30` (§B1) and it still holds: the largest governed
+effect across fourteen adaptive cells is **−0.36 kg**. Even the *governed* frozen-calibration arm
+does not reach B2 — at one reference in one it is still 14 kg behind an ungoverned Kalman.
+
+> **The S4 and S7 tables below are the three-seed data and §B1 supersedes their numbers.** Two
+> things changed at power and neither overturns the headline. The `static_affine` rows are a
+> governed-versus-ungoverned comparison on **B0**, not B2, and that comparison is now
+> **significant** for the first time: −33.4 kg at one reference in two, p_holm = 0.0077 over 42
+> tests. And the bias column reads differently — the loop does not pull the bias towards zero, it
+> crosses it, reaching **+28.2 kg** from −144.1 kg at the densest rate.
 
 B2 is recursive tracking without governance: `rls` or `kalman` with `edge.control.enabled=false`,
 on a byte-identical sample stream. The governed arm is the same estimator with the full MAPE-K loop.
@@ -957,6 +967,22 @@ the application, not about the data, and this project cannot answer it.
 | S6_combined | 48 h, six overlapping mechanisms | ✓ | 1,2,3 | |
 | S7_sparse_reference | 12 h, 3 % gain ramp over 2 h | ✓ | 1,2,3 | also swept over rates × control arms |
 | S8_replay_real | replay of the eight recordings | **partially** | n/a | see VI-I |
+
+**Seed counts above are `ladder`'s.** S1–S7 also ran at 30 seeds in `ladder30` and
+`cintron_ladder30`, and S4 and S7 at 15 seeds across seven reference rates in `reference_rate30`.
+
+### Added 2026-10-02
+
+| | what it is | ran? | seeds | notes |
+|---|---|---|---|---|
+| H1_warm_front | 36 h, 13.5 °C daily swing under a cooling trend, no faults | ✓ | 1–30 | **held out** — no hyperparameter was set while looking at it. 5.7× its dynamic floor, where S2 is at 1.02× |
+| H2_gain_jolt | 20 h, three abrupt faults, one a gain **rise** | ✓ | 1–30 | held out. Comparable in difficulty to S4 |
+| H3_slow_fade | 15 h, 4.2 % gain rise ramped over 3 h under a walking zero | ✓ | 1–30 | held out. 2.5× its floor, where S7 is at 1.1× |
+| H4_pileup | 32 h, every class at once, sparse traffic | ✓ | 1–30 | held out. Comparable in difficulty to S6 |
+| S6_ablate_thermal | S6 without the daily cycle, trend or alpha walk | ✓ | 1–10 | ablation arm |
+| S6_ablate_zero_walk | S6 without the Brownian zero drift, slope or steps | ✓ | 1–10 | ablation arm |
+| S6_ablate_outage | S6 without the ADC dropout, link loss or heartbeat gap | ✓ | 1–10 | ablation arm. The clock skew stays, in every arm |
+| S6_ablate_calibration_fault | S6 without the ramped gain loss or the displacement | ✓ | 1–10 | ablation arm. **Detection recall is undefined here, not zero** |
 
 S1 is run at 6 h rather than its shipped 900 s. At 900 s it produced 62 crossings, 60 of which went
 to the calibration window, leaving a row that was a mean over **two passes** with a coverage of
