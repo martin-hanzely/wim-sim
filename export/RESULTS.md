@@ -477,6 +477,92 @@ agreement is a statement about FWHM reproducibility, not about length in metres.
 **Nothing was refitted in response to any of this.** The brief is explicit that poor agreement is a
 finding and not a reason to refit, and no station or scenario parameter was changed.
 
+### B3 — mechanism ablation for the estimator divergence
+
+**The question.** Under combined disturbances on the influence-line instrument the two adaptive
+estimators go opposite ways against frozen calibration: `cintron_ladder30` puts
+`S6_combined / static→kalman` at **+9.60 kg** (worse) and `static→rls` at **−30.71 kg** (better),
+both at thirty seeds. The manuscript says the mechanism is unestablished.
+
+`configs/experiments/ablation.yaml`, 150 runs, **0 failed**, commit `da9ca44`, clean tree, ten
+seeds, 8.9 h of compute. Same station, edge config, reference rate and pulse overrides as
+`cintron_ladder30`, with Page-Hinkley pinned at the pre-correction 15.0 so the `S6_combined` arm
+is a ten-seed replicate of the cell being explained. **It replicates: +7.80 kg and −30.69 kg
+against +9.60 and −30.71.** The pinning worked and the arms are comparable to the result they
+explain.
+
+Four arms remove one disturbance class each; the clock skew is in every arm because it belongs to
+none of the four and a disturbance present everywhere cannot explain a difference between them.
+
+#### The answer: no single component accounts for it
+
+| arm | kalman − static | rls − static | verdict on kalman |
+|---|---:|---:|---|
+| `S6_combined` (reference) | **+7.80** | −30.69 | not separated (p_holm 0.393) |
+| `S6_ablate_thermal` | +8.49 | −33.58 | not separated (p_holm 0.465) |
+| `S6_ablate_zero_walk` | +5.16 | −34.82 | not separated (p_holm 0.465) |
+| `S6_ablate_outage` | **+27.43** | −34.39 | **worse** (p_holm 0.0234) |
+| `S6_ablate_calibration_fault` | **+29.28** | −11.54 | **worse** (p_holm 0.0195) |
+
+Medians of per-seed paired differences, kg, n = 10.
+
+**Not one arm brings the divergence back to zero.** Two of them make it three to four times
+larger. And the difference-in-differences — each arm's divergence against the reference arm's,
+paired by seed — is **not significant anywhere**: p_holm = 1 on seven of eight tests and 0.078 on
+the eighth. That is a real null rather than an absence of power in the obvious sense: the smallest
+attainable corrected p over these eight tests is 0.0156, so a shift that every seed agreed on
+would have been detected. What the data show is arm-to-arm shifts that are large in the point
+estimate (+21.7 kg for the calibration-fault arm) and **inconsistent across seeds** (rank-biserial
++0.31).
+
+So the answer the brief allowed for is the one that came back: **the divergence is a product of
+the overlap, and no single disturbance class carries it.** S6 exists because its failure modes
+overlap in time, and this says that overlap is doing the work.
+
+#### What the ablation does establish, from the per-estimator tests
+
+Testing each estimator against *itself* across arms is more informative than the divergence, and
+one row carries the mechanism. Removing the calibration faults:
+
+| estimator | change in its own MAE | effect | p (Holm) |
+|---|---:|---:|---:|
+| static_affine | **−33.47 kg** | **−1.00** | 0.0234 |
+| rls | −15.01 kg | −0.93 | 0.0527 |
+| kalman | −12.79 kg | −0.35 | 1 |
+
+Frozen calibration improves by 33.5 kg on **every one of ten seeds** when the gain fault is taken
+away — it was being hurt by exactly the thing it cannot track. Kalman improves by an unreliable
+12.8 kg with no consistency across seeds. The gap therefore widens to +29.3 kg, and in that arm
+Kalman is **significantly worse than frozen calibration** where in the full scenario it is not
+separated.
+
+**The reading, and it is the same one B4 arrived at independently.** Kalman's penalty is not a
+response to a particular disturbance. It is a fixed cost in added estimation variance, and whether
+it loses to frozen calibration depends on whether there is a real gain change to recover that cost
+against. In full S6 the calibration faults pay most of it back and the net is +7.8 kg, not
+separated. Remove them and the cost stands exposed at +29.3 kg, significant.
+
+B4 reached the same shape from the other direction: on `H1_warm_front`, a held-out thermal
+scenario **with no injected fault at all**, Kalman is +251 kg worse than frozen calibration with a
+rank-biserial of +1.00. Two experiments on different instruments, different scenarios and
+different seeds, agreeing that Kalman is reliably worse exactly where there is nothing to track.
+
+**What this does not establish.** That the cost is a constant. The two figures differ by a factor
+of eight (+29 kg against +251 kg) on different instruments and at different thermal amplitudes, and
+two experiments agreeing in sign is not a measurement of scale. Nor does it establish *why* the
+variance is added — that is a property of the filter's Q and R against this plant, and nothing
+here varies them.
+
+#### Reading notes
+
+`S6_ablate_calibration_fault` has no calibration fault, so its detection recall is **undefined
+rather than zero** and its reconvergence is unmeasurable; only the accuracy comparison is
+interpretable in that arm, which is the one the ablation is about. Every other arm reports recall
+0.000 over 2 injected faults, which is the `detectors` result at this threshold and not an
+ablation effect. All five arms sit at 3.37–3.74× the dynamic floor, so no ablation changed the
+difficulty of the scenario much — which is what makes the arms comparable and is worth stating,
+given that B4's held-out draw did not have that property.
+
 ### B4 — the held-out scenario set
 
 **This addresses the most serious methodological weakness in the study.** §V-E concedes that every
