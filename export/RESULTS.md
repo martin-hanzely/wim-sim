@@ -1311,19 +1311,55 @@ above.
 
 ## Where each number lives
 
+Row counts are long-format observations, not runs: one row per metric per run.
+
+### Per-sweep results, `export/data/`
+
+| file | rows | the grid behind it |
+|---|---:|---|
+| `ladder_long.csv` | 1,953 | 7 scenarios × 3 estimators × 3 seeds |
+| `ladder30_long.csv` | 19,530 | the same at 30 seeds |
+| `cintron_ladder_long.csv` | 1,953 | the same on the influence-line instrument, 3 seeds |
+| `cintron_ladder30_long.csv` | 19,530 | the same at 30 seeds |
+| `reference_rate_long.csv` | 5,580 | 5 rates × 2 control arms × 3 estimators × 3 seeds, S4 and S7, PH 15.0 |
+| `reference_rate_ph75_long.csv` | 5,580 | the same at PH 7.5 |
+| `reference_rate30_long.csv` | 39,060 | **7 rates × 2 arms × 3 estimators × 15 seeds**, S4 and S7, PH 7.5 |
+| `heldout30_long.csv` | 11,160 | 4 held-out scenarios × 3 estimators × 30 seeds |
+| `ablation_long.csv` | 4,650 | S6 and its 4 one-component ablations × 3 estimators × 10 seeds |
+| `governance_long.csv` | 558 | the S6 B2 comparison, 3 seeds |
+| `detectors_long.csv` | 3,100 | 4 detectors alone plus the ensemble, 10 seeds |
+| `detector_thresholds_long.csv` | 10,540 | 17 threshold arms, 10 seeds |
+| `recal_coverage_long.csv` | 9,300 | `confirm_sigma` against coverage and fallback count, 10 seeds |
+| `theta2_long.csv` | 5,580 | the three-parameter map against the two-parameter one, 30 seeds |
+| `all_metrics_long.csv` | 138,074 | **all fourteen of the above concatenated**, with a `sweep` column |
+
+### Real data and hardware, `export/data/`
+
+| file | rows | contents |
+|---|---:|---|
+| `sim_crossval_measured.csv` | 8 | the signal statistics measured on each real recording (B2) |
+| `sim_crossval_long.csv` | 48 | held-out and in-sample agreement per fold per statistic (B2) |
+| `real_corpus_leave_one_out_long.csv` | 47 | the 7 real-data calibration folds and the pooled figures |
+| `channel_ratio_long.csv` | 20 | paired crossings, Tenzo2/Tenzo1 peak ratio |
+| `footprint_long.csv` | 9 | per-update cost and state size — **bench, not board** |
+| `manifest.json` | — | commit and config hashes, package versions, per-sweep commands, figure dpi |
+
+### Analyses, `export/`
+
 | file | contents |
 |---|---|
-| `export/data/ladder_long.csv` | 63 runs × 7 scenarios × 3 estimators × 3 seeds, one metric per row |
-| `export/data/reference_rate_long.csv` | 180 runs: 5 reference rates × 2 control arms × 3 estimators × 3 seeds, S4 and S7 |
-| `export/data/governance_long.csv` | 18 runs: the S6 B2 comparison |
-| `export/data/all_metrics_long.csv` | the three above, concatenated |
-| `export/data/real_corpus_leave_one_out_long.csv` | the 7 real-data folds and the pooled figures |
-| `export/data/footprint_long.csv` | per-update cost and state size, bench not board |
-| `export/data/channel_ratio_long.csv` | 20 paired crossings, Tenzo2/Tenzo1 peak ratio |
-| `export/data/manifest.json` | commit and config hashes, package versions, per-file commands |
+| `<sweep>__comparisons.md` | Wilcoxon signed-rank with Holm correction, per declared family. Seven sweeps |
+| `<sweep>__reference_curve.md` | the A1 and A2 tables. Only the three sweeps that varied the rate |
+| `<sweep>__recall_by_rate.csv` | one row per (scenario, estimator, rate) cell: recall, delay, counts |
+| `<sweep>__governance_by_rate.csv` | the same for the governed-minus-ungoverned effect |
+| `<sweep>__governance_pairs_long.csv` | **per-seed** paired differences, which the medians above are over |
+| `<sweep>__detectors.md` | per-detector recall, false alarms and delay. Two sweeps |
+| `sim_crossval.md` | the simulator cross-validation report (B2) |
+| `figures/FIGURES.md` | what each of the nine figure kinds plots, in what units, at what sample size |
 
-Every CSV is long format with per-seed values, so any aggregate here can be recomputed and any
-dispersion re-derived.
+Every CSV is long format with per-seed values, so any aggregate in this document can be
+recomputed from it and any dispersion re-derived. No figure or table here contains a number that
+is not in one of these files.
 
 ## Everything reported as NOT RUN, collected
 
@@ -1337,15 +1373,27 @@ So that none of it has to be hunted for:
 - edge-local versus centrally arbitrated correction (§VI-E)
 - population mode, and any crossover against sparse supervised (§VI-G) — **not implementable**
 - fleet-composition shift (§VI-G)
-- per-board latency, CPU, memory, added end-to-end latency (§VI-H)
+- per-board latency, CPU, memory, added end-to-end latency (§VI-H) — **BLOCKED, no hardware**;
+  checked again 2026-10-02 and nothing was extrapolated, see §C1
 - ~~ablation of the interaction term (§VI-J)~~ — **now run**, see `theta2` above
 - peak-versus-area at scenario level (§VI-J)
 - λ and Q sweeps (§VI-J)
 - ~~per-detector comparison; ADWIN and windowed KS at scenario level (§VI-J)~~ — **now run**, see
   `detectors` above
-- ~~any statistical significance test, anywhere~~ — **now run on `ladder30`**; the three-seed sweeps
-  remain descriptive
+- ~~any statistical significance test, anywhere~~ — **now run** on `ladder30`, `theta2`,
+  `heldout30`, `ablation` and `reference_rate30`; the five three-seed sweeps remain descriptive
 - ~~the detector grid at lower thresholds~~ — **now run**, see `detector_thresholds` above
-- detection at a higher reference rate, which is where that sweep points instead
+- ~~detection at a higher reference rate~~ — **now run**, see §B1: one reference in one and one in
+  three were added, and recall tops out at 0.611 on S4 with *every* vehicle a reference
+- ~~leave-one-out validation of any simulator parameter~~ — **now run**, see §B2
+- ~~evaluation on scenarios no hyperparameter was tuned on~~ — **now run**, see §B4. The *tuning
+  budget* half of §V-E is still not equalised and no tuning/evaluation seed split exists
+- seeds 16–30 of `reference_rate30`; it ran fifteen, which is powered but is not what was asked
+- a held-out draw matched in difficulty to its development counterpart, which is what would
+  separate "does not generalise" from "does not extend to harder instances" in §B4
+- any variation of the Kalman filter's Q or R, which is where the fixed variance cost found by
+  §B3 and §B4 would be explained
+- where detection recall actually reaches zero on S7: it is still 0.067 at one reference in fifty,
+  the sparsest rate run, so the crossing is outside the grid
 - `confirmation_passes` sized against the fault horizon rather than in vehicles
 - an *online*-identified interaction term, which is what §III-B actually specifies
