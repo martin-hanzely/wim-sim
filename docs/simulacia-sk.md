@@ -444,6 +444,9 @@ particii — lebo tá réžia je **na volanie** a pole kvantilov má tri prvky.
 Teraz jedna particia obsluhuje všetky štyri, s presne reprodukovaným `_lerp` vrátane jeho vetvy nad
 `t ≥ 0,5`. Výsledok: **61,1 s → 38,7 s, teda 1,58×**.
 
+Namerané časy všetkých sweepov a dôvod, prečo paralelizmus na tomto stroji nepomáha, sú v
+[`experimenty-sk.md` §6](experimenty-sk.md#6-časy-behu).
+
 Rozhodujúce je, že je to **bit po bite identické**, nie približne rovnaké. Každý sweep v exporte sa
 porovnáva so sweepmi, ktoré bežali pred existenciou tohto kódu, a rozdiel jedného ulpu v odhade
 nulovej čiary by sa propagoval do inej hmotnosti. Overené trojako: 4 000 náhodných okien naprieč

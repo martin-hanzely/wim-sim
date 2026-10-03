@@ -198,16 +198,109 @@ bod, znamená o rok to isté, čo znamená dnes.
 
 ---
 
-## 6. Výpočtová realita tohto stroja
+## 6. Časy behu
 
-Merané, nie odhadované: stroj udrží približne **2,8 behu za minútu bez ohľadu na počet shardov**
-(10 shardov dalo 2,6; 5 shardov 2,79; jeden proces 1,7). Paralelizmus teda prináša iba 1,6× a
-záťaž je viazaná šírkou pásma pamäte, nie procesorom — pri desiatich procesoch bolo vyťaženie
-7,5 jadra z dvanástich logických a disk nečinný. Cena behu je plochá voči referenčnej frekvencii,
-čiže ju určuje **generovanie signálu**, nie kalibračná práca.
+Všetky čísla nižšie sú **namerané**, nie odhadnuté, a pochádzajú z `manifest.json` každého sweepu.
 
-Po optimalizácii sledovača nulovej čiary (1,58×) je priepustnosť približne 4,4 behu za minútu.
-Posledný sweep trval 28,3 hodiny na 1 260 behov.
+### 6.1 Ako čítať `elapsed_s`
+
+Jedna vec sa dá ľahko prečítať zle. Pri sweepe, ktorý bežal po shardoch, je `elapsed_s` v
+zlúčenom manifeste **súčet cez shardy**, nie hodiny na stenách — `merge_shards` ich jednoducho
+spočíta. Shardy bežia súbežne, takže nástenný čas je približne `súčet / počet shardov`. Obe čísla
+sú užitočné a nie sú to to isté: súčet hovorí, koľko strojového času to stálo, podiel hovorí, ako
+dlho sa čakalo.
+
+| sweep | behov | shardov | súčet | nástenný čas | s/beh |
+|---|---:|---:|---:|---:|---:|
+| `ladder` | 63 | 1 | 1,0 h | 1,0 h | 59 |
+| `ladder30` | 630 | 3 | 37,0 h | ~12,3 h | 211 |
+| `cintron_ladder` | 63 | 1 | 4,2 h | 4,2 h | 238 |
+| `cintron_ladder30` | 630 | 5 | 35,6 h | ~7,1 h | 204 |
+| `reference_rate` | 180 | 1 | 1,7 h | 1,7 h | **35** |
+| `reference_rate_ph75` | 180 | 3 | 7,4 h | ~2,5 h | 148 |
+| `reference_rate30` | 1 260 | 5 | **28,3 h** | ~5,7 h | 81 |
+| `heldout30` | 360 | 10 | **22,8 h** | ~2,3 h | 228 |
+| `ablation` | 150 | 5 | **8,9 h** | ~1,8 h | 213 |
+| `governance` | 18 | 1 | 0,6 h | 0,6 h | 111 |
+| `detectors` | 100 | 1 | 7,4 h | 7,4 h | 268 |
+| `detector_thresholds` | 340 | 5 | 21,8 h | ~4,4 h | 231 |
+| `recal_coverage` | 300 | 1 | 17,6 h | 17,6 h | 211 |
+| `theta2` | 180 | 1 | 15,9 h | 15,9 h | 318 |
+
+**Stĺpec „s/beh“ sa nedá porovnávať naprieč riadkami** a je tu napriek tomu, lebo bez neho sa
+nedá prečítať nič ostatné. Líšia sa v troch veciach naraz: dĺžkou scenára (S1 má 6 h, S6 má 48 h
+simulovaného času), počtom súbežných shardov, a tým, či sweep bežal pred alebo po optimalizácii
+z §6.3. Posledné tri sweepy — `reference_rate30`, `heldout30`, `ablation` — sú jediné, ktoré bežali
+na optimalizovanom kóde.
+
+### 6.2 Paralelizmus tu nefunguje a je to zmerané
+
+Tento stroj udrží približne **2,8 behu za minútu bez ohľadu na počet shardov**:
+
+| súbežných procesov | behov/min |
+|---:|---:|
+| 1 | 1,7 |
+| 5 | 2,79 |
+| 10 | 2,6 |
+
+Desať shardov teda nie je rýchlejších ako päť — nameraný rozdiel 2,6 oproti 2,79 je síce v
+pásme merania, ale **zrýchlenie z neho nevyšlo žiadne**, a to je tvrdenie, ktoré to meranie unesie.
+Pri desiatich procesoch bolo vyťaženie 7,5 jadra z dvanástich logických a **disk nečinný na 0,5 %** — záťaž je teda viazaná šírkou pásma pamäte, nie
+procesorom ani vstupom/výstupom. Pridávanie procesov iba rozdeľuje pevnú priepustnosť na menšie
+kúsky.
+
+To je dôvod, prečo sa posledný sweep púšťal na piatich shardoch a nie na desiatich, a prečo sa
+`heldout30`, `ablation` a `reference_rate30` púšťali **sekvenčne za sebou** a nie súbežne: celková
+práca je rovnaká, ale sekvenčne je prvý z nich hotový za dve hodiny namiesto za deväť.
+
+Druhé pozorovanie z toho istého merania: **cena behu je plochá voči referenčnej frekvencii**.
+Beh pri jednej referencii na vozidlo trvá rovnako dlho ako beh pri jednej na päťdesiat, hoci robí
+päťdesiatnásobok kalibračnej práce. Cenu teda určuje **generovanie signálu**, nie estimátor ani
+regulátor.
+
+### 6.3 Kde ten čas sedel a čo sa s tým dalo urobiť
+
+Profilovanie ukázalo **61 %** času behu vnútri `Preprocessor._track_zero`, a väčšina z toho nebola
+aritmetika — bola to Pythonovská réžia `np.quantile`, volaného 230 000-krát na beh nad trojprvkovým
+poľom kvantilov. Jedna particia teraz obsluhuje všetky štyri poradové štatistiky:
+
+| ten istý 16-hodinový beh S4 | čas |
+|---|---:|
+| pred optimalizáciou, sólo | **61,1 s** |
+| po optimalizácii, sólo | **38,7 s** |
+| pod 10-násobnou záťažou | ~3,8 min |
+
+Priepustnosť tým stúpla z ~2,8 na **~4,4 behu za minútu**. Detaily a dôkaz bitovej zhody sú v
+[`simulacia-sk.md` §10](simulacia-sk.md#10-výkon).
+
+Jedna poznámka k profilovaniu samotnému: prvý profil bol **nepoužiteľný**, pretože hodinový beh
+trval 17,5 s, z toho ~14 s zabral import `scipy`. Pri sweepe sa import zaplatí raz na proces a
+amortizuje sa cez stovky behov, takže v profile vyzeral ako dominantná položka a nebol ňou. Druhý
+profil si importy zaplatil dopredu.
+
+### 6.4 Testy
+
+| beh testovej sady | čas |
+|---|---:|
+| voľný stroj | ~185 s |
+| súbežne s desiatimi workermi | **884 s** (14 min 44 s) |
+
+Raz ju systém pri tejto záťaži aj **zabil pre nedostatok pamäte** — desať workerov drží okolo
+3,1 GB a pytest potrebuje svoje. Praktický záver: plná sada sa púšťa, keď je stroj voľný, a počas
+sweepov sa púšťajú len cielené súbory.
+
+### 6.5 Čo z toho plynie pre plánovanie
+
+- **Odhadni nástenný čas ako `počet_behov × s/beh_podobného_sweepu ÷ počet_shardov`** a potom to
+  vynásob 1,3, lebo kontencia nie je lineárna.
+- **Viac ako päť shardov nemá zmysel.** Pevná priepustnosť znamená, že desiaty shard iba spomalí
+  prvých deväť.
+- **Shard zapisuje výsledky až na konci.** Zabitý shard na 90 % je zabitý shard na 0 %, takže
+  pri nedostatku času je lepšie dobehnúť menej seedov úplne než viac seedov spolovice. Preto
+  `reference_rate30` bežal pätnásť seedov a nie tridsať — pätnásť je hotových a použiteľných,
+  tridsať by bolo rozbehnutých.
+- **Keď optimalizácia stojí hodinu práce a ušetrí štyri hodiny strojového času, oplatí sa** — ale
+  iba vtedy, ak sa dá dokázať, že nemení výsledky. Tu sa to dokázať dalo, a preto sa spravila.
 
 ---
 
