@@ -139,12 +139,34 @@ def _usable(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _require_rate_axis(frame: pd.DataFrame) -> pd.DataFrame:
+    """The rows with a rate on them."""
     if "reference_every_n" not in frame.columns or frame["reference_every_n"].isna().all():
         raise ValueError(
             "this frame has no reference-rate axis, so neither relationship can be read from it. "
             "Run configs/experiments/reference_rate30.yaml."
         )
     return frame[frame["reference_every_n"].notna()]
+
+
+def _require_rate_curve(frame: pd.DataFrame) -> pd.DataFrame:
+    """As above, and the sweep must actually have varied the rate.
+
+    The per-cell reductions are perfectly well defined at a single rate, so they do not impose
+    this; the *report* does, because both relationships it presents are shapes against the rate
+    and a one-point curve invites exactly the reading it cannot support. It is the same rule
+    `_draw_reference_rate` already applies to the figure. `ladder30` and `heldout30` both pin
+    `reference_every_n: 10`, and running the report on `heldout30` produced a table that looked
+    like a rate study and was a single column.
+    """
+    rated = _require_rate_axis(frame)
+    if rated["reference_every_n"].nunique() < 2:
+        rate = rated["reference_every_n"].iloc[0]
+        raise ValueError(
+            f"this sweep ran one reference rate (1 in {rate:g}), so there is no curve to read. "
+            "Both relationships here are shapes against the rate; a one-point curve would be "
+            "presented as a trend. Run configs/experiments/reference_rate30.yaml."
+        )
+    return rated
 
 
 def _quantiles(values: pd.Series | None) -> tuple[float, float, float, int]:
@@ -461,7 +483,7 @@ def _crossing_sentence(cross: ZeroCrossing) -> str:
 
 def reference_curve_markdown(frame: pd.DataFrame, *, experiment_id: str, git_commit: str) -> str:
     """Both tables and both readings, self-contained enough to write a section from."""
-    usable = _usable(_require_rate_axis(frame))
+    usable = _usable(_require_rate_curve(frame))
     recall_cells = recall_by_rate(frame)
     crossings = recall_zero_crossing(recall_cells)
     failed = int(frame["failed"].fillna(False).sum()) if "failed" in frame else 0
@@ -558,6 +580,7 @@ def write_reference_curve(
     frame: pd.DataFrame, *, out_dir: Path | str, experiment_id: str, git_commit: str
 ) -> Path:
     """Write ``reference_curve.md`` beside the sweep's parquet, and the per-cell CSVs."""
+    _require_rate_curve(frame)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     text = reference_curve_markdown(frame, experiment_id=experiment_id, git_commit=git_commit)

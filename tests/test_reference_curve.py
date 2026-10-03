@@ -55,6 +55,18 @@ def _both_arms() -> pd.DataFrame:
     return _frame([_row(seed=s, control_enabled=arm) for s in (1, 2, 3) for arm in (True, False)])
 
 
+def _rate_ladder() -> pd.DataFrame:
+    """Both arms at two rates: the smallest frame the report will accept as a curve."""
+    return _frame(
+        [
+            _row(seed=s, control_enabled=arm, reference_every_n=n)
+            for n in (2, 10)
+            for s in (1, 2, 3)
+            for arm in (True, False)
+        ]
+    )
+
+
 # -- A1: detection recall --------------------------------------------------------------------
 
 
@@ -257,21 +269,21 @@ def test_failed_runs_are_excluded_from_both_reductions() -> None:
 
 
 def test_the_report_states_that_recall_is_measured_in_the_governed_arm_only() -> None:
-    text = reference_curve_markdown(_both_arms(), experiment_id="rr", git_commit="abc")
+    text = reference_curve_markdown(_rate_ladder(), experiment_id="rr", git_commit="abc")
 
     assert "governed arm only" in text.lower()
     assert "abc" in text
 
 
 def test_the_report_names_the_sample_size_of_every_cell() -> None:
-    text = reference_curve_markdown(_both_arms(), experiment_id="rr", git_commit="abc")
+    text = reference_curve_markdown(_rate_ladder(), experiment_id="rr", git_commit="abc")
 
     assert "runs" in text
     assert "| 3 |" in text
 
 
 def test_a_frame_without_a_rate_axis_is_refused() -> None:
-    frame = _both_arms().drop(columns=["reference_every_n"])
+    frame = _rate_ladder().drop(columns=["reference_every_n"])
     with pytest.raises(ValueError, match="no reference-rate axis"):
         reference_curve_markdown(frame, experiment_id="rr", git_commit="abc")
 
@@ -298,6 +310,18 @@ def test_a_sweep_that_scored_no_detection_delay_reports_no_delay_rather_than_cra
 def test_a_sweep_without_signed_bias_is_refused_by_name() -> None:
     """The governance reduction needs four columns and says which one is missing. A KeyError
     from inside the pairing names a pandas index, not the thing to fix."""
-    frame = _both_arms().drop(columns=["bias_kg"])
+    frame = _rate_ladder().drop(columns=["bias_kg"])
     with pytest.raises(ValueError, match="bias_kg"):
         governance_by_rate(frame)
+
+
+def test_a_report_on_a_sweep_that_ran_one_reference_rate_is_refused() -> None:
+    """Both relationships the REPORT presents are shapes against the rate. `ladder30` and
+    `heldout30` pin the rate at one in ten, and running it on `heldout30` produced a table that
+    looked like a rate study and was a single column -- the same rule the rate figure already
+    applies to itself. The per-cell reductions stay usable at one rate; only the curve is
+    refused."""
+    frame = _both_arms()
+    assert recall_by_rate(frame), "the per-cell reduction is still defined at a single rate"
+    with pytest.raises(ValueError, match="one reference rate"):
+        reference_curve_markdown(frame, experiment_id="rr", git_commit="abc")

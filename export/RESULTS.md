@@ -477,6 +477,112 @@ agreement is a statement about FWHM reproducibility, not about length in metres.
 **Nothing was refitted in response to any of this.** The brief is explicit that poor agreement is a
 finding and not a reason to refit, and no station or scenario parameter was changed.
 
+### B4 — the held-out scenario set
+
+**This addresses the most serious methodological weakness in the study.** §V-E concedes that every
+estimator hyperparameter, detector threshold and controller setting was chosen from development
+measurements on S1–S8, and that S1–S8 are then the evaluation set, with no disjoint seeds and no
+equalised tuning budget. Nothing measured before this sweep distinguished "these estimators work"
+from "these estimators have been fitted to these eight scenarios".
+
+`configs/experiments/heldout30.yaml`, 360 runs, **0 failed**, commit `ac1af03`, clean tree, thirty
+seeds, one `edge_config_hash` per estimator across all 360 rows. 22.8 h of compute. Per-seed values
+in `export/data/heldout30_long.csv`; paired tests in `export/heldout30__comparisons.md`.
+
+**The construction.** Four scenarios drawn over the same disturbance classes, with parameters
+written without consulting any tuning result and no value of any key repeating an S1–S8 value of
+that key. Evaluated with the shipped configuration and **nothing retuned**. H1 is the thermal class
+(S2's counterpart), H2 the abrupt-fault class (S4's), H3 the slow-ramp class (S7's) and H4 the
+combined class (S6's). Three of the four inject a gain **rise**; every sensitivity fault in S1–S8
+is a gain loss.
+
+**One difference from `ladder30`, stated rather than assumed away.** `ladder30` ran at Page-Hinkley
+15.0, the shipped default of the time; this runs at the shipped 7.5, pinned explicitly. A2 measures
+what the loop firing is worth to an adaptive estimator — nothing, at any reference rate — so the
+estimator comparison is not expected to move with it, but that is an expectation and the difference
+is real.
+
+#### Do the five surviving comparisons of §VI-B reproduce?
+
+**Three of five do. Two do not, and both failures are on the same disturbance class.**
+
+| `ladder30` comparison | its median diff | held-out counterpart | median diff | p (Holm) | reproduces? |
+|---|---:|---|---:|---:|---|
+| S4 / static→kalman | −31.6 kg | H2_gain_jolt | **−47.4 kg** | 1.49e-08 | **yes**, and larger |
+| S4 / static→rls | −27.1 kg | H2_gain_jolt | **−39.1 kg** | 1.49e-08 | **yes**, and larger |
+| S6 / static→rls | −32.7 kg | H4_pileup | **−29.5 kg** | 2.86e-06 | **yes** |
+| S7 / static→kalman | −14.2 kg | H3_slow_fade | **+28.0 kg** | 1 | **no — sign flips** |
+| S7 / static→rls | −14.1 kg | H3_slow_fade | −21.7 kg | 0.231 | **no** — direction holds, significance does not |
+
+Wilcoxon signed-rank paired by seed, Holm-corrected within the family of eight tests, n = 30 pairs
+each.
+
+#### A new result the development suite never showed
+
+| comparison | median A (static) | median B | median diff | effect | p (Holm) | verdict |
+|---|---:|---:|---:|---:|---:|---|
+| H1_warm_front / static→kalman | 1124 kg | 1366 kg | **+251 kg** | **+1.00** | 1.49e-08 | **worse** |
+| H1_warm_front / static→rls | 1124 kg | 1131 kg | +26.7 kg | +0.29 | 0.493 | not separated |
+
+**On a held-out thermal scenario with no injected fault, the Kalman estimator is 22 % worse than
+frozen calibration, on every one of thirty seeds.** The rank-biserial effect size is +1.00, which
+means not one seed went the other way. `ladder30`'s thermal counterpart, S2, put the same
+comparison at **+0.629 kg, not separated** — so this is not a weaker version of a known effect, it
+is an effect the development suite did not contain.
+
+It is specific to the Kalman filter: rls on the same scenario is +26.7 kg and not separated. And it
+is a variance effect rather than a bias one — median signed bias is −27.15 kg for kalman against
+−25.17 kg for static, essentially the same, while MAE differs by 251 kg. On a scenario where the
+gain never actually changes, an adaptive filter can only add variance, and here it adds a great
+deal of it. The mechanism is not isolated by this experiment: H1 differs from S2 in daily amplitude
+(13.5 against 9.0 °C), trend (−1.1 against +0.4 °C/day), alpha walk (5.5e-8 against 3.0e-8) and the
+zero line's temperature coupling (1.9e-4 against 1.2e-4), and which of those is responsible is not
+separable here. B3 ablates the thermal component on S6 and is the place to read that against.
+
+#### The caveat that decides how much this is worth, stated before the conclusion
+
+**The held-out scenarios are not matched in difficulty to their development counterparts, and the
+two classes that fail to reproduce are exactly the two where the draw came out much harder.** As a
+multiple of the dynamic floor:
+
+| class | development | held out |
+|---|---:|---:|
+| abrupt fault | S4: 1.11–1.34× | H2: **1.09–1.30×** — comparable |
+| combined | S6: 3.48–3.70× | H4: **2.57–2.76×** — slightly easier |
+| thermal | S2: 1.01–1.02× | H1: **5.71–6.93×** — several times harder |
+| slow ramp | S7: 1.02–1.13× | H3: **2.52–2.79×** — more than twice as hard |
+
+This was a deliberate design choice and it has a cost. The scenario headers say a held-out set is
+only evidence if it could have failed, so the parameters were drawn wide rather than tight around
+S1–S8. The consequence is that a failure to reproduce is **confounded with difficulty**: H3 and H1
+are not merely different draws of their classes, they are harder instances of them.
+
+So the supportable reading is narrower than "the five results do not generalise":
+
+**Where the held-out draw lands at a comparable difficulty — H2 against S4, H4 against S6 — the
+effects reproduce, and on H2 they reproduce at 1.4 to 1.5 times the magnitude.** That is three of
+the five, including both headline S4 comparisons, on scenarios nothing was tuned on. It is real
+evidence against the overfitting worry.
+
+**Where the draw is several times harder, they do not.** That is consistent with overfitting and
+equally consistent with the effects simply holding over the difficulty range they were measured at
+and not beyond it. This sweep does not separate those two, and nothing else in the project does
+either.
+
+**What would separate them** is one more sweep: a held-out draw for the thermal and slow-ramp
+classes with parameters chosen to land at a comparable multiple of the dynamic floor, which is
+measurable from a single pilot seed before committing thirty. That is recorded in `OPEN.md`. It is
+the one experiment this sweep makes obviously necessary and did not run.
+
+#### What did not change
+
+The matching, coverage and reference supply all behave as on the development suite. Coverage is
+0.89–0.96 against a 0.95 nominal across all twelve cells; `n_matched` equals `n_truth` on H1, H2 and
+H3; H4 matches 1982 of 4887, which is the clock-skew fault doing to H4 what `ntp_slip` does to S6
+(5003 of 9498) and not a new failure. Detection recall is 0.00–0.33 on the two scenarios with
+abrupt faults and 0.00 on the slow ramp, which is the A1 result at one reference in ten and not a
+held-out effect.
+
 ### C1 — embedded bench
 
 **BLOCKED — no hardware.**
