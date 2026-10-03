@@ -142,6 +142,46 @@ wimsim generate S4_step_fault --out data/synthetic/short \
 
 ## Repository layout
 
+```mermaid
+flowchart TB
+    subgraph TRUTHSIDE["truth side — estimators may never import this"]
+        SIG["signal/<br/>generative model<br/>+ ground-truth log"]
+    end
+
+    SIG -->|"samples only"| SRCL
+    SIG -.->|"truth"| EXPL
+
+    SRCL["source/<br/>SourceAdapter<br/>synthetic, replay, serial"] --> EDGEL
+
+    EDGEL["edge/<br/>acquire → preprocess<br/>→ detect → estimate"] --> CALL
+    EDGEL --> TRANS
+
+    subgraph CORE["numpy only — cross-deploys to a Pi unchanged"]
+        CALL["calibration/<br/>estimators, drift detectors,<br/>MAPE-K controller, UQ,<br/>profile store"]
+    end
+    CALL --> EDGEL
+
+    TRANS["transport/<br/>spool + MQTT publisher"] --> INGL["ingest/<br/>validation, DLQ"]
+    INGL --> STOR["storage/<br/>TimescaleDB, Alembic,<br/>idempotent writer"]
+
+    EDGEL --> EXPL
+    EXPL["experiments/<br/>runner, scoring, stats,<br/>figures, export"] --> RES["data/results/<br/>→ export/"]
+
+    OBS["observability/<br/>metrics, tracing, logging"] -.->|"sits on the seams,<br/>not inside the stages"| EDGEL
+    OBS -.-> TRANS
+
+    style TRUTHSIDE fill:#ffe6e6,stroke:#c00
+    style CORE fill:#e6ffe6,stroke:#0a0
+    style EXPL fill:#ffe6e6,stroke:#c00
+```
+
+Two boundaries in that picture are enforced by tests rather than convention. The red boxes are the
+only code allowed to touch ground truth — `tests/test_truth_isolation.py` checks the import graph,
+and `experiments/` is deliberately outside the quarantine because it is where truth is *supposed*
+to join results. The green box may import nothing but the standard library, numpy and
+`wimsim.core`; `tests/test_architecture.py` fails the build if that stops being true.
+
+
 ```
 configs/stations/     physical station description (sensor, ADC, thermal constants)
 configs/scenarios/    what happens during a run (duration, traffic, drift, faults)

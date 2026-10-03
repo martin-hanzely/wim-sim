@@ -25,6 +25,32 @@ data/real/<run_id>/
 One directory per drive. `<run_id>` is free-form but should be stable and meaningful
 (`drive_01`, `2026-03-14_lane1`) because it appears in provenance.
 
+```mermaid
+flowchart LR
+    CSV["vendor export<br/>CSV, whatever shape"] -->|"wimsim import-csv"| DIR
+
+    DIR["data/real/RUN_ID/<br/>samples.parquet<br/>run.yaml<br/>reference.csv"]
+
+    DIR -->|"wimsim validate-real-data"| VAL{"schema, units,<br/>monotone ts,<br/>channel map"}
+    VAL -->|"fails"| STOP["fix the export —<br/>do NOT patch downstream"]
+    VAL -->|"passes"| RS
+
+    RS["ReplaySource"] --> PIPE["the SAME edge pipeline<br/>synthetic runs use"]
+    PIPE --> EV["events"]
+
+    DIR -.->|"reference.csv is NOT a truth log"| SCORE["scoring, with that caveat attached"]
+    EV --> SCORE
+
+    style STOP fill:#ffe6e6,stroke:#c00
+    style PIPE fill:#e6ffe6,stroke:#0a0
+```
+
+The green node is principle 2 made concrete: a replayed recording enters the identical pipeline, so
+switching to real data is a configuration change and nothing else. The dotted edge is the caveat
+that governs everything the real corpus can support — `reference.csv` carries masses that were
+*inferred*, not weighed, and a scoring run against it measures whether the pipeline reproduces that
+inference rather than whether it weighs vehicles.
+
 ---
 
 ## `samples.parquet`

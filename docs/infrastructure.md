@@ -31,13 +31,29 @@ later, and "it worked in March" is not a result.
 
 ## The path an event takes
 
-```
-SignalGenerator -> pipeline -> Publisher -> [spool.db] -> Mosquitto -> IngestConsumer -> TimescaleDB
-                                                                            |
-                                                                            +-> wim.dlq
+```mermaid
+flowchart LR
+    GEN["SignalGenerator"] --> PIPE["edge pipeline"]
+    PIPE --> PUB["Publisher"]
+    PUB <--> SPOOL[("spool.db<br/>enqueue BEFORE publish")]
+    PUB --> MQ["Mosquitto<br/>edge/STATION/{sample,event,<br/>metric,calibration,incident}"]
+    MQ --> ING["IngestConsumer"]
+    ING --> DB[("TimescaleDB<br/>idempotent upserts")]
+    ING -->|"fails validation"| DLQ[["wim.dlq"]]
+
+    style SPOOL fill:#e6f3ff,stroke:#06c
+    style DLQ fill:#ffe6e6,stroke:#c00
 ```
 
-Each arrow is a place data can be lost, and each one has a guard.
+Each arrow is a place data can be lost, and each one has a guard. The two coloured nodes are the
+guards that cost something: the spool makes the publisher durable across a restart, and the dead
+letter queue means nothing unvalidated reaches the database **and** nothing is silently discarded —
+the two failure modes that look identical from a dashboard.
+
+The topic map is many-to-one on purpose: all three `calibration.*` payloads share one MQTT topic,
+because a subscriber wants the calibration stream rather than three subscriptions it has to
+reassemble in order. An unknown schema topic raises rather than inventing a topic that would
+deliver to nobody and look, from the publisher's side, exactly like success.
 
 ### Publisher: nothing is acknowledged until the broker confirms it
 
@@ -119,6 +135,18 @@ paper cites one at a time, get a key.
 ## Schema
 
 Twelve tables in two schemas, seven hypertables, two continuous aggregates.
+
+Delivery is at-least-once in three independent places, so every write is idempotent:
+
+```mermaid
+flowchart TB
+    R1["MQTT QoS 1<br/>redelivers on missing PUBACK"] --> DUP
+    R2["spool replay<br/>after a publisher restart"] --> DUP
+    R3["consumer restart<br/>before the offset was committed"] --> DUP
+    DUP{"the same row,<br/>more than once"} --> UP["ON CONFLICT DO NOTHING<br/>keyed on event identity"]
+    UP --> OK["exactly-once effect<br/>from at-least-once delivery"]
+    style OK fill:#e6ffe6,stroke:#0a0
+```
 
 **Alembic owns the schema.** The compose init script creates extensions and schemas only. An init
 script that creates tables works exactly once -- on a fresh volume -- and then diverges from the

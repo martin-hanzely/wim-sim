@@ -126,6 +126,20 @@ expressed in it.
 
 Three estimators, each one step from the last, so a result can be attributed.
 
+```mermaid
+flowchart LR
+    SA["StaticAffine — B0<br/>kg = gain·feature + bias<br/>fitted once, then frozen"]
+    RL["RecursiveLeastSquares — B2<br/>same model, same objective,<br/>same direction; the fit never ends"]
+    KF["KalmanCalibration — B2<br/>state s = [q, k]<br/>holds the parameters the plant HAS"]
+
+    SA -->|"the only difference:<br/>adaptivity"| RL
+    RL -->|"the only difference:<br/>the direction of the model"| KF
+```
+
+Each rung is deliberately a *small* step. That isolation is the point: when RLS beats the baseline
+on `S4_step_fault`, the result is attributable to adaptivity and to nothing else, because nothing
+else changed.
+
 | | fits | adapts | direction | attenuated by feature noise |
 |---|---|---|---|---|
 | `StaticAffine` | once, frozen | no | mass on feature | yes |
@@ -243,6 +257,47 @@ right ones.
 `MONITORING → DRIFT_SUSPECTED → RECALIBRATING → VERIFYING → MONITORING`, with `DEGRADED` whenever
 the loop cannot close. It does no IO and holds no persistence — it returns events for the edge to
 publish.
+
+```mermaid
+stateDiagram-v2
+    [*] --> MONITORING
+
+    MONITORING --> DRIFT_SUSPECTED: any detector alarms
+    DRIFT_SUSPECTED --> MONITORING: confirmation window says the mean is back
+    DRIFT_SUSPECTED --> RECALIBRATING: still displaced after confirmation_passes
+    DRIFT_SUSPECTED --> DEGRADED: confirmed, but no reference vehicles
+    RECALIBRATING --> VERIFYING: refit produced a candidate profile
+    RECALIBRATING --> DEGRADED: too few references to refit
+    VERIFYING --> MONITORING: candidate verified and activated
+    VERIFYING --> DEGRADED: candidate failed verification
+    DEGRADED --> MONITORING: references returned and the loop closed
+
+    note right of DRIFT_SUSPECTED
+        Confirmation is a SECOND OPINION, not a wait.
+        The detectors are tuned to allow a couple of
+        false alarms per thirty stationary runs,
+        because tightening them costs detection delay.
+        After an alarm the controller collects
+        confirmation_passes more residuals and asks
+        whether their mean is STILL displaced.
+        A blip is not. Drift is. Waiting alone would
+        confirm both.
+    end note
+
+    note left of DEGRADED
+        Not an error path. A confirmed drift with no
+        reference vehicle to recalibrate against is
+        the normal case on a real road, and the
+        honest response is to say so and keep saying
+        so.
+    end note
+```
+
+Mapped onto MAPE-K: **Monitor** takes a residual per pass and feeds the detectors; **Analyse** asks
+whether any of them is alarming; **Plan** decides whether the alarm is worth acting on — has it
+persisted, are there reference vehicles, has the cool-down elapsed, is this station allowed to
+decide for itself; **Execute** refits; **Knowledge** is the profile store, which the caller owns.
+The class holds no persistence and does no IO, because `calibration/` has to cross-deploy to a Pi.
 
 **`DEGRADED` is the point of the machine, not an error path.** A confirmed drift with no reference
 vehicle to recalibrate against is the normal case on a real road, and the honest response is to say
@@ -385,6 +440,31 @@ two different laws with no way to tell them apart.
 ---
 
 ## Where the truth enters
+
+```mermaid
+sequenceDiagram
+    participant TR as truth log
+    participant CL as experiments/closed_loop.py
+    participant CT as calibration/controller.py
+    participant PS as profile store
+    participant PI as edge pipeline
+
+    Note over TR,CL: experiments/ is the designated truth-joining layer
+    TR->>CL: pass mass, for every Nth vehicle
+    CL->>CL: _TruthReferences — the single greppable boundary
+    CL->>CT: ReferenceObservation {mass, feature}
+    Note right of CT: calibration/ receives a mass and<br/>cannot tell where it came from.<br/>Exactly what a weighbridge supplies.
+
+    CT->>CT: Monitor, Analyse, Plan
+    CT->>CT: Execute — refit
+    CT->>PS: candidate profile
+    PS->>PI: activated profile
+    PI-->>CL: WeightEvent for the next pass
+```
+
+Two tests hold this boundary rather than a convention: `tests/test_truth_isolation.py` proves the
+import graph, and `tests/test_closed_loop.py` adds an AST test pinning the read sites, so the truth
+mass columns are subscripted in exactly one place.
 
 The controller needs residuals and a residual needs a reference mass. In the field that comes from a
 transponder-equipped fleet vehicle or a weighbridge up the road; here it is read from the truth log

@@ -27,6 +27,32 @@ wimsim experiment ladder                    # -> data/results/ladder/
 wimsim experiment ladder --seeds 1          # a table quickly; label it as such when quoting it
 ```
 
+```mermaid
+flowchart TB
+    SPEC["configs/experiments/*.yaml<br/>scenario × estimator × seed<br/>× reference rate × control arm"] --> GRID
+
+    GRID["ExperimentSpec.grid()<br/>cartesian product, one RunSpec per cell"] --> CELL
+
+    subgraph CELL["per cell"]
+        direction TB
+        CFG["load_run_config<br/>station + scenario + overrides"] --> WR["write_run<br/>generate into a temp dir"]
+        WR --> RCL["run_closed_loop<br/>edge pipeline + controller"]
+        RCL --> SCR["_score_row<br/>join truth, 48 columns"]
+    end
+
+    CELL --> ROWS["rows — INCLUDING the failed ones"]
+    ROWS --> PQ["results.parquet"]
+    ROWS --> MD["results.md, results.tex"]
+    ROWS --> FIGS["figures/*.png + README.md"]
+    ROWS --> MAN["manifest.json<br/>commit, spec, hashes, elapsed"]
+
+    style ROWS fill:#fff3cd,stroke:#b8860b
+```
+
+**A cell that fails becomes a row saying so**, with its error text, rather than taking the sweep
+down or quietly disappearing. Dropping it would change what every mean in the table is a mean over,
+and nothing downstream would show it.
+
 A sweep is `configs/experiments/*.yaml`: scenario axis, estimator axis, seed axis, an edge config,
 and overrides. Three decisions in `runner.py` decide whether the output is trustworthy rather than
 merely produced.
@@ -338,6 +364,38 @@ averaged with one.
 
 Four, written to `data/results/<id>/figures/` with their captions in a `README.md` beside them,
 because a figure separated from its caption is a shape.
+
+A finished sweep feeds four analyses, and three of them **refuse** rather than produce a number
+that looks usable:
+
+```mermaid
+flowchart LR
+    PQ["results.parquet"] --> CMP["wimsim compare<br/>Wilcoxon signed-rank<br/>+ Holm, family declared"]
+    PQ --> RC["wimsim reference-curve<br/>recall and governance<br/>against reference rate"]
+    PQ --> DT["wimsim detector-table<br/>per-detector recall,<br/>false alarms, delay"]
+    PQ --> FG["write_figures"]
+
+    CMP -->|"a free axis the pairing<br/>does not account for"| R1["refuses"]
+    RC -->|"the sweep ran ONE rate"| R2["refuses"]
+    DT -->|"the sweep ran ONE detector arm"| R3["refuses"]
+    FG -->|"nothing to draw"| R4["writes no file at all"]
+
+    CMP --> EXP["scripts/build_export.py"]
+    RC --> EXP
+    DT --> EXP
+    FG --> EXP
+    PQ --> EXP
+    EXP --> OUT["export/"]
+
+    style R1 fill:#ffe6e6,stroke:#c00
+    style R2 fill:#ffe6e6,stroke:#c00
+    style R3 fill:#ffe6e6,stroke:#c00
+```
+
+Each refusal has the same shape of reason. A pairing with a free axis would difference against an
+arbitrary one of two rows; a one-point curve would be read as a trend; five detector arms pooled on
+scenario alone become one row describing the ensemble under a heading claiming to compare them; and
+an empty axis is not a result, so the absence of a figure file is itself informative.
 
 | figure | question |
 |---|---|

@@ -2,6 +2,50 @@
 
 `acquire -> preprocess -> detect -> estimate`, offline: no transport, no database.
 
+```mermaid
+flowchart TB
+    SRC["SourceAdapter<br/>synthetic OR replayed —<br/>the pipeline cannot tell which"] --> AQ
+
+    AQ["1. acquire<br/>SampleBlock"] --> PRE
+
+    subgraph PRE["2. preprocess"]
+        direction TB
+        LP["low-pass, causal<br/>+ group-delay compensation"] --> ZT["zero tracking<br/>trailing median on a stride"]
+        ZT --> SP["despike<br/>isolated samples only"]
+        SP --> TC["temperature compensation<br/>from the profile's FIXED coefficient"]
+    end
+
+    PRE -->|"PreprocessedBlock<br/>compensated_value, valid,<br/>warming_up, zero_suspect"| DET
+
+    subgraph DET["3. detect — rolling buffer, not per block"]
+        direction TB
+        HY["dual-threshold hysteresis"] --> AP["AxlePeak"]
+        AP --> VW["VehicleWindow<br/>axles grouped into a vehicle"]
+    end
+
+    DET -->|"DetectedEvent<br/>axle_peak_sum, axle_count"| EST
+
+    subgraph EST["4. estimate"]
+        direction TB
+        FE["feature: peak or area"] --> AS["axle summation:<br/>whole_signal or per_axle_sum"]
+        AS --> CP["CalibrationProfile<br/>kg = gain·feature + bias"]
+        CP --> IV["interval: analytic or conformal"]
+    end
+
+    EST --> EV["WeightEvent"]
+
+    style ZT fill:#e6f3ff,stroke:#06c
+```
+
+Two things in that picture are load-bearing rather than incidental. The pipeline takes a
+`SourceAdapter`, so it **cannot tell a synthetic stream from a replayed recording** — that is
+principle 2, and it is why switching to real data is a config change. And it takes a
+`CalibrationProfile` rather than fitting one, so **an event can always name the law that produced
+it**.
+
+`zero tracking` is highlighted because it is the hot path of the whole project: 61 % of a sweep run
+sat there until it was rewritten. See `docs/experimenty-sk.md` section 6.3.
+
 This document records the **measured** results of phase 2, including three findings that changed the
 design. Numbers come from `S1_nominal` (900 s, 47 passes, clean conditions, no drift, no faults, no
 body bounce) with 15 passes reserved to fit the calibration and 32 scored. Reproduce with:
@@ -180,6 +224,40 @@ thresholds yields hundreds of phantom axles from one excursion; the hysteresis g
 handful. A handful is not zero — at a 3.5σ gap a single sample still dips past the lower threshold
 every few thousand samples and splits one axle in two, and a split axle is a vehicle counted twice.
 `end_hold_s` requires the signal to stay below for a couple of milliseconds before closing.
+
+The window therefore has four states and three ways to be thrown away, and **both rejections are
+counted** — a detector that silently discards things cannot be debugged from a dashboard:
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+
+    IDLE --> OPEN: sample rises above start_threshold
+    OPEN --> HOLDING: sample falls below end_threshold
+    HOLDING --> OPEN: rises again before end_hold_s elapses
+    HOLDING --> CLOSED: stayed below for end_hold_s
+
+    CLOSED --> REJECTED_SHORT: duration below min_duration_s
+    CLOSED --> REJECTED_LONG: duration above max_duration_s
+    CLOSED --> ACCEPTED: within both bounds
+
+    REJECTED_SHORT --> IDLE: counted as a blip
+    REJECTED_LONG --> IDLE: counted as a stuck channel
+    ACCEPTED --> IDLE: emitted as an AxlePeak
+
+    note right of HOLDING
+        The debounce. Hysteresis alone cuts phantom
+        axles from hundreds to a handful; a single
+        noise sample dipping past the lower threshold
+        still splits one axle in two, and a split
+        axle is a vehicle counted twice.
+    end note
+```
+
+The buffer is rolling rather than per-block because a window can open in one block and close three
+blocks later, the walk-back to the start of an excursion can cross a boundary, and the padded area
+integral needs samples from before the window opened. `test_results_do_not_depend_on_block_size`
+is the test that holds this.
 
 ### The peak feature is the sum of axle peaks
 

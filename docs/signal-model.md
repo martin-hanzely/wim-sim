@@ -16,6 +16,52 @@ x(t)      = q(t) + k(t) * SUM_j L_j(t) * phi(t - tau_j ; w_j)  +  n(t)
 x_adc(t)  = quantize(x(t), adc_bits, adc_range)
 ```
 
+Every module in `wimsim.signal` fills in one term of that equation, and the arrows below are the
+only couplings between them:
+
+```mermaid
+flowchart LR
+    subgraph POP["resolved up front, before any sample"]
+        VEH["vehicles.py<br/>arrivals, speeds, axle loads,<br/>body bounce"]
+    end
+
+    subgraph SLOW["plant grid — plant_rate_hz, 50 Hz"]
+        TH["thermal.py<br/>T_air, T_sensor, T_probe"]
+        PL["plant.py<br/>q(t) zero line<br/>k(t) sensitivity<br/>alpha(t) temp coefficient"]
+        PN["noise.py<br/>1/f, as OU sections"]
+        TH --> PL
+    end
+
+    subgraph FAST["sample grid — sample_rate_hz, 500 to 25000 Hz"]
+        PU["pulses.py<br/>phi, unit peak"]
+        WN["noise.py<br/>white, per sample"]
+        MN["noise.py<br/>mains 50 Hz + harmonics"]
+    end
+
+    VEH -->|"L_j, tau_j, w_j"| PU
+    PL -->|"interpolated up"| MIX
+    PN -->|"interpolated up"| MIX
+    PU --> MIX
+    WN --> MIX
+    MN --> MIX
+
+    MIX["generator.py<br/>x = q + k·SUM L·phi + n"] --> FLT
+
+    FLT["faults.py<br/>evaluated DIRECTLY on the sample grid,<br/>never interpolated"] --> ADC
+
+    ADC["adc.py<br/>quantise, clip to range"] --> OUT
+
+    OUT["GeneratedBlock.samples<br/>what a downstream stage may see"]
+    VEH -.-> TRUTH["GeneratedBlock.truth<br/>what it may not"]
+
+    style FLT fill:#fff3cd,stroke:#b8860b
+    style TRUTH fill:#ffe6e6,stroke:#c00
+```
+
+Faults sit between the mixer and the ADC and are evaluated on the fine grid on purpose: interpolated
+from the plant grid, a step fault would arrive as a ramp one plant interval wide, and the detector
+that is supposed to find steps would be looking at something else.
+
 | symbol | meaning | unit | where |
 |---|---|---|---|
 | `x` | analog signal at the ADC input | sensor units (default mV/V) | `signal/generator.py` |
@@ -38,6 +84,30 @@ same unit, whatever it is called in `adc.unit`.
 ### Two grids
 
 Generation runs on two time grids, and the split is what makes multi-day runs affordable.
+
+```mermaid
+flowchart TB
+    subgraph P["plant grid, 50 Hz — nothing here carries content near 2 kHz"]
+        direction LR
+        A1["q, k, alpha"]
+        A2["T_air, T_sensor, T_probe"]
+        A3["1/f noise"]
+    end
+    subgraph S["sample grid, 500 Hz to 25 kHz"]
+        direction LR
+        B1["axle pulses"]
+        B2["white noise"]
+        B3["mains"]
+        B4["ADC"]
+    end
+    P -->|"np.interp, linear"| S
+    F["faults"] -->|"evaluated here, not interpolated"| S
+    style F fill:#fff3cd,stroke:#b8860b
+```
+
+A 48-hour scenario is 8.6 million plant steps and, at 500 Hz, 86 million samples. Integrating the
+slow states on the fast grid would multiply the cost of the run by the ratio of the two rates and
+change no result, because none of those states has energy anywhere near the sample rate.
 
 | grid | rate | carries |
 |---|---|---|

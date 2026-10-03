@@ -18,6 +18,40 @@ rng = streams(seed).get("noise.pink")
 # seed sequence = SeedSequence([seed, blake2b(name)])
 ```
 
+```mermaid
+flowchart TB
+    SEED["run seed, e.g. 1"] --> SS
+
+    SS["SeedSequence([seed, blake2b(name)])"]
+
+    SS --> S1["traffic.arrivals"]
+    SS --> S2["traffic.loads"]
+    SS --> S3["noise.white"]
+    SS --> S4["noise.pink"]
+    SS --> S5["noise.mains_phase"]
+    SS --> S6["plant.zero_walk"]
+    SS --> S7["plant.alpha_walk"]
+    SS --> S8["plant.steps"]
+
+    S4 --> NEW["adding a new component here<br/>CANNOT shift any other stream"]
+
+    style NEW fill:#e6ffe6,stroke:#0a0
+```
+
+The child seed is a BLAKE2b digest of the component **name**, not a position and not Python's
+salted `hash()`. Two properties follow and both are load-bearing:
+
+- **Order independence.** Adding a stochastic component, or drawing a different number of values
+  from an existing one, cannot move the numbers any other component sees. A single shared generator
+  would shift everything downstream of the change; so would `SeedSequence.spawn()`, which is
+  positional.
+- **Stability across versions.** A digest of the name is the same in every process and every
+  release, so a run from six months ago reproduces today.
+
+This is what makes the governed-versus-ungoverned comparison valid at all: both arms run over a
+**byte-identical** sample stream, so they differ in exactly one thing, and the difference can be
+paired by seed and tested with a signed-rank test.
+
 Two properties follow, and both are load-bearing.
 
 **Order independence.** Adding a new stochastic component, or changing how many values an existing
@@ -70,6 +104,23 @@ Both would otherwise depend on how the run happened to be blocked.
 ---
 
 ## 4. Fixed serialisation
+
+The four mechanisms, and what each one would break if it were absent:
+
+```mermaid
+flowchart LR
+    M1["1. named RNG streams"] -->|"without it"| B1["adding a component<br/>reshuffles every other"]
+    M2["2. grid alignment"] -->|"without it"| B2["plant state at a boundary<br/>depends on where it fell"]
+    M3["3. up-front resolution"] -->|"without it"| B3["traffic and settling steps<br/>depend on block size"]
+    M4["4. fixed serialisation"] -->|"without it"| B4["same numbers,<br/>different bytes"]
+
+    B1 --> OUT["byte-identical output<br/>for the same seed + config"]
+    B2 --> OUT
+    B3 --> OUT
+    B4 --> OUT
+
+    style OUT fill:#e6ffe6,stroke:#0a0
+```
 
 `PARQUET_OPTIONS` pins compression (`zstd` level 3), format version and statistics. These are not
 tuning knobs; changing them changes the bytes. Nothing time-varying is written into the data files —

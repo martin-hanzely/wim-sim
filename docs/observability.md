@@ -15,6 +15,29 @@ Buildspec section 9 names twenty-six metrics. `observability/metrics.py` declare
 once, and every emission goes through the registry: an unknown name raises, the wrong instrument
 kind raises, and a metric declared to carry a label raises without it.
 
+```mermaid
+flowchart LR
+    ST["pipeline stages<br/>acquire, preprocess,<br/>detect, estimate"] --> REG
+    CT["controller<br/>alarms, recalibrations,<br/>state transitions"] --> REG
+    TP["transport<br/>publish, spool depth,<br/>ingest, persist"] --> REG
+
+    REG{"metric registry<br/>26 declared names"}
+    REG -->|"unknown name"| X1["raises"]
+    REG -->|"wrong instrument kind"| X2["raises"]
+    REG -->|"missing a declared label"| X3["raises"]
+    REG -->|"valid"| OTEL["OpenTelemetry"] --> GRAF["Grafana, 5 dashboards"]
+
+    style REG fill:#e6f3ff,stroke:#06c
+    style X1 fill:#ffe6e6,stroke:#c00
+    style X2 fill:#ffe6e6,stroke:#c00
+    style X3 fill:#ffe6e6,stroke:#c00
+```
+
+The three raising edges exist because **Grafana fails silently**. A metric renamed in code and not
+in a panel query renders an empty graph and says nothing about why — and an empty graph on a
+monitoring dashboard reads as "nothing is happening", which is the most dangerous possible way to
+be wrong. Failing at emission turns that into a crash at the one moment somebody is looking.
+
 That discipline exists because **Grafana fails silently**. A metric renamed in code and not in a
 panel query renders an empty graph and says nothing about why, and an empty graph on a monitoring
 dashboard reads as "nothing is happening" — the most dangerous possible way to be wrong.
@@ -102,16 +125,27 @@ A malformed context is dropped, never fatal — the measurement is worth more th
 
 ### The shape of a trace
 
+```mermaid
+flowchart TB
+    B["block<br/>structural root, one per acquisition block"]
+    B --> A["acquire<br/>recorded over the pull interval"]
+    B --> P["preprocess"]
+    B --> D["detect"]
+    B --> E["estimate<br/>one per pass detected in this block"]
+    E --> PUB["publish<br/>stamps the payload here — the last<br/>moment the edge holds both"]
+    PUB --> ING["ingest<br/>(other process)"]
+    ING --> PER["persist<br/>(other process)<br/>one span per row, over the batch's<br/>real interval"]
+
+    style B fill:#f0f0f0,stroke:#888
 ```
-block                       (structural root, one per acquisition block)
-├── acquire                 recorded over the pull interval
-├── preprocess
-├── detect
-└── estimate                one per pass detected in this block
-    └── publish             stamps the payload here -- the last moment the edge holds both
-        ├── ingest          (other process)
-        └── persist         (other process)
-```
+
+`block` is a structural parent, **not a stage of the measurement**. It exists because per-stage
+latency needs the stages to be *siblings*: making `acquire` the parent would report it as taking as
+long as everything it contains, which is the opposite of what is being asked for.
+
+Note that `persist` is parented to `ingest`, not to `publish`. Parenting it to `publish` is the
+obvious shortcut, since the row already carries that context — and it draws persist as a *sibling*
+of ingest, two concurrent operations where in fact one follows the other.
 
 `block` is a structural parent, not a stage of the measurement. It exists because per-stage latency
 needs the stages to be *siblings*: making `acquire` the parent would report it as taking as long as

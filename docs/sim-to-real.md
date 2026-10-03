@@ -306,6 +306,59 @@ wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1
 wimsim gap-report data/real/20260209_cintron1 --channel Tenzo1 -o data/results/gap/c1_t1.md
 ```
 
+```mermaid
+flowchart LR
+    REAL["real recording<br/>60 s at 25 kHz"] --> CN
+    SYN["SyntheticSource<br/>generated at the RECORDING'S<br/>sample rate"] --> CN
+
+    CN["compare_noise<br/>band by band, mains separately"] --> REP
+    REAL --> DR["estimate_drift_rate<br/>log-log slope below 5 Hz<br/>+ how many decades it resolved"] --> REP
+    REAL --> PS["compare_pulse_shape<br/>four candidates, ranked by<br/>normalised RMS residual"] --> REP
+
+    REP["GapReport"] --> OV["--set lines that move the model<br/>towards the recording"]
+
+    style SYN fill:#e6f3ff,stroke:#06c
+```
+
+The synthetic side is generated at the **recording's own** sample rate, not the station's. That is
+not a convenience: `noise.white_sigma` is a per-sample quantity, so comparing PSDs computed on two
+different grids would show differences that are entirely an artefact of the grids.
+
+It is a comparison, not a verdict. There is no pass mark, because a simulator that matched a real
+sensor on every statistic would mean the statistics were not discriminating.
+
+### Leave one recording out — `wimsim validate-sim`
+
+`gap-report` fits on a recording and reports against the same recording. That is the gap section
+V-C of the manuscript concedes, and it is closed by a second command:
+
+```mermaid
+flowchart TB
+    ALL["8 recordings"] --> FOLD
+
+    subgraph FOLD["one fold, repeated 8 times"]
+        direction TB
+        TRAIN["fit on 7<br/>method-of-moments, pooled by median"] --> GEN["synthesise on the held-out<br/>recording's own grid"]
+        GEN --> CMPF["compare statistics against<br/>the recording it never saw"]
+    end
+
+    FOLD --> HELD["held-out agreement<br/>log2(sim / real)"]
+    ALL --> INS["in-sample agreement<br/>the recording's OWN fit"]
+
+    HELD --> READ{"held out vs in sample"}
+    INS --> READ
+    READ -->|"both equally bad"| B1["a bias in the FITTING procedure"]
+    READ -->|"held out much worse"| B2["it does not generalise"]
+
+    style READ fill:#e6f3ff,stroke:#06c
+```
+
+The in-sample column is not a second result, it is what makes the first one readable. Two statistics
+disagreed on this corpus and the contrast separated them: baseline increments came out 2.1× too
+large on every fold *including* the in-sample one — a bias in the fit, since the model also moves
+its zero line through 1/f noise and thermal coupling — while the event shape was 0.31 held out
+against 0.00 in sample, which is a genuine failure to transfer.
+
 It compares the recording against a synthetic stream generated at the recording's own sample rate,
 in three parts -- noise in bands, drift as a spectral slope, pulse shape by fitting four candidates
 -- and ends with the `--set` lines that move the model towards it.
