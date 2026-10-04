@@ -40,7 +40,14 @@ experiment_id: sparse_tuning
 description: >
   CUSUM and Page-Hinkley at three thresholds each, bracketing their best observed points, with one
   ADWIN and one KS arm as controls, at one reference in twenty and one in fifty, ten seeds.
-scenarios: [S4_step_fault, S6_combined]
+# SCENARIO: S4 only. S6_combined is dropped on C2's evidence, not for convenience -- every
+# S6 detector ladder there is noise (maximum 2 of 20 anywhere, every ladder non-monotone,
+# smallest Fisher p 0.4872), so asking whether tuning recovers detection on S6 at a
+# SPARSER reference rate starts from a floor of zero and can only confirm it. S4 carries a
+# clean injected step fault and is where detection has ever been observed at all. S6 is
+# also the slow half: 48 h of simulated time against S4's 16, so dropping it buys about
+# ninety minutes. Declared here and in OPEN.md rather than left implicit.
+scenarios: [S4_step_fault]
 estimators: [rls]
 seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 reference_rates: [20, 50]
