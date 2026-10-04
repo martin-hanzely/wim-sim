@@ -37,3 +37,263 @@ separate.
 - Switching on temperature compensation to make section III-B true retrospectively.
 
 ---
+
+## Stage A — analysis only, no simulation
+
+Completed 2026-10-04. No run was executed for this stage; every figure below is a reduction of
+results already in `data/results/`.
+
+### A0. Corrections to the audit's own premises
+
+Three of the audit's statements did not survive checking. They are recorded here first because
+Stages C–F were scoped on them.
+
+**A0.1 — `ladder30`, `cintron_ladder30`, `heldout30` and `ablation` DID run with the controller
+active.** The audit's "do not rerun these" list rests on the claim that "`default.yaml` ships
+`control.enabled: false`, and the comparison reports confirm the controller was not an axis in the
+ladder sweeps". `default.yaml` does ship `enabled: false` — but every ladder sweep overrides it.
+`ladder30`'s own spec carries `edge_overrides: ["edge.control.enabled=true"]`, and the recorded
+`control_enabled` column is `True` on all 630 rows.
+
+"Not an axis" and "not active" are different statements. The controller was not *varied* in those
+sweeps; it was *pinned on*. What the runs recorded:
+
+| sweep | runs | control active | alarms | recalibrations | degradations |
+|---|---|---|---|---|---|
+| `ladder` | 63 | yes (63/63) | 73 | 9 | 1 |
+| `ladder30` | 630 | yes (630/630) | 798 | 117 | 27 |
+| `cintron_ladder` | 63 | yes (63/63) | 71 | 8 | 0 |
+| `cintron_ladder30` | 630 | yes (630/630) | 691 | 87 | 16 |
+| `heldout30` | 360 | yes (360/360) | 1234 | 220 | 46 |
+| `theta2` | 180 | **no (0/180)** | – | – | – |
+| `ablation` | 150 | yes (150/150) | 244 | 50 | 6 |
+| `recal_coverage` | 300 | yes (300/300) | 492 | 156 | 50 |
+
+The controller did not merely run, it acted: 117 recalibrations in `ladder30` alone. Of the five
+sweeps the audit lists as unaffected, **only `theta2` is**. Any change to confirmation-window
+semantics touches the other four.
+
+This does not by itself mean they must be rerun — the confirmation window is reached in these
+sweeps, which is why recalibrations happened — but the reason given for exempting them is not a
+fact about the data, and the exemption cannot stand on it.
+
+**A0.2 — the thermal claim is right about the preprocessor and wrong as stated about the project.**
+"No temperature compensation runs in any reported experiment" holds for the *upstream* mechanism and
+only for it. Verified: `experiments/offline.py:97` bootstraps `temp_coeff=0.0`; `_estimator_for` in
+`closed_loop.py` never passes `temp_coeff`, so every estimator keeps its constructor default of
+`0.0`; no file under `configs/` sets the key at all; and `edge/preprocess.py:419` returns a thermal
+factor of exactly `1.0` when the coefficient is zero. The upstream path is inert in every run.
+
+But `theta2` runs the `affine_temp` estimator, which fits the section III-B interaction term
+`m = theta0 + theta1*s + theta2*(s*dT)` online, and that sweep is reported. Section III-B describes
+*that* map. So the correction to III-B is narrower than "the path never ran": the three-parameter
+map was fitted and tested, and what never ran is the fixed-coefficient upstream compensation the
+preprocessor implements. Both facts belong in the text; conflating them would replace one wrong
+sentence with another.
+
+**A0.3 — the confirmation window is worse than the audit states, by a factor of two.** The audit
+counts `confirmation_passes` only. `drift.warmup` is also 60 and is also counted in *references*,
+and the two are sequential: no detector can alarm before warm-up completes, and confirmation begins
+only after an alarm. The earliest a recalibration can occur is therefore
+`(warmup + confirmation_passes) * reference_every_n / rate`.
+
+On `S4_step_fault` at one reference in ten, 220 veh/h: warm-up 9,818 s, confirmation 9,818 s,
+earliest recalibration **19,636 s** — 10.9× the 1,800 s fault horizon, not 5.5×.
+
+### A1. Configuration provenance
+
+Every sweep was re-resolved using **the code and configs of the commit it actually ran on**, via a
+detached worktree per commit, and the resulting `edge_config_hash` set compared against the hashes
+recorded in its own `results.parquet`.
+
+**All fourteen sweeps verify exactly** — resolved hash set equals recorded hash set in every case:
+
+| sweep | commit | runs | distinct edge configs | hash verified | control active |
+|---|---|---|---|---|---|
+| `ladder` | c1881d4f | 63 | 3 | yes | yes |
+| `ladder30` | a2c70f37 | 630 | 3 | yes | yes |
+| `cintron_ladder` | 76cc3775 | 63 | 3 | yes | yes |
+| `cintron_ladder30` | f10cbd83 | 630 | 3 | yes | yes |
+| `heldout30` | ac1af03c | 360 | 3 | yes | yes |
+| `theta2` | a2c70f37 | 180 | 2 | yes | no |
+| `ablation` | da9ca44f | 150 | 3 | yes | yes |
+| `reference_rate` | c1881d4f | 180 | 30 | yes | yes |
+| `reference_rate_ph75` | 6523c7de | 180 | 30 | yes | yes |
+| `reference_rate30` | 1d452935 | 1260 | 42 | yes | yes |
+| `detectors` | 8cda5fd9 | 100 | 5 | yes | yes |
+| `detector_thresholds` | b675c9d5 | 340 | 17 | yes | yes |
+| `governance` | f40ca518 | 18 | 6 | yes | yes |
+| `recal_coverage` | 76cc3775 | 300 | 15 | yes | yes |
+
+**This verification step was load-bearing and changed a number.** Re-resolving the specs against
+*today's* configs reports Page–Hinkley 7.5 for the older sweeps. That is wrong: commit `6523c7d`
+("Ship Page-Hinkley at 7.5") changed the default from 15.0, and every sweep predating it ran at
+**15.0**. The naive re-resolution disagreed with the recorded hashes on exactly the seven
+pre-`6523c7d` sweeps, which is how the error was caught. The table below carries the thresholds
+that were actually in force.
+
+**`confirmation_passes` is 60 in every sweep without exception** — the audit's finding C is resolved
+in favour of `default.yaml`. The dataclass default of 30 at `controller.py:120` is never reached by
+any experiment, because every sweep loads a config file and every config file that sets the key sets
+it to 60. The two values should still be reconciled, but no reported result depends on 30.
+
+Full per-cell table in `export/data/provenance_long.csv`. The control-enabled cells:
+
+| sweep | scenario | ref_n | conf_passes | warmup_refs | PH | CUSUM | veh/h | horizon_s | conf_s | earliest_recal_s | conf/horizon |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| ladder | S1_nominal | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| ladder | S2_thermal_cycle | 10 | 60 | 60 | 15.0 | 12.0 | 180.0 | 1800.0 | 12000 | 24000 | 6.67 |
+| ladder | S3_zero_drift_walk | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ladder | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| ladder | S5_outage | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| ladder | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ladder | S7_sparse_reference | 10 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| ladder30 | S1_nominal | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| ladder30 | S2_thermal_cycle | 10 | 60 | 60 | 15.0 | 12.0 | 180.0 | 1800.0 | 12000 | 24000 | 6.67 |
+| ladder30 | S3_zero_drift_walk | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ladder30 | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| ladder30 | S5_outage | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| ladder30 | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ladder30 | S7_sparse_reference | 10 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| cintron_ladder | S1_nominal | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| cintron_ladder | S2_thermal_cycle | 10 | 60 | 60 | 15.0 | 12.0 | 180.0 | 1800.0 | 12000 | 24000 | 6.67 |
+| cintron_ladder | S3_zero_drift_walk | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| cintron_ladder | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| cintron_ladder | S5_outage | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| cintron_ladder | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| cintron_ladder | S7_sparse_reference | 10 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| cintron_ladder30 | S1_nominal | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| cintron_ladder30 | S2_thermal_cycle | 10 | 60 | 60 | 15.0 | 12.0 | 180.0 | 1800.0 | 12000 | 24000 | 6.67 |
+| cintron_ladder30 | S3_zero_drift_walk | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| cintron_ladder30 | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| cintron_ladder30 | S5_outage | 10 | 60 | 60 | 15.0 | 12.0 | 240.0 | 1800.0 | 9000 | 18000 | 5.0 |
+| cintron_ladder30 | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| cintron_ladder30 | S7_sparse_reference | 10 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| heldout30 | H1_warm_front | 10 | 60 | 60 | 7.5 | 12.0 | 310.0 | 1800.0 | 6968 | 13935 | 3.87 |
+| heldout30 | H2_gain_jolt | 10 | 60 | 60 | 7.5 | 12.0 | 275.0 | 1800.0 | 7855 | 15709 | 4.36 |
+| heldout30 | H3_slow_fade | 10 | 60 | 60 | 7.5 | 12.0 | 450.0 | 1800.0 | 4800 | 9600 | 2.67 |
+| heldout30 | H4_pileup | 10 | 60 | 60 | 7.5 | 12.0 | 155.0 | 1800.0 | 13935 | 27871 | 7.74 |
+| ablation | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ablation | S6_ablate_thermal | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ablation | S6_ablate_zero_walk | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ablation | S6_ablate_outage | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| ablation | S6_ablate_calibration_fault | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| reference_rate | S4_step_fault | 2 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 1964 | 3927 | 1.09 |
+| reference_rate | S4_step_fault | 5 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 4909 | 9818 | 2.73 |
+| reference_rate | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| reference_rate | S4_step_fault | 20 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 19636 | 39273 | 10.91 |
+| reference_rate | S4_step_fault | 50 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 49091 | 98182 | 27.27 |
+| reference_rate | S7_sparse_reference | 2 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 720 | 1440 | 0.4 |
+| reference_rate | S7_sparse_reference | 5 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 1800 | 3600 | 1.0 |
+| reference_rate | S7_sparse_reference | 10 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| reference_rate | S7_sparse_reference | 20 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 7200 | 14400 | 4.0 |
+| reference_rate | S7_sparse_reference | 50 | 60 | 60 | 15.0 | 12.0 | 600.0 | 1800.0 | 18000 | 36000 | 10.0 |
+| reference_rate_ph75 | S4_step_fault | 2 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 1964 | 3927 | 1.09 |
+| reference_rate_ph75 | S4_step_fault | 5 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 4909 | 9818 | 2.73 |
+| reference_rate_ph75 | S4_step_fault | 10 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| reference_rate_ph75 | S4_step_fault | 20 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 19636 | 39273 | 10.91 |
+| reference_rate_ph75 | S4_step_fault | 50 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 49091 | 98182 | 27.27 |
+| reference_rate_ph75 | S7_sparse_reference | 2 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 720 | 1440 | 0.4 |
+| reference_rate_ph75 | S7_sparse_reference | 5 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 1800 | 3600 | 1.0 |
+| reference_rate_ph75 | S7_sparse_reference | 10 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| reference_rate_ph75 | S7_sparse_reference | 20 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 7200 | 14400 | 4.0 |
+| reference_rate_ph75 | S7_sparse_reference | 50 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 18000 | 36000 | 10.0 |
+| reference_rate30 | S4_step_fault | 1 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 982 | 1964 | 0.55 |
+| reference_rate30 | S4_step_fault | 2 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 1964 | 3927 | 1.09 |
+| reference_rate30 | S4_step_fault | 3 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 2945 | 5891 | 1.64 |
+| reference_rate30 | S4_step_fault | 5 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 4909 | 9818 | 2.73 |
+| reference_rate30 | S4_step_fault | 10 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| reference_rate30 | S4_step_fault | 20 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 19636 | 39273 | 10.91 |
+| reference_rate30 | S4_step_fault | 50 | 60 | 60 | 7.5 | 12.0 | 220.0 | 1800.0 | 49091 | 98182 | 27.27 |
+| reference_rate30 | S7_sparse_reference | 1 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 360 | 720 | 0.2 |
+| reference_rate30 | S7_sparse_reference | 2 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 720 | 1440 | 0.4 |
+| reference_rate30 | S7_sparse_reference | 3 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 1080 | 2160 | 0.6 |
+| reference_rate30 | S7_sparse_reference | 5 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 1800 | 3600 | 1.0 |
+| reference_rate30 | S7_sparse_reference | 10 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 3600 | 7200 | 2.0 |
+| reference_rate30 | S7_sparse_reference | 20 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 7200 | 14400 | 4.0 |
+| reference_rate30 | S7_sparse_reference | 50 | 60 | 60 | 7.5 | 12.0 | 600.0 | 1800.0 | 18000 | 36000 | 10.0 |
+| detectors | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| detectors | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| detector_thresholds | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| detector_thresholds | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| governance | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+| recal_coverage | S4_step_fault | 10 | 60 | 60 | 15.0 | 12.0 | 220.0 | 1800.0 | 9818 | 19636 | 5.45 |
+| recal_coverage | S6_combined | 10 | 60 | 60 | 15.0 | 12.0 | 200.0 | 1800.0 | 10800 | 21600 | 6.0 |
+
+### A2. Held-out hygiene
+
+**Seed counts are consistent.** `heldout30` ran seeds 1–30 for every one of the four scenarios and
+all three estimators — 30/30/30/30, no gaps, 360 runs.
+
+**The H ↔ S mapping**, taken from the declarations in the held-out scenario files themselves:
+
+| held-out | development | class | floor H | floor S | static MAE H | static MAE S | H MAE/floor | S MAE/floor | **drawn harder by** |
+|---|---|---|---|---|---|---|---|---|---|
+| `H1_warm_front` | `S2_thermal_cycle` | thermal | 197.1 | 136.1 | 1124 | 139 | 5.71× | 1.02× | **5.6×** |
+| `H2_gain_jolt` | `S4_step_fault` | abrupt fault | 248.4 | 136.4 | 322 | 182 | 1.30× | 1.34× | **1.0×** |
+| `H3_slow_fade` | `S7_sparse_reference` | slow ramp | 111.3 | 158.3 | 308 | 179 | 2.77× | 1.13× | **2.4×** |
+| `H4_pileup` | `S6_combined` | combined | 340.9 | 191.2 | 941 | 697 | 2.76× | 3.65× | **0.8×** |
+
+All figures are medians over 30 seeds, `static_affine` arm, kg. "Drawn harder by" is the ratio of
+the two MAE/floor columns: how much further above its own dynamic load floor the held-out scenario
+sits than its development counterpart does.
+
+On what dimension each pair differs:
+
+- **H1 vs S2** — warmer site, daily swing half again as large, cooling rather than warming across
+  the days, slower probe, twice-as-fast alpha walk, denser traffic with heavier dynamic load at a
+  higher frequency, markedly less symmetric pulse.
+- **H2 vs S4** — three faults rather than two; the first is a gain *rise*, where every injected
+  sensitivity fault in S1–S8 reduces the gain; the displacement moves the zero line down while
+  reducing the gain, where S4's moves it up while raising the gain; cold near-isothermal site.
+- **H3 vs S7** — a three-hour ramp rather than two; a 4.2 % rise rather than a 3 % loss; the zero
+  line walks and slopes underneath the fault, where S7 holds it nearly still.
+- **H4 vs S6** — cold site with the largest daily swing in the suite; sparse traffic (155 vs
+  200 veh/h); heavy low-frequency dynamic load; faster zero walk sloping the other way; louder
+  mains; ringing pulse; gain fault rises where S6's falls.
+
+Station is **not** a confound: both sets run on `endurance`.
+
+**The difficulty confound, stated plainly: the two classes that fail to reproduce are exactly the
+two drawn several times harder.** H1 at 5.6× and H3 at 2.4× are the two that do not reproduce;
+H2 at 1.0× and H4 at 0.8× are the two that do. This belongs beside the held-out results, not only
+in the discussion, because without it the natural reading — that the thermal and slow-ramp classes
+fail to transfer — is not separable from the reading that those two draws were simply harder.
+
+**The "sign flip" description of H3 Kalman is withdrawn.** The measured difference is
+`static_affine -> kalman` **+28.0 kg**, rank-biserial **+0.13**, exact Wilcoxon **p = 0.556**,
+**p_holm = 1**, with per-seed signs **18 positive / 12 negative** over 30 seeds and an IQR of
+[−53.8, +54.3] kg straddling zero. That is an unseparated result in the opposite direction, which
+is not a sign flip. For contrast, the two differences that *are* separated on this set are
+unanimous: H1 at +251.4 kg with 30/30 positive signs, H2 at −47.4 kg with 30/30 negative.
+
+### A3. Floor corrections
+
+**Confirmed, all seven, to within rounding.** Medians over 30 seeds from `ladder30_long.csv`:
+
+| scenario | median floor (kg) | quoted | delta | IQR (kg) |
+|---|---|---|---|---|
+| `S1_nominal` | 0.0 | 0.0 | 0.00 | [0.0, 0.0] |
+| `S2_thermal_cycle` | 136.1 | 136.1 | −0.01 | [134.8, 137.7] |
+| `S3_zero_drift_walk` | 135.7 | 135.7 | +0.03 | [132.4, 138.8] |
+| `S4_step_fault` | 136.4 | 136.4 | −0.04 | [132.3, 140.5] |
+| `S5_outage` | 136.2 | 136.2 | +0.04 | [131.4, 140.2] |
+| `S6_combined` | 191.2 | 191.2 | −0.04 | [185.5, 193.5] |
+| `S7_sparse_reference` | 158.3 | 158.3 | +0.02 | [155.5, 161.5] |
+
+The floor is **identical across all three estimators** within each scenario and seed, which is the
+property that makes it a floor rather than an error figure: it is a function of the scenario draw
+and the seed, and no calibration can move it. Every reported floor must be labelled as such.
+
+**For section V-A, on `S6_combined`** (medians over 30 seeds, floor 191.2 kg):
+
+| arm | median MAE | above floor | IQR |
+|---|---|---|---|
+| `static_affine` | 696.9 | **505.8** | [660.8, 743.3] |
+| `rls` | 665.7 | **474.6** | [628.2, 700.9] |
+| `kalman` | 707.3 | 516.2 | [673.4, 759.2] |
+
+Tracking recovers **31.2 kg of 505.8 kg, or 6.2 % of the excess over the floor**. The audit's 505.7
+and ~475 are confirmed; the recovered fraction is 6.2 %, matching its ~6 %.
+
+---
