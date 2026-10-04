@@ -440,3 +440,104 @@ An unexplained null in a headline result is a reviewer's first question; this on
 answer, and the answer is partly unflattering to the ladder.
 
 ---
+
+## Stage C2 — section V-D downgraded
+
+Completed 2026-10-04. Analysis only, over the stored `detector_thresholds` sweep (340 runs, ten
+seeds, 20 fault opportunities per arm per scenario).
+
+**The audit's arithmetic is confirmed, and the sweep is weaker than even the audit's reading of
+it.** Not one of the twenty-six threshold arms separates from its own ladder's shipped baseline.
+
+### C2a. The specific claim
+
+1 of 20 against 5 of 20 gives **Fisher exact two-sided p = 0.1818** (one-sided 0.0909), exactly
+the ≈ 0.18 the audit states. **This is an observation, not a design rule, and must not be
+written as one.** No mechanism argument changes a p of 0.18; a mechanism explains an effect that
+has been established, and this one has not been.
+
+### C2b. The shape of each ladder — `S4_step_fault`
+
+Sensitivity increases down each block. False alarms are medians over ten seeds.
+
+| detector | knob | caught | of | recall | false alarms/h | alarms |
+|---|---|---|---|---|---|---|
+| CUSUM | 12.0 (shipped) | 3 | 20 | 0.150 | 0.0625 | 15 |
+| CUSUM | 6.0 | 3 | 20 | 0.150 | 0.1250 | 21 |
+| CUSUM | 3.0 | 2 | 20 | 0.100 | 0.1875 | 30 |
+| CUSUM | 1.5 | 1 | 20 | 0.050 | 0.1875 | 30 |
+| Page–Hinkley | 15.0 (shipped) | 1 | 20 | 0.050 | 0.0625 | 9 |
+| Page–Hinkley | 7.5 | 5 | 20 | 0.250 | 0.0625 | 17 |
+| Page–Hinkley | 3.75 | 5 | 20 | 0.250 | 0.1250 | 25 |
+| Page–Hinkley | 1.875 | 1 | 20 | 0.050 | 0.1875 | 30 |
+| ADWIN | 0.002 (shipped) | 0 | 20 | 0.000 | 0.0625 | 12 |
+| ADWIN | 0.01 | 1 | 20 | 0.050 | 0.0625 | 13 |
+| ADWIN | 0.05 | 2 | 20 | 0.100 | 0.0625 | 13 |
+| ADWIN | 0.25 | 2 | 20 | 0.100 | 0.0625 | 16 |
+| ADWIN | 0.9 | 2 | 20 | 0.100 | 0.1250 | 19 |
+| KS | 1e-4 (shipped) | 0 | 20 | 0.000 | 0.0000 | 4 |
+| KS | 1e-3 | 0 | 20 | 0.000 | 0.0625 | 7 |
+| KS | 1e-2 | 0 | 20 | 0.000 | 0.0625 | 9 |
+| KS | 1e-1 | 0 | 20 | 0.000 | 0.0625 | 11 |
+
+**CUSUM declines monotonically: 3, 3, 2, 1. It does not invert.** Calling the CUSUM result an
+inversion is wrong and the text must say "declines".
+
+**Page–Hinkley is the only arm that inverts: 1, 5, 5, 1.** ADWIN in fact *rises* monotonically
+(0, 1, 2, 2, 2). KS is flat at zero across a thousandfold range of alpha.
+
+The knobs are not inert — the alarm counts and false-alarm rates climb with sensitivity exactly
+as they should (CUSUM 15 → 30 alarms, 0.0625 → 0.1875 per hour). What does not climb is
+detections.
+
+### C2c. `S6_combined` — every ladder is noise
+
+| detector | sequence (sensitivity increasing) | shape |
+|---|---|---|
+| CUSUM | 0, 2, 0, 0 | not monotone |
+| Page–Hinkley | 0, 0, 2, 0 | not monotone |
+| ADWIN | 0, 1, 0, 0, 0 | not monotone |
+| KS | 0, 0, 0, 0 | flat |
+
+Maximum 2 of 20 anywhere. There is no curve here to describe in either direction.
+
+### C2d. Nothing separates, anywhere
+
+Fisher exact, each arm against its own ladder's shipped baseline, both scenarios, 26 comparisons:
+
+| scenario | smallest p | which arm |
+|---|---|---|
+| `S4_step_fault` | **0.1818** | Page–Hinkley 7.5 and 3.75, each 5/20 vs 1/20 |
+| `S6_combined` | **0.4872** | CUSUM 6.0 and PH 3.75, each 2/20 vs 0/20 |
+
+Every other comparison is at p ≥ 0.4872, and most are at p = 1.0. Holm over the family of 26
+leaves nothing within reach of 0.05 — the smallest corrected value would be 0.1818 × 26 ≈ 4.7,
+capped at 1.
+
+**So the sweep's honest summary is: across a thousandfold range on four detectors, no threshold
+setting changed detection recall by a statistically distinguishable amount on either scenario,
+while false alarms roughly tripled.** The shipped thresholds are not demonstrably better or worse
+than any of the alternatives tested. That is a clean negative result and should be reported as
+one.
+
+### C2e. The mechanism paragraph, with the corrected arithmetic
+
+The mechanism that section V-D offers for the inversion — that a spurious alarm holds the
+controller in `DRIFT_SUSPECTED` and consumes the window a real fault must be caught in — is
+arithmetically understated wherever it is quoted at 982 s. From A0.3 and A1, on
+`S4_step_fault` at one reference in ten and 220 veh/h:
+
+- confirmation window: 60 residuals × 10 passes ÷ 220 veh/h = **9,818 s**
+- detector warm-up ahead of it: 60 references × 10 passes ÷ 220 veh/h = **9,818 s**
+- earliest possible recalibration: **19,636 s**, against an 1,800 s fault horizon — **10.9×**
+
+982 s is the figure for one reference in **one**, not one in ten, and even there it is 55 % of
+the horizon.
+
+**This mechanism remains a hypothesis.** It is directly tested in C1, and C1 must be read in the
+light of C2: it is testing the cause of an effect — the Page–Hinkley inversion — that is itself
+only a four-count difference at p = 0.18. The C1 design is paired by seed, which is more
+powerful than the unpaired Fisher comparison above, but no outcome of C1 can retrospectively
+establish the inversion it was built to explain.
+
+---
