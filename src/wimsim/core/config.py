@@ -1011,6 +1011,28 @@ class ControlConfig(_Base):
         "correction, so more passes are measured under the faulty calibration -- which is why 90 "
         "is worse than 60 rather than better.",
     )
+    confirmation_max_s: float | None = Field(
+        None,
+        gt=0.0,
+        description="Wall-clock cap on the confirmation window, or null for none.\n"
+        "\n"
+        "confirmation_passes counts RESIDUALS, and a residual exists only when a reference "
+        "vehicle crosses, so the window lasts confirmation_passes * reference_every_n / rate. It "
+        "scales with the reference supply -- which in the reference-rate experiment is the swept "
+        "variable, so the controller's own time constant moved with the independent variable. On "
+        "S4_step_fault at one reference in ten and 220 veh/h the window is 9,818 s against an "
+        "1,800 s fault horizon, and the detector warm-up ahead of it is another 9,818 s.\n"
+        "\n"
+        "With a cap the window closes at whichever comes first, the count or the clock. Nothing "
+        "more is needed to keep that honest: the confirmation gate already scales its bar by "
+        "1/sqrt(n), so a window truncated to a third of its residuals demands a displacement "
+        "sqrt(3) larger. Below two residuals the window returns undecided rather than confirming "
+        "on noise.\n"
+        "\n"
+        "Seconds rather than a fraction of the fault horizon, because the horizon is a scoring "
+        "concept belonging to experiments/ and the controller must not know about it. The sweep "
+        "converts. null is the default because it is what every sweep before Stage D ran with.",
+    )
     confirm_sigma: float = Field(
         3.0,
         gt=0.0,

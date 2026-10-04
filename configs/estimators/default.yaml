@@ -65,6 +65,9 @@ control:
   enabled: false
   confirmation_passes: 60    # the confirmable floor is 3 * 1.2533 / sqrt(this) residual sigmas
   confirm_sigma: 3.0
+  # null = no cap, which is what every sweep before the Stage D revision ran with.
+  # Written out so an override can reach it. Stage D sets it from the fault horizon.
+  confirmation_max_s: null
   min_reference_observations: 10
   cooldown_s: 3600.0
   verification_passes: 50

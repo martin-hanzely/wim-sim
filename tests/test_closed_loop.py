@@ -382,3 +382,22 @@ def test_control_blocking_reaches_the_controller(blocking):
 
 def test_control_blocking_defaults_to_the_behaviour_every_earlier_sweep_ran():
     assert load_edge_config("default").control.blocking is True
+
+
+@pytest.mark.parametrize("cap", [None, 900.0])
+def test_confirmation_max_s_reaches_the_controller(cap):
+    """Stage D's arms differ in this value, so a dropped flag would make them identical."""
+    from wimsim.experiments.closed_loop import _controller_for
+
+    overrides = ["edge.control.enabled=true"]
+    if cap is not None:
+        overrides.append(f"edge.control.confirmation_max_s={cap}")
+    edge_cfg = load_edge_config("default", overrides=overrides)
+    assert edge_cfg.control.confirmation_max_s == cap
+
+    controller = _controller_for(edge_cfg, estimator=None, references=None)
+    assert controller.config.confirmation_max_s == cap
+
+
+def test_confirmation_window_is_uncapped_by_default():
+    assert load_edge_config("default").control.confirmation_max_s is None

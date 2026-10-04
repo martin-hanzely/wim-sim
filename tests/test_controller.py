@@ -714,3 +714,75 @@ def test_non_blocking_does_not_re_report_the_same_latched_alarm():
 
 def test_blocking_defaults_to_true_so_existing_results_keep_their_meaning():
     assert ControllerConfig().blocking is True
+
+
+# -- the confirmation window's duration, for Stage D1 --------------------------------------------
+#
+# `confirmation_passes` counts RESIDUALS, and a residual exists only when a reference vehicle
+# crosses. So the window's duration is confirmation_passes * reference_every_n / traffic_rate --
+# it scales with the reference rate, which is the swept factor of the reference-rate experiment.
+# The controller's own time constant therefore moved with the independent variable, which is the
+# defect D1 fixes.
+#
+# The fix is a count WITH A TIME CAP: the window closes at whichever of the two comes first.
+# `confirmation_max_s=None` is the old behaviour and stays the default, so no stored result
+# changes meaning.
+#
+# Nothing extra is needed to keep the decision honest, because `_displaced` already scales the
+# bar by 1/sqrt(n): a window truncated to a third of its residuals automatically demands a
+# displacement sqrt(3) larger. The cap trades detection power for timeliness, and the gate
+# charges for the trade rather than hiding it.
+
+
+def _suspicious(**overrides):
+    """A controller in DRIFT_SUSPECTED, with the clock under the test's control."""
+    controller = _controller(confirmation_passes=1000, **overrides)
+    plant = _Plant(controller, seed=11)
+    plant.run(200, reference_every=2)
+    plant.fault(6.0 * plant.scale)
+    plant.run(10, reference_every=1)
+    assert controller.state == "DRIFT_SUSPECTED"
+    return controller, plant
+
+
+def test_confirmation_window_is_unbounded_in_time_by_default():
+    controller, plant = _suspicious()
+    plant.run(400, reference_every=1)
+    assert controller.state == "DRIFT_SUSPECTED", (
+        "default must stay count-only, or every stored controller result changes meaning"
+    )
+
+
+def test_confirmation_max_s_closes_the_window_on_time():
+    controller, plant = _suspicious(confirmation_max_s=30.0)
+    plant.run(400, reference_every=1)
+    assert controller.state != "DRIFT_SUSPECTED", (
+        "the time cap did not close a window that 1000 residuals never would have"
+    )
+
+
+def test_confirmation_max_s_defaults_to_none():
+    assert ControllerConfig().confirmation_max_s is None
+
+
+def test_a_truncated_window_still_decides_on_the_residuals_it_has():
+    """A real, large step must still confirm when the cap fires early."""
+    controller, plant = _suspicious(confirmation_max_s=30.0, min_reference_observations=5)
+    plant.run(400, reference_every=1)
+    assert controller.recalibration_count >= 1, (
+        "a six-sigma step inside a truncated window was not confirmed; the cap must shorten the "
+        "window, not disable the gate"
+    )
+
+
+def test_a_truncated_window_with_too_few_residuals_does_not_confirm():
+    """Below two residuals there is no median worth testing, so the honest answer is to stop."""
+    controller = _controller(confirmation_passes=1000, confirmation_max_s=1e-9)
+    plant = _Plant(controller, seed=12)
+    plant.run(200, reference_every=2)
+    plant.fault(20.0 * plant.scale)
+    plant.run(100, reference_every=1)
+    assert controller.recalibration_count == 0, (
+        "confirmed a drift on fewer than two residuals, which is the decorative gate the "
+        "confirm_sigma analysis exists to prevent"
+    )

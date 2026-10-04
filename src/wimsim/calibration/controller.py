@@ -101,6 +101,12 @@ ARBITRATION_MODES = ("local", "cloud")
 #: normally distributed data. Paid deliberately: see ``_displaced``.
 _MEDIAN_EFFICIENCY = 1.2533141373155003
 
+#: Below this many residuals the median of the confirmation window is not a level estimate, so a
+#: window the clock closed early returns undecided instead of confirming. Two, because that is the
+#: smallest sample a median and a standard error mean anything for at all -- the gate's own
+#: 1/sqrt(n) scaling does the rest of the work.
+_MIN_CONFIRMATION_RESIDUALS = 2
+
 State = Literal["MONITORING", "DRIFT_SUSPECTED", "RECALIBRATING", "VERIFYING", "DEGRADED"]
 #: Kept here as well as in ``core.schemas`` because this package may not import pydantic
 #: (principle 6). ``tests/test_controller.py`` asserts the two agree.
@@ -119,6 +125,30 @@ class ControllerConfig:
 
     confirmation_passes: int = 30
     """Residuals collected after an alarm before deciding whether it was real."""
+
+    confirmation_max_s: float | None = None
+    """Wall-clock cap on the confirmation window, or None for no cap.
+
+    ``confirmation_passes`` counts RESIDUALS, and a residual exists only when a reference vehicle
+    crosses, so the window's duration is ``confirmation_passes * reference_every_n / rate``. It
+    therefore scales with the reference supply -- which in the reference-rate experiment is the
+    independent variable, so the controller's own time constant moved with the thing being swept.
+    On ``S4_step_fault`` at one reference in ten and 220 veh/h the window is 9,818 s against an
+    1,800 s fault horizon.
+
+    With a cap the window closes at whichever comes first, the count or the clock, and the
+    decision is taken on the residuals that arrived. Nothing further is needed to keep that
+    honest: :meth:`_displaced` already scales the bar by ``1/sqrt(n)``, so a window truncated to a
+    third of its residuals demands a displacement ``sqrt(3)`` larger. The cap trades detection
+    power for timeliness and the gate charges for the trade rather than hiding it.
+
+    Below :data:`_MIN_CONFIRMATION_RESIDUALS` there is no median worth testing, and the window
+    returns to MONITORING undecided rather than confirming on noise.
+
+    None is the default because it is what every sweep before the Stage D revision ran with.
+    The controller is given seconds rather than a fraction of the fault horizon because the
+    horizon is a scoring concept that belongs to ``experiments/``; the caller converts.
+    """
 
     confirm_sigma: float = 3.0
     """How far the median of those residuals must still sit from the monitored level, in standard
@@ -361,8 +391,23 @@ class RecalibrationController:
     def _analyse(self, ts_us: int, residual: float) -> None:
         assert self._suspicion is not None
         self._suspicion.residuals.append(residual)
-        if len(self._suspicion.residuals) < self.config.confirmation_passes:
+        n = len(self._suspicion.residuals)
+        if n < self.config.confirmation_passes and not self._window_expired(ts_us):
             return
+
+        if n < self.config.confirmation_passes:
+            # The clock closed the window, not the count.
+            if n < _MIN_CONFIRMATION_RESIDUALS:
+                self._clear_detectors()
+                self._suspicion = None
+                self._transition(
+                    "MONITORING",
+                    ts_us,
+                    kind="recovered",
+                    reason=f"the confirmation window expired after {n} residual(s), too few to "
+                    "test a level against; undecided rather than confirmed",
+                )
+                return
 
         if not self._confirmed():
             # A blip. Clear the latch, or it re-triggers on the very next pass and forever after.
@@ -505,6 +550,13 @@ class RecalibrationController:
         if self._drift_since_us is None:
             return list(self._references)
         return [o for o in self._references if int(o.ts_us) >= self._drift_since_us]
+
+    def _window_expired(self, ts_us: int) -> bool:
+        """Has the confirmation window run out of time, independently of the residual count?"""
+        cap = self.config.confirmation_max_s
+        if cap is None or self._suspicion is None:
+            return False
+        return (int(ts_us) - self._suspicion.started_ts_us) / 1e6 >= cap
 
     def _confirmed(self) -> bool:
         assert self._suspicion is not None

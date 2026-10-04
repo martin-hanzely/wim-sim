@@ -377,6 +377,7 @@ def _controller_for(edge_cfg: EdgeConfig, estimator, references) -> Recalibratio
     return RecalibrationController(
         ControllerConfig(
             confirmation_passes=control.confirmation_passes,
+            confirmation_max_s=control.confirmation_max_s,
             confirm_sigma=control.confirm_sigma,
             min_reference_observations=control.min_reference_observations,
             cooldown_s=control.cooldown_s,
