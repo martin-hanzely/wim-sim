@@ -1132,3 +1132,94 @@ at any reference rate tested.** That is a negative result about the controller a
 it belongs beside the headline rather than in a limitation.
 
 ---
+
+## Summary of the revision — what changes the abstract, the contributions or the conclusion
+
+Written last, appended last. Every figure here is carried by a stage entry above; nothing new is
+asserted in this section. **The manuscript has not been rewritten — this is a report, not a
+revision of the narrative.**
+
+### Stages completed
+
+| stage | what it was | status |
+|---|---|---|
+| A1 | configuration provenance | done — all 14 sweeps hash-verified at their own commits |
+| A2 | held-out hygiene | done |
+| A3 | floor corrections | done — all seven confirmed |
+| B3 | why tracking does not help on S2 | done — 5 plant walks, 3 closed-loop runs, 1 figure |
+| C1 | blocking versus non-blocking | done — 680 runs, 0 failed |
+| C2 | downgrade section V-D | done — analysis only |
+| D1 | fix the window, rerun the reference rate | done — 280 runs, 0 failed |
+| E1 | the sparse-rate tuning claim | done — 160 runs, 0 failed |
+| F1 | Kalman Q and the bias/variance split | done — 50 runs, 0 failed |
+
+1,170 new runs, **zero failures**. Every new comparison was unanimous in sign at ten seeds, so
+under the pre-registered protocol none was escalated to thirty and both-stage reporting never
+became due.
+
+### Six results that change what the paper can claim
+
+**1. Section V-D's design rule must be withdrawn, and the mechanism with it.** The observation is
+1 of 20 against 5 of 20, Fisher exact **p = 0.1818**. Across all 26 arm-versus-baseline
+comparisons in the stored threshold sweep the smallest p is 0.1818 on S4 and 0.4872 on S6 —
+nothing separates anywhere. The direct causal test (C1, 680 runs) then **exonerates the proposed
+mechanism**: unblocking the controller doubles the alarms, unanimously at p_holm = 0.0078, and
+improves detection by 3 of 680 on S4 and 0 of 340 on S6. The honest reading is that the
+Page–Hinkley "inversion" is noise in a 20-opportunity sample. CUSUM must also be described as
+**declining monotonically** (3, 3, 2, 1), not inverting.
+
+**2. The sparse end of the reference-rate curve measures the detector warm-up, not reference
+availability.** `drift.warmup` is 60 *references*, so readiness scales with `reference_every_n`.
+On `S4_step_fault` the attainable recall is **0.50 at one reference in twenty and 0.00 at one in
+fifty** — faults whose 1,800 s horizons close before the detectors are ready. Checked against the
+stored `reference_rate30`: no run anywhere exceeds its ceiling and at both sparse rates the
+ceiling binds exactly. **"Recall 0.000 at one in fifty on S4" is not a detection result** and must
+not be reported as one. `S7_sparse_reference` has a ceiling of 1.00 throughout and is the
+scenario that measures what the experiment claims to.
+
+**3. Governance has no measurable effect on error at any reference rate.** With a
+horizon-commensurable confirmation window, **0 of 14 rate × scenario cells separate** after Holm,
+and most are exactly 0.00 kg with per-seed signs +0/−0 because the controller never acted. This
+belongs beside the headline, not in a limitations paragraph.
+
+**4. "Fixed variance cost" is unsupported and is removed.** The H1 penalty is genuinely a spread
+cost and not a bias cost — the Kalman's zero is *twice as good* as the static arm's — but the
+dependence on `process_noise_gain` **runs the wrong way**: stiffening Q two decades makes the
+penalty worse, loosening it two decades makes it better. Across four decades it never approaches
+the ablation's +29.3 kg. The observation stands and is reported as **unexplained**. The Kalman
+makes the same bias-for-spread trade on all four held-out scenarios; H1 differs only in size.
+
+**5. The section III-B correction is narrower than the audit stated.** No run exercises the
+*upstream, fixed-coefficient* temperature compensation — verified four ways. But `theta2` does fit
+the III-B interaction term online and is reported, so III-B describes a map that **was** tested.
+Conflating the two would replace one wrong sentence with another.
+
+**6. Tracking does help on `S2_thermal_cycle` — in bias, not in error.** S2's MAE is 98 % dynamic
+load floor and the thermal disturbance contributes 0.2 kg of it, so no estimator can win there.
+But absolute bias falls **23.7 → 5.7 kg** for RLS and 23.7 → 5.6 for Kalman, both at p_holm below
+1e-5. The mechanism is the bootstrap anchor: `static_affine` is fitted in the first 20 minutes and
+frozen for three days, and on seed 1 that window sits 7 °C below the run median. And the
+uncomfortable half: both adaptive arms sit four to five times *further* from the required gain
+trajectory than a constant does, and are anti-correlated with it.
+
+### Two corrections to the audit's own premises
+
+- **`ladder30`, `cintron_ladder30`, `heldout30` and `ablation` all ran with the controller active
+  and acting** — 117 recalibrations in `ladder30` alone. The "do not rerun" exemption rests on the
+  claim that the controller was not an axis, which is true but is not the same statement. Of the
+  five sweeps listed as unaffected, only `theta2` is. Nothing was rerun, but the exemption cannot
+  stand on that reason.
+- **The confirmation window is twice as long as stated.** `drift.warmup` is also 60 references and
+  runs first, so the earliest possible recalibration on S4 at one reference in ten is **19,636 s**,
+  10.9× the fault horizon, not 5.5×.
+
+### What was not done
+
+- **Part C (hardware):** `BLOCKED — no hardware`. Not simulated, not estimated.
+- **Part D (gated):** not started; no confirmation was given.
+- `S6_combined` in E1, and the estimator × rate interaction in D1 — both trimmed deliberately,
+  with reasons recorded in the configs and in `OPEN.md`.
+- The ablation that would settle B3's anti-correlation reading (S2 with the thermal zero coupling
+  disabled) has not been run.
+
+---
