@@ -541,3 +541,89 @@ powerful than the unpaired Fisher comparison above, but no outcome of C1 can ret
 establish the inversion it was built to explain.
 
 ---
+
+## Stage D1 (part 1) — the controller-semantics decision
+
+Decided and implemented 2026-10-04, commit `d520cb6`. The rerun it enables is part 2.
+
+### The defect, stated precisely
+
+`confirmation_passes` counts **residuals**, and a residual exists only when a reference vehicle
+crosses. The confirmation window therefore lasts
+
+```
+confirmation_passes * reference_every_n / traffic_rate
+```
+
+which **scales with the reference supply — the very thing the reference-rate experiment sweeps.**
+The controller's own time constant moved with the independent variable. That is worse than the
+window merely being long: it means the reference-rate curve confounds two effects that cannot be
+separated after the fact, because every point on it ran a differently-tuned controller.
+
+The magnitudes, from A1 (`S4_step_fault`, 220 veh/h, 60 passes, warm-up 60 references):
+
+| reference rate | warm-up | confirmation | earliest recalibration | vs 1,800 s horizon |
+|---|---|---|---|---|
+| 1 in 1 | 982 s | 982 s | 1,964 s | 1.1× |
+| 1 in 10 | 9,818 s | 9,818 s | 19,636 s | **10.9×** |
+| 1 in 50 | 49,091 s | 49,091 s | 98,182 s | **54.5×** |
+
+### The mechanism chosen, and why
+
+**A count with a wall-clock cap.** `control.confirmation_max_s`; the window closes at whichever
+comes first, the count or the clock, and the decision is taken on the residuals that arrived.
+
+The three candidates, against the two things the window has to do at once — be commensurable with
+the horizon, and have enough evidence to decide on:
+
+- **Seconds alone.** Makes the duration right and the statistical power vary with reference rate.
+  The project already knows what a decorative gate costs: the `confirmation_passes` field
+  documents that at thirty passes a real sensitivity fault was detected five times, confirmed
+  never, and left the station reporting itself healthy. Rejected.
+- **A residual count derived from the reference rate.** Holds power constant and leaves the
+  duration unbounded — which is the present defect restated. Rejected.
+- **A count with a time cap.** Full power where references are dense; a bounded window where they
+  are sparse. Chosen.
+
+**What makes the truncated decision honest is already in the code.** `_displaced` scales its
+threshold by `1/sqrt(n)`:
+
+```
+confirm_sigma * 1.2533 * scale / sqrt(n)
+```
+
+so a window cut to a third of its residuals automatically demands a displacement `sqrt(3)` larger
+to confirm. The cap trades detection power for timeliness, and the gate charges for the trade
+instead of hiding it. No second knob, and no risk of the gate quietly becoming decorative.
+
+Below **two** residuals there is no median worth testing, so a window the clock closes that early
+returns to MONITORING **undecided**, with a reason that says so, rather than confirming on noise.
+
+**The controller is given seconds, not a fraction of the fault horizon.** The horizon is a scoring
+concept that belongs to `experiments/` — `calibration/` must not know how it is being marked, and
+it has to cross-deploy to a Pi that has no notion of a sweep. The sweep converts.
+
+**Default is `None`, meaning no cap** — exactly what every sweep before this ran with, so no
+stored result changes meaning.
+
+### A process note worth recording
+
+The first launch of the Stage C1 sweep was destroyed by this change: `confirmation_max_s` was
+added to `configs/estimators/default.yaml` **while that sweep was running**, and the worker
+processes were still holding the previously-imported `config.py`, whose `EdgeConfig` forbids
+extra keys. 126 of 136 cells per shard failed with
+
+```
+ValidationError: control.confirmation_max_s — Extra inputs are not permitted
+```
+
+Nothing was silently corrupted: every failed cell became a row carrying its own error text, which
+is exactly what that design decision in `runner._run_one` is for, and the loss was visible in
+`failed` the moment the shards were inspected. The shards were discarded and the sweep relaunched
+against a committed, frozen tree.
+
+**The rule this establishes: commit first, then run, and change nothing under `configs/` or
+`src/` while a sweep is in flight.** A sweep reads its configs per cell but imports its code once,
+so the two can disagree halfway through.
+
+---
