@@ -297,3 +297,146 @@ Tracking recovers **31.2 kg of 505.8 kg, or 6.2 % of the excess over the floor**
 and ~475 are confirmed; the recovered fraction is 6.2 %, matching its ~6 %.
 
 ---
+
+## Stage B3 — why tracking does not help on S2
+
+Completed 2026-10-04. Cost: a plant-only walk at five seeds (no samples generated), one
+closed-loop S2 run per estimator at seed 1, and a reduction of `ladder30`.
+
+**Headline: the claim is wrong as stated. Tracking does not help S2's *MAE*, and it halves its
+*bias* four times over. The two were separated, and in this project they must not be.**
+
+### B3a. The thermal amplitude actually realised
+
+Medians over seeds 1–5, peak-to-peak across the 72 h run. All three are modelled with separate
+lags, so all three are reported:
+
+| quantity | peak-to-peak | min | max |
+|---|---|---|---|
+| ambient `T_air` | **20.44 °C** | 4.38 | 25.00 |
+| sensor body `T_sensor` | **19.22 °C** | 4.83 | 24.28 |
+| probe `T_probe` | **19.63 °C** | 4.63 | 24.50 |
+
+The sensor body swings least and the probe sits between it and ambient — the probe is not a
+proxy for the sensor, which is the premise `S2` exists to exercise.
+
+Per-seed figures in `export/data/s2_thermal_amplitude_long.csv`.
+
+### B3b. The gain excursion it causes
+
+| quantity | value |
+|---|---|
+| gain peak-to-peak | **0.388 %** (median over 5 seeds; 0.379 % on seed 1) |
+| mean \|relative deviation\| | 0.111 % |
+| rms relative deviation | 0.124 % |
+| on a 20 t vehicle | **77.7 kg** peak-to-peak, 22.2 kg mean |
+
+The audit's estimate — "roughly 0.38 % over 19 °C, about 76 kg on a 20 t vehicle" — is confirmed
+to three significant figures.
+
+**But 20 t is not a representative vehicle on this scenario.** The S2 population over 12,930
+passes has a median mass of **1.56 t** and a mean of **6.33 t**; 20 t sits above its 90th
+percentile (22.1 t). On the actual population the thermal gain error is an rms of **7.8 kg**.
+
+### B3c. The error budget, and why MAE cannot see it
+
+| term | kg |
+|---|---|
+| dynamic load floor | 136.1 |
+| thermal rms contribution | 7.8 |
+| floor and thermal in quadrature | 136.3 |
+| **predicted excess over floor** | **0.2** |
+| measured `static_affine` excess over floor | 2.9 |
+
+Quadrature is the right combination: the dynamic load wobble and the thermal gain excursion are
+independent and neither is a bias over the population. A disturbance that is 5.7 % of the floor
+contributes 0.2 kg to a 136 kg MAE. **There is nothing in S2's MAE for tracking to recover, and
+that is a property of the scenario rather than of the estimators.** Any ladder comparison on S2
+measured in MAE alone is a null by construction.
+
+### B3d. Reference density, and where the static fit is anchored
+
+| quantity | value |
+|---|---|
+| traffic rate | 180 veh/h |
+| `reference_every_n` | 10 |
+| one reference every | 200 s |
+| references over 72 h | ~1,293 (1,293 observed on seed 1) |
+| bootstrap fit | the first 60 detections, **all** of which carry a reference mass |
+| bootstrap spans | 1,200 s = 0.33 h |
+
+Density is ample for the fit itself. What matters is **where in the thermal cycle those 20
+minutes fall**, because `static_affine` is fitted there once and then frozen for three days.
+
+On seed 1 the bootstrap window sits at a mean sensor temperature of **7.53 °C** against a run
+median of **14.59 °C** — seven degrees cold, near the first night's minimum. The gain there is
+**+0.146 %** above the run median, which is **+9.2 kg on the mean vehicle** and +29.2 kg on a
+20 t one. A static fit anchored away from the median gain carries that offset as a **bias** for
+the whole run, where the swing itself is zero-mean. The two are different errors and only one of
+them is recoverable by refitting.
+
+### B3e. What the measurement shows — bias, not error
+
+`ladder30`, `S2_thermal_cycle`, 30 seeds, paired by seed. Bias rows compare **absolute** bias,
+because the question is whether tracking moves the zero towards zero; the signed medians are
+given underneath, because the sign must never be folded into the error.
+
+| comparison | metric | median | → | median diff | signs | p (exact) | p_holm | verdict |
+|---|---|---|---|---|---|---|---|---|
+| static → rls | \|bias\| | 23.67 | **5.74** | −16.33 | +4/−26 | 3.86e-07 | 7.71e-07 | **separated** |
+| static → kalman | \|bias\| | 23.67 | **5.62** | −16.67 | +3/−27 | 9.98e-07 | 2.00e-06 | **separated** |
+| static → rls | MAE | 138.82 | 138.10 | −0.80 | +11/−19 | 0.0293 | 0.0587 | not separated |
+| static → kalman | MAE | 138.82 | 139.19 | +0.63 | +17/−13 | 0.4771 | 0.4771 | not separated |
+
+Signed median bias, 30 seeds: `static_affine` **−17.6 kg** (IQR [−34.4, +6.9]), `rls` −3.2 kg
+(IQR [−7.8, +1.6]), `kalman` −1.9 kg (IQR [−6.9, +2.8]).
+
+Holm is over this family of four. Both separated p-values sit **three orders of magnitude above**
+the n=30 attainable floor of 1.9e-9, so these are measured effects and not the test's resolution
+limit — unlike the `2.6e-8` figures elsewhere in the export.
+
+### B3f. The trajectory figure, and the inconvenient part
+
+`export/figures/s2__gain_tracking.png`, with per-event data in
+`export/data/s2_gain_trajectory_long.csv`.
+
+On seed 1, against a **required** gain trajectory (∝ 1/k_true) whose peak-to-peak is 0.379 % and
+whose rms is 0.1240 %:
+
+| arm | θ̂₁ swing | vs required | rms(θ̂₁ − required) | correlation with required |
+|---|---|---|---|---|
+| `static_affine` | **0.000 %** | 0.0× | 0.1245 % | — (constant) |
+| `rls` | 2.009 % | **5.3×** | **0.5245 %** | **−0.348** |
+| `kalman` | 8.118 % | **21.4×** | **0.6854 %** | **−0.266** |
+
+Three things follow, and the second and third are not what the ladder's story predicts.
+
+1. `static_affine` is genuinely frozen on this run — zero recalibrations, a gain that never
+   moves. Its distance from the required trajectory is 0.1245 %, which is just the size of the
+   target itself.
+2. **Both adaptive arms sit four to five times further from the required trajectory than doing
+   nothing does.** Tracking the thermal cycle is not what they are doing.
+3. **Both are anti-correlated with it.** They do not lag the required trajectory, they move
+   against it.
+
+The anti-correlation is consistent with the two-parameter fit trading gain against zero: `S2`
+couples the zero line to temperature as well as the gain (`temp_coupling_per_c: 1.2e-4`), and in
+an affine fit a thermally-driven zero shift can be absorbed into the slope with the opposite
+sign. **That is a mechanism the data is consistent with, not one this experiment establishes** —
+separating it would need the zero coupling switched off, which is an ablation nobody has run.
+
+### B3g. What this means for the text
+
+The honest statement is not "tracking does not help on S2". It is:
+
+- S2's MAE is **98 % dynamic load floor**, and the thermal disturbance it was built to exercise
+  contributes 0.2 kg of it. No estimator can win there and none does.
+- Tracking nonetheless removes most of a **−17.6 kg** frozen-anchor bias, four times over, at
+  p_holm < 1e-5.
+- It does so **without tracking the thermal cycle at all** — its gain trajectory is further from
+  the required one than a constant is, and anti-correlated with it.
+
+An unexplained null in a headline result is a reviewer's first question; this one now has an
+answer, and the answer is partly unflattering to the ladder.
+
+---
