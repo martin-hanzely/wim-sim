@@ -834,3 +834,145 @@ arm is later wanted, the configuration is committed and `wimsim experiment block
 S6_combined` reproduces it.
 
 ---
+
+## Stage E1 — the sparse-rate tuning claim: it stands, and the reason is not the thresholds
+
+Completed 2026-10-04. 160 runs on `S4_step_fault`, 8 arms × 2 rates × 10 seeds, zero failures.
+
+**The claim holds. Across eight configurations spanning each detector's sensitivity range in both
+directions, detection at one reference in twenty is 1 of 160 opportunities, and at one in fifty it
+is 0 of 160.** The claim may now be stated as evidenced rather than asserted.
+
+But the sweep also found *why*, and the reason is not threshold tuning at all.
+
+### E1a. The result
+
+| rate | best arm | detections | recall | 95 % CI (clustered by seed) | pooled over all 8 arms |
+|---|---|---|---|---|---|
+| 1 in 20 | ADWIN δ=0.05 | 1 / 20 | 0.050 | [0.000, 0.148] | **1 / 160 = 0.006** |
+| 1 in 50 | — (all zero) | 0 / 20 | 0.000 | [0.000, 0.000] | **0 / 160 = 0.000** |
+
+Zero recalibrations at both rates, in every arm. Every Fisher exact test of a tuned arm against
+its shipped counterpart at the same rate gives **p = 1.0000** — because every cell is zero.
+
+At one in fifty the detectors barely fire at all: **4 alarms in total across all 80 runs**, and
+zero in seven of the eight arms. This is not a detector that alarms and misses; it is a detector
+that never speaks.
+
+### E1b. The mechanism — warm-up, not sensitivity
+
+`drift.warmup` is **60 references**, and a reference exists only when a reference vehicle crosses.
+So the time at which the detectors become ready scales with `reference_every_n`, exactly as the
+confirmation window does:
+
+```
+t_ready = warmup * reference_every_n / traffic_rate
+```
+
+`S4_step_fault` injects its faults at **t = 14,400 s** and **t = 32,400 s**, each scored over an
+1,800 s horizon. Against that:
+
+| rate | t_ready | fault 1 horizon [14400, 16200] | fault 2 horizon [32400, 34200] | **attainable recall** |
+|---|---|---|---|---|
+| 1 in 10 | 9,818 s | reachable | reachable | **1.00** |
+| 1 in 20 | 19,636 s | **closed before ready** | reachable | **0.50** |
+| 1 in 50 | 49,091 s | **closed before ready** | **closed before ready** | **0.00** |
+
+**At one reference in fifty the attainable recall on S4 is zero before the experiment runs.** The
+detectors are still warming up when the last fault's scoring horizon closes. No threshold can
+change that, because warm-up is a count of references and not a threshold — which is precisely
+why "no tuning recovers detection" is true, and why it is true for a reason that has nothing to
+do with tuning.
+
+### E1c. This contradicts how the stored reference-rate curve has been read — flag at the top
+
+The ceiling is a property of the scenario and the rate, so it applies to **every** reference-rate
+sweep already in the export, not only to E1. Checking the stored `reference_rate30` governed arm
+against it:
+
+| rate | ceiling | max recall observed in any single run | consistent? |
+|---|---|---|---|
+| 1, 2, 3, 5 | 1.00 | 1.0 | yes |
+| 10 | 1.00 | 0.5 | yes |
+| 20 | **0.50** | **0.5** | yes — the ceiling binds exactly |
+| 50 | **0.00** | **0.0** | yes — the ceiling binds exactly |
+
+No run anywhere exceeds its ceiling, and at rates 20 and 50 the ceiling is attained exactly. So
+the sparse end of the published curve is measuring the detector warm-up, not the feasibility of
+self-calibration at a sparse reference supply.
+
+Recomputed among **reachable** faults only, `reference_rate30`, governed arm:
+
+| scenario | rate | reported recall | corrected recall |
+|---|---|---|---|
+| `S4_step_fault` | 20 | 0.022 | **0.044** |
+| `S4_step_fault` | 50 | 0.000 | **undefined — no reachable fault** |
+| `S7_sparse_reference` | all | unchanged | unchanged (ceiling 1.00 throughout) |
+
+**"Recall 0.000 at one reference in fifty on S4" must not be reported as a detection result.** It
+is a statement that the experiment presented no detectable fault. The honest cell is empty, with
+the ceiling given beside it.
+
+`S7_sparse_reference` is unaffected — one fault, late enough that the ceiling is 1.00 at every
+rate — and it declines smoothly from 0.933 at one-in-one to 0.067 at one-in-fifty. **S7 is
+therefore the scenario that actually measures what the reference-rate experiment claims to
+measure, and the S4 sparse points should be withdrawn or re-plotted against the ceiling.**
+
+---
+
+## Stage F1 (part 2) — the Kalman Q sweep: the label is removed
+
+Completed 2026-10-04. 50 runs on `H1_warm_front`, 5 values of `process_noise_gain` × 10 seeds,
+zero failures.
+
+### F1e. The control passed
+
+The shipped-Q arm reproduces `heldout30`'s Kalman on H1 at seeds 1–10 to within **2.3e-13 kg** on
+MAE and **3.6e-15 kg** on bias — identical. So the cross-sweep pairing against `heldout30`'s
+static arm is valid, and as a by-product the determinism guarantee survives the `control.blocking`
+and `control.confirmation_max_s` additions intact.
+
+### F1f. The penalty does not behave as a variance cost
+
+`kalman − static_affine` on the same 10 seeds; static reference MAE 1128.3, \|bias\| 117.7,
+spread 1038.8 kg:
+
+| `process_noise_gain` | ΔMAE | Δ\|bias\| | Δspread | signs | p |
+|---|---|---|---|---|---|
+| 1e-13 (stiffest) | **+266.6** | −36.6 | +281.2 | +10/−0 | 0.00195 |
+| 1e-12 | +266.0 | −36.5 | +281.8 | +10/−0 | 0.00195 |
+| **1e-11 (shipped)** | **+256.8** | −42.4 | +294.6 | +10/−0 | 0.00195 |
+| 1e-10 | +243.3 | −43.3 | +249.7 | +10/−0 | 0.00195 |
+| 1e-09 (loosest) | **+150.6** | +37.8 | +120.1 | +10/−0 | 0.00195 |
+
+All five are unanimous at ten seeds, so under the pre-registered protocol they are reported at ten
+and not escalated. Holm over the family of five puts every one at p_holm = 0.0098.
+
+**The penalty is monotone in Q and runs the wrong way.** The "fixed variance cost" account says
+the gain state is free to wander and that this costs variance; it predicts that *stiffening* Q
+shrinks the penalty. Stiffening Q by two decades makes the penalty **worse** (+256.8 → +266.6),
+and loosening it by two decades makes it **better** (+256.8 → +150.6). Whatever the Kalman is
+paying for on H1, it is not a gain state that is too free.
+
+### F1g. And Q does not explain the magnitude either
+
+Across four decades the penalty moves by 116 kg, from +266.6 to +150.6. It never approaches the
+ablation's **+29.3 kg**, and at the most favourable Q tested it is still **five times** that
+figure and unanimous across all ten seeds.
+
+**So the "fixed variance cost" label is unsupported and is removed.** What survives, and should be
+reported in its place:
+
+- The H1 penalty is real, large and unanimous: +251 kg over 30 seeds in `heldout30`, +257 kg over
+  10 seeds here.
+- It is a **spread** cost, not a bias cost (F1 part 1): the Kalman's zero is in fact better.
+- It is **not** explained by the Kalman's own process noise, and the direction of the Q
+  dependence rules out the mechanism the label names.
+- The Kalman makes the same bias-for-spread trade on all four held-out scenarios; H1 is
+  distinguished only by the size of the spread cost.
+
+**The mechanism is unexplained, and that is the honest report.** An unexplained observation
+stated as unexplained is more credible than an explanation the evidence contradicts — and here
+the evidence does not merely fail to support the label, it points the other way.
+
+---

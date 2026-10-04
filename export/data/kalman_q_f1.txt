@@ -1,0 +1,21 @@
+50 runs, 0 failed, seeds [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10)]
+
+F1-CONTROL  does the shipped-Q arm reproduce heldout30's Kalman on H1, seeds 1-10?
+  mae_kg    max |diff| = 2.27374e-13   IDENTICAL
+  bias_kg   max |diff| = 3.55271e-15   IDENTICAL
+  -> cross-sweep pairing with heldout30's static arm is VALID
+
+F1b  the Q ladder on H1 (10 seeds, medians; penalty = kalman - static_affine)
+    Q_gain       MAE    |bias|    spread      dMAE   d|bias|   dspread  signs(MAE)     p(MAE)
+     1e-13    1394.9      38.4    1339.6    +266.6     -36.6    +281.2      +10/-0    0.00195
+     1e-12    1395.6      38.1    1339.0    +266.0     -36.5    +281.8      +10/-0    0.00195
+     1e-11    1372.7      48.3    1328.7    +256.8     -42.4    +294.6      +10/-0    0.00195
+     1e-10    1344.4      60.5    1274.5    +243.3     -43.3    +249.7      +10/-0    0.00195
+     1e-09    1264.8     120.3    1135.5    +150.6     +37.8    +120.1      +10/-0    0.00195
+
+  static_affine reference (same 10 seeds): MAE 1128.3, |bias| 117.7, spread 1038.8 kg
+
+F1c  does the penalty track Q?
+  penalty across four decades of Q: +150.6 to +266.6 kg, span 116.0 kg
+  monotone in Q? yes
+  the ablation's quoted figure is +29.3 kg; the penalty at the shipped Q is +256.8 kg

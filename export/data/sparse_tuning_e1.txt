@@ -1,0 +1,34 @@
+160 runs, 0 failed, rates [np.int64(20), np.int64(50)], seeds 10
+
+E1a  detection at sparse reference rates, S4_step_fault, 10 seeds
+ rate          family  knob  detected  opportunities  recall  ci_lo  ci_hi  fa_per_h  alarms  recals  degraded  n_refs  seeds
+   20           cusum 24.00         0             20    0.00    0.0  0.000    0.0000       3       0         0     176     10
+   20           cusum 12.00         0             20    0.00    0.0  0.000    0.0625       9       0         0     176     10
+   20           cusum  6.00         0             20    0.00    0.0  0.000    0.1250      18       0         0     176     10
+   20    page_hinkley 15.00         0             20    0.00    0.0  0.000    0.0625       7       0         0     176     10
+   20    page_hinkley  7.50         0             20    0.00    0.0  0.000    0.0625      11       0         0     176     10
+   20    page_hinkley  3.75         0             20    0.00    0.0  0.000    0.1250      17       0         0     176     10
+   20 adwin (control)  0.05         1             20    0.05    0.0  0.148    0.0625      10       0         0     176     10
+   20    ks (control)  0.01         0             20    0.00    0.0  0.000    0.0000       2       0         0     176     10
+   50           cusum 24.00         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+   50           cusum 12.00         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+   50           cusum  6.00         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+   50    page_hinkley 15.00         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+   50    page_hinkley  7.50         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+   50    page_hinkley  3.75         0             20    0.00    0.0  0.000    0.0000       4       0         0      71     10
+   50 adwin (control)  0.05         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+   50    ks (control)  0.01         0             20    0.00    0.0  0.000    0.0000       0       0         0      71     10
+
+E1b  the claim: no tuning recovers detection below ~one reference in twenty
+  one in 20:  best arm = adwin (control) @ 0.05 with 1/20 (recall 0.050, 95% CI [0.000, 0.148])   |   pooled over all 8 arms 1/160 = 0.006
+  one in 50:  best arm = cusum @ 24.0 with 0/20 (recall 0.000, 95% CI [0.000, 0.000])   |   pooled over all 8 arms 0/160 = 0.000
+
+E1c  best arm at each sparse rate against the shipped arm at the SAME rate (Fisher)
+  rate 1/20 cusum            24.0 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/20 cusum             6.0 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/20 page_hinkley     15.0 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/20 page_hinkley     3.75 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/50 cusum            24.0 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/50 cusum             6.0 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/50 page_hinkley     15.0 :  0/20 vs shipped  0/20   Fisher p = 1.0000
+  rate 1/50 page_hinkley     3.75 :  0/20 vs shipped  0/20   Fisher p = 1.0000

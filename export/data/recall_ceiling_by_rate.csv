@@ -1,0 +1,15 @@
+scenario,rate,t_ready_s,reachable,of,ceiling
+S4_step_fault,1,982,2,2,1.0
+S4_step_fault,2,1964,2,2,1.0
+S4_step_fault,3,2945,2,2,1.0
+S4_step_fault,5,4909,2,2,1.0
+S4_step_fault,10,9818,2,2,1.0
+S4_step_fault,20,19636,1,2,0.5
+S4_step_fault,50,49091,0,2,0.0
+S7_sparse_reference,1,360,1,1,1.0
+S7_sparse_reference,2,720,1,1,1.0
+S7_sparse_reference,3,1080,1,1,1.0
+S7_sparse_reference,5,1800,1,1,1.0
+S7_sparse_reference,10,3600,1,1,1.0
+S7_sparse_reference,20,7200,1,1,1.0
+S7_sparse_reference,50,18000,1,1,1.0
