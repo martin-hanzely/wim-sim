@@ -1,0 +1,11 @@
+# Non-blocking twin of `detect_cusum_h6`, for Stage C1.
+#
+# Identical in every respect except `control.blocking`, so the pair differs in one thing: whether a
+# drift alarm raised while the loop is confirming, recalibrating, verifying or degraded is
+# published or swallowed. Detection recall is scored from exactly those events.
+
+extends: detect_cusum_h6
+name: detect_cusum_h6_nb
+description: CUSUM alone at threshold 6.0, with the controller's blocking behaviour disabled.
+control:
+  blocking: false

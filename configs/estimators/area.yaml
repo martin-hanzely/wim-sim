@@ -39,6 +39,9 @@ control:
   cooldown_s: 3600.0
   verification_passes: 50
   max_references: 200
+  # Written out rather than left to the model default because an override refuses a key
+  # that does not already exist, and Stage C1 switches this per arm.
+  blocking: true            # report a drift alarm only from MONITORING
   arbitration: local
   reference_mode: supervised
   reference_every_n: 20      # the supply rate of known masses; the most important swept factor

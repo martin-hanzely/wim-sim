@@ -143,6 +143,22 @@ class ControllerConfig:
     max_references: int = 200
     arbitration: str = "local"
 
+    blocking: bool = True
+    """Whether an alarm is reported only from MONITORING.
+
+    True is the behaviour every sweep before Stage C ran with, and the default so that those
+    results keep their meaning. While the loop is confirming, recalibrating, verifying or
+    degraded, the detectors keep updating but nothing publishes a ``drift_detected`` -- and
+    detection recall is scored from exactly those events. The window is not small: at one
+    reference in ten on ``S4_step_fault`` the confirmation window alone is 9,818 s against an
+    1,800 s fault horizon, so a fault arriving inside it cannot be recalled at all.
+
+    False reports the alarm from whatever state the machine is in, and changes nothing else. It
+    exists to test whether that suppression is what inverts detector sensitivity against
+    threshold: the arm has to isolate the suppression, so it deliberately does not also
+    reorganise the transitions.
+    """
+
     def __post_init__(self) -> None:
         if self.arbitration not in ARBITRATION_MODES:
             raise ValueError(
@@ -275,12 +291,15 @@ class RecalibrationController:
 
         if self._state == "MONITORING":
             self._monitor(ts_us, residual)
-        elif self._state == "DRIFT_SUSPECTED":
-            self._analyse(ts_us, residual)
-        elif self._state == "VERIFYING":
-            self._verify(ts_us, residual)
-        elif self._state == "DEGRADED":
-            self._retry(ts_us, residual)
+        else:
+            if not self.config.blocking:
+                self._report_blocked_alarm(ts_us)
+            if self._state == "DRIFT_SUSPECTED":
+                self._analyse(ts_us, residual)
+            elif self._state == "VERIFYING":
+                self._verify(ts_us, residual)
+            elif self._state == "DEGRADED":
+                self._retry(ts_us, residual)
 
         return self._events[before:]
 
@@ -315,6 +334,29 @@ class RecalibrationController:
             detector=alarming.name,
             statistic=float(alarming.statistic),
         )
+
+    def _report_blocked_alarm(self, ts_us: int) -> None:
+        """Publish an alarm the blocking arm would have swallowed. Stage C1 only.
+
+        Emits the event and nothing else: no transition, no suspicion, no effect on the
+        recalibration the machine is already busy with. The alarming detector is reset so that one
+        excursion produces one event -- the alarms latch until acknowledged, so without this a
+        single excursion would emit on every subsequent pass and the false-alarm rate would
+        measure the pass count rather than the detector.
+        """
+        alarming = next((d for d in self.detectors if d.alarm), None)
+        if alarming is None:
+            return
+        self._append(
+            "drift_detected",
+            ts_us,
+            self._state,
+            f"{alarming.name} raised an alarm at {alarming.statistic:.2f} "
+            f"while the loop was in {self._state}",
+            detector=alarming.name,
+            statistic=float(alarming.statistic),
+        )
+        alarming.reset()
 
     def _analyse(self, ts_us: int, residual: float) -> None:
         assert self._suspicion is not None

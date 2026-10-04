@@ -1,0 +1,94 @@
+# Stage C1 — the decisive experiment. Does the controller's blocking behaviour cause the
+# sensitivity inversion?
+#
+# WHAT THE INVERSION IS. `detector_thresholds` stepped each detector's sensitivity knob three
+# levels past the shipped value and found recall that does not rise monotonically with
+# sensitivity. Page-Hinkley caught 1 of 20 injected faults on S4 at 15.0, 5 of 20 at 7.5, then
+# fell back to 1 of 20 at 1.875 -- more sensitive, fewer caught. CUSUM declines monotonically
+# (3, 3, 2, 1) rather than inverting. A detector that catches less as it is made more sensitive is
+# not behaving as a detector, so something outside the detector is consuming the alarms.
+#
+# THE MECHANISM UNDER TEST. `calibration/controller.py` emits `drift_detected` from `_monitor`
+# only, and `observe` dispatches there only while the state is MONITORING. The detectors keep
+# updating in every other state, but nothing publishes. `experiments/runner._control_row` scores
+# detection recall from exactly those published events. So an alarm raised while the loop is
+# confirming, recalibrating, verifying or degraded is not a late detection -- it does not exist.
+#
+# The window is not small. At one reference in ten on S4_step_fault at 220 veh/h, the confirmation
+# window alone is 60 residuals x 10 passes / 220 per h = 9,818 s against an 1,800 s fault horizon,
+# and the detector warm-up ahead of it is another 9,818 s. A spurious alarm therefore removes
+# several horizons' worth of detection opportunity, and a MORE sensitive threshold raises more
+# spurious alarms. That is a mechanism that produces an inversion, which is why it is worth one
+# direct test rather than more seeds on the existing design.
+#
+# THE ARMS. Each of the seventeen threshold arms paired with its `_nb` twin, which differs in
+# `control.blocking` and in nothing else -- verified by comparing the resolved configs field by
+# field. The non-blocking arm publishes the alarm from whatever state the machine is in and
+# changes no transition, because an arm that also reorganised the state machine would confound two
+# changes and could answer neither.
+#
+# WHAT WOULD COUNT AS AN ANSWER. If blocking causes the inversion, the non-blocking arm should not
+# invert: recall should rise with sensitivity, monotonically or near enough. If the non-blocking
+# arm inverts too, the cause is in the detectors or in the residual signal, and the blocking
+# behaviour is exonerated. Both outcomes are reportable and the second is the more interesting
+# one, because it would mean the controller is not what is wrong.
+#
+# SEEDS. Ten, under the protocol pre-registered in REVISION_LOG.md: a comparison whose per-seed
+# differences are unanimous in sign is reported at ten and not escalated; one whose signs are
+# mixed goes to thirty and both stages are reported.
+#
+# NOT COMPARABLE BY HASH to any earlier sweep. Adding `control.blocking` to the config model
+# changes every edge_config_hash, including the blocking arm's, which resolves to the same
+# BEHAVIOUR as `detector_thresholds` but no longer to the same hash. The blocking arm is therefore
+# carried here as its own paired baseline rather than compared against the stored sweep.
+
+experiment_id: blocking
+description: >
+  The seventeen detector-threshold arms, each run with the controller's blocking behaviour enabled
+  and disabled, on the two scenarios carrying calibration faults, at ten seeds. Tests whether
+  suppression of drift_detected outside MONITORING is what inverts detector sensitivity.
+scenarios: [S4_step_fault, S6_combined]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_configs:
+  # blocking -- current behaviour, the paired baseline
+  - detect_cusum
+  - detect_cusum_h6
+  - detect_cusum_h3
+  - detect_cusum_h1p5
+  - detect_ph
+  - detect_ph_h7p5
+  - detect_ph_h3p75
+  - detect_ph_h1p875
+  - detect_adwin
+  - detect_adwin_d01
+  - detect_adwin_d05
+  - detect_adwin_d25
+  - detect_adwin_d9
+  - detect_ks
+  - detect_ks_a001
+  - detect_ks_a01
+  - detect_ks_a1
+  # non-blocking -- the counterfactual
+  - detect_cusum_nb
+  - detect_cusum_h6_nb
+  - detect_cusum_h3_nb
+  - detect_cusum_h1p5_nb
+  - detect_ph_nb
+  - detect_ph_h7p5_nb
+  - detect_ph_h3p75_nb
+  - detect_ph_h1p875_nb
+  - detect_adwin_nb
+  - detect_adwin_d01_nb
+  - detect_adwin_d05_nb
+  - detect_adwin_d25_nb
+  - detect_adwin_d9_nb
+  - detect_ks_nb
+  - detect_ks_a001_nb
+  - detect_ks_a01_nb
+  - detect_ks_a1_nb
+edge_overrides: [edge.control.enabled=true]
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

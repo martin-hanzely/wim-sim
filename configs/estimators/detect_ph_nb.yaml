@@ -1,0 +1,11 @@
+# Non-blocking twin of `detect_ph`, for Stage C1.
+#
+# Identical in every respect except `control.blocking`, so the pair differs in one thing: whether a
+# drift alarm raised while the loop is confirming, recalibrating, verifying or degraded is
+# published or swallowed. Detection recall is scored from exactly those events.
+
+extends: detect_ph
+name: detect_ph_nb
+description: Page-Hinkley alone at the shipped threshold 15.0, with the controller's blocking behaviour disabled.
+control:
+  blocking: false

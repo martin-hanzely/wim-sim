@@ -362,3 +362,23 @@ def test_the_only_truth_reader_in_the_loop_is_the_reference_supply() -> None:
     # mass. Listed rather than merely allowed, so that adding one is a deliberate act.
     assert reads.keys() <= {"__init__", "run_closed_loop", "_cutoff_s"}, sorted(reads)
     assert reads.get("run_closed_loop", set()) == {"t_entry_s"}
+
+
+@pytest.mark.parametrize("blocking", [True, False])
+def test_control_blocking_reaches_the_controller(blocking):
+    """The Stage C1 arms differ in this flag alone, so a flag that did not arrive would make the
+    two arms identical and the experiment would report a null it had not measured."""
+    from wimsim.experiments.closed_loop import _controller_for
+
+    edge_cfg = load_edge_config(
+        "default",
+        overrides=["edge.control.enabled=true", f"edge.control.blocking={str(blocking).lower()}"],
+    )
+    assert edge_cfg.control.blocking is blocking
+
+    controller = _controller_for(edge_cfg, estimator=None, references=None)
+    assert controller.config.blocking is blocking
+
+
+def test_control_blocking_defaults_to_the_behaviour_every_earlier_sweep_ran():
+    assert load_edge_config("default").control.blocking is True

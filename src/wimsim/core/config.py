@@ -1046,6 +1046,18 @@ class ControlConfig(_Base):
         "destroys the evidence that it was systematic -- so this is a deployment question and both "
         "modes are worth comparing.",
     )
+    blocking: bool = Field(
+        True,
+        description="Whether a drift alarm is reported only from MONITORING. True is what every "
+        "sweep before the Stage C revision ran with, and the default so those results keep their "
+        "meaning. While the loop is confirming, recalibrating, verifying or degraded the "
+        "detectors keep updating but no drift_detected is published -- and detection recall is "
+        "scored from exactly those events, so a fault arriving inside the window cannot be "
+        "recalled. At one reference in ten on S4_step_fault the confirmation window alone is "
+        "9,818 s against an 1,800 s horizon. False reports the alarm from any state and changes "
+        "nothing else; it is the counterfactual arm for whether this suppression is what inverts "
+        "detector sensitivity against threshold.",
+    )
     reference_mode: Literal["supervised", "population"] = Field(
         "supervised",
         description="supervised: a vehicle of known mass provides a direct update. population: "

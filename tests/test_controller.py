@@ -642,3 +642,75 @@ def test_the_confirmable_floor_follows_the_window_length_as_predicted() -> None:
     assert tight_alarms >= 9 and wide_alarms >= 9, "detection should not be what differs here"
     assert tight_confirmed <= 3, "a shift below the confirmable floor was confirmed anyway"
     assert wide_confirmed >= 7, "a shift above the confirmable floor was not confirmed"
+
+
+# -- the blocking arm, for Stage C1 ------------------------------------------------------------
+#
+# `_monitor` is the only emitter of `drift_detected`, and `observe` dispatches to it only while the
+# state is MONITORING. So an alarm raised while the controller is confirming, recalibrating,
+# verifying or degraded is swallowed -- and `experiments/runner._control_row` scores detection
+# recall from exactly those events. At one reference in ten on S4 the confirmation window alone is
+# 9,818 s against an 1,800 s fault horizon, so a fault arriving during it cannot be recalled at all.
+#
+# `blocking=False` is the counterfactual arm: the alarm is reported from whatever state the machine
+# is in. It deliberately does NOT change the state machine -- the question is whether suppression
+# of the event causes the sensitivity inversion, and an arm that also reorganised the transitions
+# would not answer it.
+
+
+def _blocked_controller(**overrides):
+    """A controller parked in DRIFT_SUSPECTED with a fresh alarm waiting behind it."""
+    controller = _controller(confirmation_passes=1000, **overrides)
+    plant = _Plant(controller, seed=7)
+    plant.run(200, reference_every=2)
+    plant.fault(6.0 * plant.scale)
+    plant.run(40, reference_every=1)
+    return controller, plant
+
+
+def test_an_alarm_outside_monitoring_is_swallowed_by_default():
+    controller, plant = _blocked_controller()
+    assert controller.state == "DRIFT_SUSPECTED"
+    controller.drain_events()
+
+    plant.fault(12.0 * plant.scale)  # a second, larger excursion while the loop is busy
+    plant.run(60, reference_every=1)
+
+    emitted = [e for e in controller.drain_events() if e.kind == "drift_detected"]
+    assert emitted == [], "default behaviour must keep blocking, or C1 has no control arm"
+    assert controller.state == "DRIFT_SUSPECTED"
+
+
+def test_non_blocking_reports_an_alarm_raised_outside_monitoring():
+    controller, plant = _blocked_controller(blocking=False)
+    assert controller.state == "DRIFT_SUSPECTED"
+    controller.drain_events()
+
+    plant.fault(12.0 * plant.scale)
+    plant.run(60, reference_every=1)
+
+    emitted = [e for e in controller.drain_events() if e.kind == "drift_detected"]
+    assert emitted, "non-blocking must report the alarm the blocking arm swallows"
+    assert controller.state == "DRIFT_SUSPECTED", (
+        "the non-blocking arm reports the alarm; it must not also rearrange the state machine, "
+        "or the comparison confounds two changes"
+    )
+
+
+def test_non_blocking_does_not_re_report_the_same_latched_alarm():
+    """The detectors latch until reset, so a naive implementation emits on every later pass."""
+    controller, plant = _blocked_controller(blocking=False)
+    controller.drain_events()
+
+    plant.fault(12.0 * plant.scale)
+    plant.run(120, reference_every=1)
+
+    emitted = [e for e in controller.drain_events() if e.kind == "drift_detected"]
+    assert len(emitted) <= 3, (
+        f"one excursion produced {len(emitted)} drift_detected events; a latched alarm must be "
+        "acknowledged, or the false-alarm rate is an artefact of the pass count"
+    )
+
+
+def test_blocking_defaults_to_true_so_existing_results_keep_their_meaning():
+    assert ControllerConfig().blocking is True

@@ -1,0 +1,11 @@
+# Non-blocking twin of `detect_adwin_d9`, for Stage C1.
+#
+# Identical in every respect except `control.blocking`, so the pair differs in one thing: whether a
+# drift alarm raised while the loop is confirming, recalibrating, verifying or degraded is
+# published or swallowed. Detection recall is scored from exactly those events.
+
+extends: detect_adwin_d9
+name: detect_adwin_d9_nb
+description: ADWIN alone at delta 0.9, with the controller's blocking behaviour disabled.
+control:
+  blocking: false

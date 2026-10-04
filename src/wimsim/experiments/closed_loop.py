@@ -383,6 +383,7 @@ def _controller_for(edge_cfg: EdgeConfig, estimator, references) -> Recalibratio
             verification_passes=control.verification_passes,
             max_references=control.max_references,
             arbitration=control.arbitration,
+            blocking=control.blocking,
         ),
         detectors=_detectors_for(edge_cfg),
         recalibrate=recalibrate,
