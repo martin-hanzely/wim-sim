@@ -725,3 +725,112 @@ the Kalman buys roughly 60–70 kg of bias in both. H2 looks like a win only bec
 cost happens to be 16 kg and does not separate.
 
 ---
+
+## Stage C1 — blocking versus non-blocking: the hypothesis fails
+
+Completed on `S4_step_fault` 2026-10-04. **`S6_combined` was NOT completed — see C1e.**
+
+**Answer: no. Disabling the controller's blocking behaviour does not remove the sensitivity
+inversion. The alarms blocking was swallowing were false alarms almost without exception, and the
+mechanism section V-D offers for the inversion is not supported.**
+
+### C1a. The sweep, and its internal control
+
+340 runs on `S4_step_fault`: 17 threshold arms × blocking/non-blocking × 10 seeds, zero failures,
+every arm at the full 10 seeds. Each `_nb` arm differs from its base in `control.blocking` and in
+nothing else, verified field by field on the resolved configs before the sweep ran.
+
+Two checks that the arm did what it was designed to do and only that:
+
+| quantity | identical across the 170 paired cells |
+|---|---|
+| recalibrations | **170 / 170** |
+| MAE | **170 / 170** |
+| detections | 167 / 170 |
+
+The non-blocking arm changes which events are *published* and touches no control action — exactly
+the isolation the design required, confirmed rather than assumed.
+
+And the blocking arm independently **reproduces the stored `detector_thresholds` sweep**, at a
+different commit with different config hashes: CUSUM 3, 3, 2, 1; Page–Hinkley 1, 5, 5, 1; ADWIN
+0, 1, 2, 2, 2; KS 0, 0, 0, 0 of 20. That reproduction is what makes the comparison below worth
+anything.
+
+### C1b. The shapes, with sensitivity increasing left to right
+
+| detector | arm | recall by sensitivity | shape |
+|---|---|---|---|
+| CUSUM | blocking | 0.15, 0.15, 0.10, 0.05 | declines |
+| CUSUM | **non-blocking** | 0.15, 0.15, 0.15, 0.10 | **still declines** |
+| Page–Hinkley | blocking | 0.05, 0.25, 0.25, 0.05 | **inverts** |
+| Page–Hinkley | **non-blocking** | 0.05, 0.25, 0.25, 0.10 | **still inverts** |
+| ADWIN | blocking | 0.00, 0.05, 0.10, 0.10, 0.10 | rises |
+| ADWIN | **non-blocking** | 0.00, 0.05, 0.10, 0.10, 0.10 | **identical** |
+| KS | both | 0.00, 0.00, 0.00, 0.00 | flat |
+
+**The non-blocking arm inverts exactly where the blocking arm inverts.** If blocking caused the
+inversion, this is the table that would have shown it, and it does not.
+
+### C1c. What unblocking actually bought
+
+Pooled over all 17 arms × 10 seeds on `S4_step_fault`:
+
+| | blocking | non-blocking | change |
+|---|---|---|---|
+| alarms published | 281 | 560 | **+279** |
+| of which false alarms | 253 | 529 | **+276** |
+| faults detected (of 340 opportunities) | 28 | 31 | **+3** |
+| recall | 0.082 | 0.091 | +0.009 |
+| recalibrations | 79 | 79 | 0 |
+| median MAE (kg) | 151.70 | 151.70 | 0 |
+
+**Unblocking published 279 more alarms. Three of them were real detections and 276 were false
+alarms.** The events the controller was swallowing were, to within one percent, noise.
+
+Paired per arm by seed, 10 seeds, exact Wilcoxon with Holm over the family of 17: **not one arm
+separates**, every median difference is 0.0, and most paired cells are exactly equal. The
+attainable p at n=10 is 0.00195, which after Holm ×17 is 0.0332 — so a unanimous difference
+*would* have been detectable. There is no difference to detect.
+
+### C1d. What this means
+
+The mechanism in section V-D — a spurious alarm holds the controller in `DRIFT_SUSPECTED` and
+consumes the window a real fault must be caught in — is **arithmetically real but causally
+inert**. The window is as long as A0.3 and A1 say it is, 9,818 s against an 1,800 s horizon, and
+the controller genuinely does swallow alarms during it. It is simply not swallowing the alarms
+that would have been detections.
+
+So the inversion's cause lies upstream of the controller, in the detectors or in the residual
+signal they see. Combined with C2 — where no arm anywhere separated from its baseline, and the
+inversion itself is a four-count difference at p = 0.18 — the defensible reading is that **the
+Page–Hinkley "inversion" is noise in a 20-opportunity sample, and C1 has now failed to find a
+mechanism for it because there may be no effect to explain.**
+
+This is a negative result for the hypothesis and should be reported with the same prominence the
+hypothesis was. It also makes the Stage D1 fix a matter of *semantics and comparability* rather
+than of recovering lost detections: capping the window still removes a confound from the
+reference-rate experiment, but it should not be expected to raise recall, and C1 is the reason to
+say so in advance.
+
+### C1e. What was not run, and why
+
+**`S6_combined` was not completed.** The sweep was stopped by a wall-clock limit at 85 of 136
+cells per shard. The grid runs scenario-major, so all 68 `S4_step_fault` cells completed at all
+10 seeds while `S6_combined` reached 5 seeds on 16 of 17 arms and 3 seeds on the last. Those
+partial S6 rows are retained in `data/results/blocking_partial/` and are **excluded from every
+figure above**; the fragment is printed in the reduction output marked as incomplete, and no
+claim rests on it.
+
+It was not resumed, and the reasons are recorded rather than left implicit:
+
+- C2 established that every S6 detector ladder is noise — maximum 2 of 20 anywhere, every ladder
+  non-monotone, smallest Fisher p 0.4872. There is no inversion on S6 for C1 to explain.
+- The effect C1 exists to test lives on S4, and S4 is complete at full power.
+- Completing S6 costs roughly 3.4 h of machine time, which is the whole remaining budget for
+  Stages D1, E1 and F1, none of which had started.
+
+**This is a deliberate omission of a planned cell, declared here and in `OPEN.md`.** If the S6
+arm is later wanted, the configuration is committed and `wimsim experiment blocking --scenarios
+S6_combined` reproduces it.
+
+---

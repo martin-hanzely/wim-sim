@@ -1,0 +1,91 @@
+423 runs, 0 failed
+
+C1a  recall against sensitivity, both arms
+     scenario       family    knob          arm               config  seeds  detected  opportunities  recall  ci_lo  ci_hi  fa_per_h  alarms  recals
+S4_step_fault        cusum 12.0000     blocking         detect_cusum     10         3             20    0.15 0.0003 0.2997    0.0625      15       6
+S4_step_fault        cusum 12.0000 non-blocking      detect_cusum_nb     10         3             20    0.15 0.0003 0.2997    0.1562      30       6
+S4_step_fault        cusum  6.0000     blocking      detect_cusum_h6     10         3             20    0.15 0.0003 0.2997    0.1250      21       9
+S4_step_fault        cusum  6.0000 non-blocking   detect_cusum_h6_nb     10         3             20    0.15 0.0003 0.2997    0.2500      42       9
+S4_step_fault        cusum  3.0000     blocking      detect_cusum_h3     10         2             20    0.10 0.0000 0.2307    0.1875      30       7
+S4_step_fault        cusum  3.0000 non-blocking   detect_cusum_h3_nb     10         3             20    0.15 0.0003 0.2997    0.3750      60       7
+S4_step_fault        cusum  1.5000     blocking    detect_cusum_h1p5     10         1             20    0.05 0.0000 0.1480    0.1875      30       8
+S4_step_fault        cusum  1.5000 non-blocking detect_cusum_h1p5_nb     10         2             20    0.10 0.0000 0.2307    0.3750      60       8
+S4_step_fault page_hinkley 15.0000     blocking            detect_ph     10         1             20    0.05 0.0000 0.1480    0.0625       9       3
+S4_step_fault page_hinkley 15.0000 non-blocking         detect_ph_nb     10         1             20    0.05 0.0000 0.1480    0.1250      18       3
+S4_step_fault page_hinkley  7.5000     blocking       detect_ph_h7p5     10         5             20    0.25 0.0867 0.4133    0.0625      17       8
+S4_step_fault page_hinkley  7.5000 non-blocking    detect_ph_h7p5_nb     10         5             20    0.25 0.0867 0.4133    0.1875      34       8
+S4_step_fault page_hinkley  3.7500     blocking      detect_ph_h3p75     10         5             20    0.25 0.0867 0.4133    0.1250      25      10
+S4_step_fault page_hinkley  3.7500 non-blocking   detect_ph_h3p75_nb     10         5             20    0.25 0.0867 0.4133    0.2500      48      10
+S4_step_fault page_hinkley  1.8750     blocking     detect_ph_h1p875     10         1             20    0.05 0.0000 0.1480    0.1875      30       7
+S4_step_fault page_hinkley  1.8750 non-blocking  detect_ph_h1p875_nb     10         2             20    0.10 0.0000 0.2307    0.3750      60       7
+S4_step_fault        adwin  0.0020     blocking         detect_adwin     10         0             20    0.00 0.0000 0.0000    0.0625      12       4
+S4_step_fault        adwin  0.0020 non-blocking      detect_adwin_nb     10         0             20    0.00 0.0000 0.0000    0.1250      24       4
+S4_step_fault        adwin  0.0100     blocking     detect_adwin_d01     10         1             20    0.05 0.0000 0.1480    0.0625      13       5
+S4_step_fault        adwin  0.0100 non-blocking  detect_adwin_d01_nb     10         1             20    0.05 0.0000 0.1480    0.1250      26       5
+S4_step_fault        adwin  0.0500     blocking     detect_adwin_d05     10         2             20    0.10 0.0000 0.2307    0.0625      13       4
+S4_step_fault        adwin  0.0500 non-blocking  detect_adwin_d05_nb     10         2             20    0.10 0.0000 0.2307    0.1250      26       4
+S4_step_fault        adwin  0.2500     blocking     detect_adwin_d25     10         2             20    0.10 0.0000 0.2307    0.0625      16       4
+S4_step_fault        adwin  0.2500 non-blocking  detect_adwin_d25_nb     10         2             20    0.10 0.0000 0.2307    0.1875      32       4
+S4_step_fault        adwin  0.9000     blocking      detect_adwin_d9     10         2             20    0.10 0.0000 0.2307    0.1250      19       4
+S4_step_fault        adwin  0.9000 non-blocking   detect_adwin_d9_nb     10         2             20    0.10 0.0000 0.2307    0.2500      38       4
+S4_step_fault           ks  0.0001     blocking            detect_ks     10         0             20    0.00 0.0000 0.0000    0.0000       4       0
+S4_step_fault           ks  0.0001 non-blocking         detect_ks_nb     10         0             20    0.00 0.0000 0.0000    0.0000       8       0
+S4_step_fault           ks  0.0010     blocking       detect_ks_a001     10         0             20    0.00 0.0000 0.0000    0.0625       7       0
+S4_step_fault           ks  0.0010 non-blocking    detect_ks_a001_nb     10         0             20    0.00 0.0000 0.0000    0.1250      14       0
+S4_step_fault           ks  0.0100     blocking        detect_ks_a01     10         0             20    0.00 0.0000 0.0000    0.0625       9       0
+S4_step_fault           ks  0.0100 non-blocking     detect_ks_a01_nb     10         0             20    0.00 0.0000 0.0000    0.1250      18       0
+S4_step_fault           ks  0.1000     blocking         detect_ks_a1     10         0             20    0.00 0.0000 0.0000    0.0625      11       0
+S4_step_fault           ks  0.1000 non-blocking      detect_ks_a1_nb     10         0             20    0.00 0.0000 0.0000    0.1250      22       0
+  S6_combined        cusum 12.0000     blocking         detect_cusum      5         0             10    0.00 0.0000 0.0000    0.0417       9       3
+  S6_combined        cusum  6.0000     blocking      detect_cusum_h6      5         2             10    0.20 0.0000 0.4400    0.0625      16       3
+  S6_combined        cusum  3.0000     blocking      detect_cusum_h3      5         0             10    0.00 0.0000 0.0000    0.0833      20       0
+  S6_combined        cusum  1.5000     blocking    detect_cusum_h1p5      5         0             10    0.00 0.0000 0.0000    0.0833      20       0
+  S6_combined page_hinkley 15.0000     blocking            detect_ph      5         0             10    0.00 0.0000 0.0000    0.0208       6       2
+  S6_combined page_hinkley  7.5000     blocking       detect_ph_h7p5      5         0             10    0.00 0.0000 0.0000    0.0625      13       1
+  S6_combined page_hinkley  3.7500     blocking      detect_ph_h3p75      5         1             10    0.10 0.0000 0.2960    0.0833      18       0
+  S6_combined page_hinkley  1.8750     blocking     detect_ph_h1p875      5         0             10    0.00 0.0000 0.0000    0.0833      20       0
+  S6_combined        adwin  0.0020     blocking         detect_adwin      5         0             10    0.00 0.0000 0.0000    0.0208       8       2
+  S6_combined        adwin  0.0100     blocking     detect_adwin_d01      5         1             10    0.10 0.0000 0.2960    0.0208       8       3
+  S6_combined        adwin  0.0500     blocking     detect_adwin_d05      5         0             10    0.00 0.0000 0.0000    0.0417       9       2
+  S6_combined        adwin  0.2500     blocking     detect_adwin_d25      5         0             10    0.00 0.0000 0.0000    0.0417      10       2
+  S6_combined        adwin  0.9000     blocking      detect_adwin_d9      5         0             10    0.00 0.0000 0.0000    0.0417      10       2
+  S6_combined           ks  0.0001     blocking            detect_ks      5         0             10    0.00 0.0000 0.0000    0.0000       0       0
+  S6_combined           ks  0.0010     blocking       detect_ks_a001      5         0             10    0.00 0.0000 0.0000    0.0000       1       0
+  S6_combined           ks  0.0100     blocking        detect_ks_a01      5         0             10    0.00 0.0000 0.0000    0.0208       3       0
+  S6_combined           ks  0.1000     blocking         detect_ks_a1      3         0              6    0.00 0.0000 0.0000    0.0208       3       0
+
+C1b  is the ladder monotone in sensitivity? (recall should not fall as the knob sharpens)
+  S4_step_fault    cusum         blocking      recall by sensitivity [np.float64(0.15), np.float64(0.15), np.float64(0.1), np.float64(0.05)]  drops=2   <-- INVERTS
+  S4_step_fault    cusum         non-blocking  recall by sensitivity [np.float64(0.15), np.float64(0.15), np.float64(0.15), np.float64(0.1)]  drops=1   <-- INVERTS
+  S4_step_fault    page_hinkley  blocking      recall by sensitivity [np.float64(0.05), np.float64(0.25), np.float64(0.25), np.float64(0.05)]  drops=1   <-- INVERTS
+  S4_step_fault    page_hinkley  non-blocking  recall by sensitivity [np.float64(0.05), np.float64(0.25), np.float64(0.25), np.float64(0.1)]  drops=1   <-- INVERTS
+  S4_step_fault    adwin         blocking      recall by sensitivity [np.float64(0.0), np.float64(0.05), np.float64(0.1), np.float64(0.1), np.float64(0.1)]  drops=0
+  S4_step_fault    adwin         non-blocking  recall by sensitivity [np.float64(0.0), np.float64(0.05), np.float64(0.1), np.float64(0.1), np.float64(0.1)]  drops=0
+  S4_step_fault    ks            blocking      recall by sensitivity [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(0.0)]  drops=0
+  S4_step_fault    ks            non-blocking  recall by sensitivity [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(0.0)]  drops=0
+  S6_combined      cusum         blocking      recall by sensitivity [np.float64(0.0), np.float64(0.2), np.float64(0.0), np.float64(0.0)]  drops=1   <-- INVERTS
+  S6_combined      page_hinkley  blocking      recall by sensitivity [np.float64(0.0), np.float64(0.0), np.float64(0.1), np.float64(0.0)]  drops=1   <-- INVERTS
+  S6_combined      adwin         blocking      recall by sensitivity [np.float64(0.0), np.float64(0.1), np.float64(0.0), np.float64(0.0), np.float64(0.0)]  drops=1   <-- INVERTS
+  S6_combined      ks            blocking      recall by sensitivity [np.float64(0.0), np.float64(0.0), np.float64(0.0), np.float64(0.0)]  drops=0
+
+C1c  paired blocking vs non-blocking, per arm, 10 seeds
+     scenario       family    knob  n  recall_blocking  recall_nonblocking  median_diff signs   p  p_holm       verdict
+S4_step_fault        cusum 12.0000 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault        cusum  6.0000 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault        cusum  3.0000 10             0.00                0.00          0.0 +1/-0 1.0     1.0 not separated
+S4_step_fault        cusum  1.5000 10             0.00                0.00          0.0 +1/-0 1.0     1.0 not separated
+S4_step_fault page_hinkley 15.0000 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault page_hinkley  7.5000 10             0.25                0.25          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault page_hinkley  3.7500 10             0.25                0.25          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault page_hinkley  1.8750 10             0.00                0.00          0.0 +1/-0 1.0     1.0 not separated
+S4_step_fault        adwin  0.0020 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault        adwin  0.0100 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault        adwin  0.0500 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault        adwin  0.2500 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault        adwin  0.9000 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault           ks  0.0001 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault           ks  0.0010 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault           ks  0.0100 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+S4_step_fault           ks  0.1000 10             0.00                0.00          0.0 +0/-0 1.0     1.0 not separated
+
+  family size 17; min attainable p at n=10 is 0.00195, which after Holm x17 is 0.0332
