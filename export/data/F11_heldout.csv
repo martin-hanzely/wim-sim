@@ -1,0 +1,9 @@
+held_out,development,estimator,dev,held,reproduces
+H1_warm_front,S2_thermal_cycle,rls,-0.26666666666666666,0.26666666666666666,False
+H1_warm_front,S2_thermal_cycle,kalman,0.13333333333333333,1.0,True
+H2_gain_jolt,S4_step_fault,rls,-1.0,-1.0,True
+H2_gain_jolt,S4_step_fault,kalman,-1.0,-1.0,True
+H3_slow_fade,S7_sparse_reference,rls,-1.0,-0.2,True
+H3_slow_fade,S7_sparse_reference,kalman,-0.8,0.2,False
+H4_pileup,S6_combined,rls,-1.0,-0.6666666666666666,True
+H4_pileup,S6_combined,kalman,0.3333333333333333,0.0,False

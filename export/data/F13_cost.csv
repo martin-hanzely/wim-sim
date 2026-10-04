@@ -1,0 +1,4 @@
+estimator,n_updates,state_bytes,update_us
+static_affine,2000.0,199.0,1.4443499999999998
+rls,2000.0,403.0,17.2931
+kalman,2000.0,456.0,24.23535

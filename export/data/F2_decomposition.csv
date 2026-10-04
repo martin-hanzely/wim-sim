@@ -1,0 +1,8 @@
+scenario,floor_kg,frozen_excess_kg,best_tracked_arm,tracked_excess_kg,excess_over_floor,recovered_pct
+S1_nominal,0.0,0.9,rls,0.9,,0.4
+S2_thermal_cycle,136.1,2.7,rls,2.0,0.02,26.3
+S3_zero_drift_walk,135.7,3.4,rls,2.5,0.025,28.0
+S4_step_fault,136.4,46.0,kalman,15.1,0.338,67.1
+S5_outage,136.2,2.6,rls,1.9,0.019,26.7
+S6_combined,191.2,505.8,rls,474.6,2.646,6.2
+S7_sparse_reference,158.3,20.7,rls,3.8,0.131,81.8

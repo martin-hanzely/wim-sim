@@ -1223,3 +1223,105 @@ trajectory than a constant does, and are anti-correlated with it.
   disabled) has not been run.
 
 ---
+
+## Paper figures and the two computations
+
+For the narrowed paper. Nine figures at 300 dpi from `scripts/paper_figures.py`, each with a
+sidecar entry in `export/figures/FIGURES.md` and a CSV of the plotted numbers in `export/data/`.
+No new runs: everything here is a reduction of stored results.
+
+### Verification of the three numbers the draft carries
+
+**All three are correct as stated. Nothing needs changing.**
+
+| claim | drafted | measured | verdict |
+|---|---|---|---|
+| S2 is "98 % dynamic load floor" | 98 % | floor 136.09 / frozen MAE 138.82 = **98.0 %** | correct |
+| "the thermal disturbance contributes 0.2 kg" | 0.2 kg | **0.23 kg** in quadrature | correct |
+| S6 frozen above floor | 505.7 kg | **505.77 kg** | correct |
+| S6 best tracked above floor | ~475 kg | **474.59 kg** (rls) | correct |
+| S6 recovery | ~6 % | **6.2 %** | correct |
+| S2 bias, frozen → rls | 23.7 → 5.7 kg | **23.67 → 5.74 kg** | correct |
+| S2 bias, frozen → kalman | 23.7 → 5.6 kg | **23.67 → 5.62 kg** | correct |
+| S2 bias p_holm | < 1e-5 | **7.7e-07** and **2.0e-06** | correct |
+
+One qualification worth carrying into the text, because the two numbers are easy to conflate:
+the thermal disturbance contributes **0.23 kg** of a frozen excess that is itself only
+**2.73 kg**. So thermal explains about **8 %** of S2's already negligible recoverable excess, and
+"98 % floor" and "thermal contributes 0.2 kg" are consistent but describe different denominators.
+
+Separately verified for F7, and also correct: the commissioning window is **20.0 minutes**
+(60 calibration passes at 180 veh/h) and its mean sensor temperature is **7.53 °C** against a run
+median of **14.59 °C** — **7.05 °C below**. The draft's "~20 minutes" and "7 °C" both stand.
+
+### C-a. Relative accuracy — the [X] in §V-B
+
+Median MAE over 30 seeds as a percentage of **mean gross vehicle weight**. Both denominators are
+given because they differ by a factor of four and the choice is not neutral: the simulated fleet
+has a median mass of 1 555 kg and is car-dominated, while WiM accuracy classes are written for
+trucks.
+
+| scenario | mean GVW (kg) | frozen kg | rls kg | kalman kg | frozen % | rls % | kalman % |
+|---|---|---|---|---|---|---|---|
+| S1_nominal | 6 075 | 0.94 | 0.94 | 0.95 | 0.016 | 0.015 | 0.016 |
+| S2_thermal_cycle | 6 283 | 138.82 | 138.10 | 139.19 | 2.210 | 2.198 | 2.215 |
+| S3_zero_drift_walk | 6 242 | 139.18 | 138.21 | 139.60 | 2.230 | 2.214 | 2.236 |
+| S4_step_fault | 6 192 | 182.39 | 154.37 | 151.49 | **2.945** | 2.493 | **2.447** |
+| S5_outage | 6 075 | 138.88 | 138.18 | 143.10 | 2.286 | 2.275 | 2.356 |
+| S6_combined | 6 228 | 696.94 | 665.75 | 707.32 | 11.190 | 10.689 | 11.357 |
+| S7_sparse_reference | 6 202 | 179.04 | 162.10 | 162.98 | 2.887 | 2.614 | 2.628 |
+
+Against the ≥3.5 t subset (mean ≈24 700 kg) every percentage falls by about a factor of four —
+S4 frozen 0.738 %, S6 frozen 2.814 %. Full table in `export/data/F12_relative_accuracy.csv`.
+
+**The S4 improvement, in the terms §V-B asks for:**
+
+- absolute **182.4 → 151.5 kg**, a reduction of **30.9 kg** or **16.9 % relative**
+- as a share of mean fleet GVW: **2.95 % → 2.45 %**, i.e. **0.50 percentage points**
+- as a share of mean truck GVW: **0.738 % → 0.613 %**, i.e. **0.125 percentage points**
+
+The best tracked arm on S4 is `kalman` (151.5 kg) rather than `rls` (154.4 kg).
+
+### C-b. Table I parameter values
+
+Resolved through `runner._edge_for` **in a worktree at `ladder30`'s own commit `a2c70f37`**, not
+from today's defaults. The three resolved `edge_config_hash` values match the three recorded in
+`data/results/ladder30/results.parquet` exactly, which is what makes these the values actually in
+force:
+
+| | value | hash-verified |
+|---|---|---|
+| λ, RLS forgetting factor | **0.99** | yes |
+| R, Kalman measurement noise | **1.0 × 10⁻⁸** (sensor units²) | yes |
+| Q₀₀, Kalman process noise, zero line | **1.0 × 10⁻⁷** | yes |
+| Q₁₁, Kalman process noise, gain | **1.0 × 10⁻¹¹** | yes |
+| τ_th, ambient → sensor-body lag | **1 800 s** | yes |
+| probe lag behind sensor body | **120 s** | yes |
+| α₀, nominal thermal coefficient | **−2.0 × 10⁻⁴ /°C** | yes |
+| coverage target | 0.95 | yes |
+| bootstrap passes | 50 (overridden to 60 by the sweep's `calibration_passes`) | yes |
+
+`edge_config_hash`: `535f10e6…` static_affine, `f54c1734…` rls, `2dcdf942…` kalman.
+
+**Q₀₀ and Q₁₁ are standard deviations per second, not variances.** The filter squares them
+internally (`q_rate = Q²`), so a table that prints them as variances would be wrong by a square.
+
+**There is no "covariance trace bound" in the code, and the draft's `[X]` for it cannot be
+filled as written.** What actually bounds the covariance is two different things, and the text
+should name whichever it meant:
+
+- the **initial** covariance `P₀ = diag(1.0², 0.01²)`, given as standard deviations; and
+- `max_gap_s = 3 600 s`, which caps the time increment used to propagate process noise, so an
+  arbitrarily long gap between passes cannot inflate the covariance without limit.
+
+Neither is a bound on the trace. If the manuscript needs a single number here, `max_gap_s` is the
+one doing the work the sentence describes.
+
+### What could not be produced from stored data
+
+**One item.** F12 normalises an all-vehicle MAE by an all-vehicle mean GVW. A **truck-only** MAE —
+error computed over vehicles ≥3.5 t, which is the population COST 323 is written for — needs
+per-event errors, and the export carries per-run aggregates only. Both denominators are reported
+against the same all-vehicle MAE, and the figure says so on its face.
+
+---
