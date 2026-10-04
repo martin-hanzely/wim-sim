@@ -976,3 +976,159 @@ stated as unexplained is more credible than an explanation the evidence contradi
 the evidence does not merely fail to support the label, it points the other way.
 
 ---
+
+## Stage C1 (amended) — `S6_combined` completed after all, and it agrees
+
+**This amends the Stage C1 entry above, which states that `S6_combined` was not completed. That
+statement was true when written and is now false. The entry is left standing and corrected here,
+because this log is append-only and a silently edited record of what was run is worth nothing.**
+
+### How it happened — a process failure worth recording
+
+When a background job is killed, **its worker processes are not killed with it.** The C1 shards
+were reported stopped at 85 of 136 cells; in fact five workers kept running for a further four
+hours and finished the grid. Two consequences, both mine:
+
+1. Every runtime estimate made after that point was wrong, because roughly half the machine was
+   occupied by a sweep believed to be dead. That is why Stages F1, E1 and D1 all ran slower than
+   predicted.
+2. Relaunching `reference_rate_fixed` while the first set was still alive put **two worker sets
+   on the same output directories**, which is why its partial file held 333 rows for a 280-cell
+   grid. No result was corrupted — identical `run_id` at identical commit is byte-identical by
+   the determinism guarantee, and every duplicate carried the same commit — but half that compute
+   was wasted. The older set was stopped and the survivor finalised cleanly.
+
+**The rule, alongside the Stage D1 one: after a job is reported killed, check for surviving
+workers before concluding anything about the machine or relaunching into the same directory.**
+
+### The completed result
+
+`blocking` is now **680 runs, 0 failed**: 17 threshold arms × 2 control arms × 2 scenarios × 10
+seeds. The isolation checks now cover the whole grid — recalibrations and MAE are identical in
+**340 of 340** paired cells.
+
+`S6_combined`, pooled over all 17 arms × 10 seeds:
+
+| | blocking | non-blocking | change |
+|---|---|---|---|
+| alarms published | 363 | 726 | **+363** |
+| of which false alarms | 358 | 721 | +363 |
+| faults detected (of 340) | **5** | **5** | **0** |
+| recalibrations | 44 | 44 | 0 |
+| median MAE (kg) | 658.77 | 658.77 | 0 |
+
+**On S6 the non-blocking arm doubles the alarms and detects exactly nothing more — not one
+additional fault in 340 opportunities.** Every S6 ladder has the identical shape in both arms.
+
+### The properly powered test
+
+With 34 arms the per-arm family is underpowered: the attainable p at ten seeds after Holm×34 is
+**0.0664**, above 0.05, so no single arm *could* reach significance and the per-arm table should
+not be leaned on. Pooling across arms within each scenario gives a family of two, which is
+powered (Holm×2 floor = 0.0039):
+
+| scenario | metric | blocking | non-blocking | diff | signs | p | p_holm |
+|---|---|---|---|---|---|---|---|
+| `S4_step_fault` | false alarms | 253 | 529 | **+276** | +10/−0 | 0.00195 | **0.0078** |
+| `S6_combined` | false alarms | 358 | 721 | **+363** | +10/−0 | 0.00195 | **0.0078** |
+| `S4_step_fault` | detections | 28 | 31 | +3 | +1/−0 | 1.0 | 1.0 |
+| `S6_combined` | detections | 5 | 5 | **0** | +0/−0 | 1.0 | 1.0 |
+
+**Unblocking the controller more than doubles the false-alarm rate, unanimously across all ten
+seeds on both scenarios, and does not improve detection on either.** The C1 conclusion stands and
+is now carried by the full grid rather than half of it.
+
+---
+
+## Stage D1 (part 2) — the reference-rate rerun with the window capped
+
+Completed 2026-10-04. 280 runs, 0 failed: 7 rates × 2 scenarios × `rls` × 10 seeds × 2 control
+arms, with `control.confirmation_max_s = 1800.0`.
+
+### D1d. The question, answered explicitly
+
+> *Was the 39 % miss at the every-vehicle rate caused by false alarms blocking the controller?*
+
+**No.**
+
+| | recall | **miss** | false alarms/h | recalibrations/run |
+|---|---|---|---|---|
+| stored, uncapped window (15 seeds) | 0.600 | **40.0 %** | 1.0000 | 1.00 |
+| rerun, window capped at one horizon (10 seeds) | 0.600 | **40.0 %** | 0.9688 | 1.10 |
+
+The miss rate is unchanged to three figures. The false-alarm rate at one reference in one is
+indeed ≈ 1.00/h as the audit noted, and the controller is indeed blocked for 55 % of the horizon
+there — but removing that blocking (C1) and shortening it (here) both leave the miss rate exactly
+where it was. **The 39–40 % miss at the every-vehicle rate is not a controller-blocking effect.**
+
+This was predicted in advance from C1 and recorded in commit `fe74a0d` before this sweep ran.
+
+### D1e. Recall against reference rate, with the ceiling beside it
+
+Governed arm, 10 seeds, interval clustered by seed rather than treating fault opportunities as
+independent:
+
+| scenario | rate | ceiling | recall | 95 % CI | corrected | stored | recals/run |
+|---|---|---|---|---|---|---|---|
+| S4 | 1 | 1.00 | 0.600 | [0.356, 0.844] | 0.600 | 0.600 | 1.10 |
+| S4 | 2 | 1.00 | 0.450 | [0.221, 0.679] | 0.450 | 0.433 | 0.60 |
+| S4 | 3 | 1.00 | 0.500 | [0.247, 0.753] | 0.500 | 0.367 | 0.60 |
+| S4 | 5 | 1.00 | 0.350 | [0.141, 0.559] | 0.350 | 0.267 | 0.30 |
+| S4 | 10 | 1.00 | 0.400 | [0.156, 0.644] | 0.400 | 0.300 | 0.00 |
+| S4 | 20 | **0.50** | 0.000 | [0.000, 0.000] | 0.000 | 0.033 | 0.00 |
+| S4 | 50 | **0.00** | 0.000 | [0.000, 0.000] | **undefined** | 0.000 | 0.00 |
+| S7 | 1 | 1.00 | 0.900 | [0.704, 1.000] | 0.900 | 0.933 | 0.10 |
+| S7 | 2 | 1.00 | 0.700 | [0.401, 0.999] | 0.700 | 0.800 | 0.60 |
+| S7 | 3 | 1.00 | 0.200 | [0.000, 0.461] | 0.200 | 0.200 | 0.30 |
+| S7 | 5 | 1.00 | 0.300 | [0.001, 0.599] | 0.300 | 0.200 | 0.30 |
+| S7 | 10 | 1.00 | 0.200 | [0.000, 0.461] | 0.200 | 0.267 | 0.10 |
+| S7 | 20 | 1.00 | 0.200 | [0.000, 0.461] | 0.200 | 0.200 | 0.00 |
+| S7 | 50 | 1.00 | 0.000 | [0.000, 0.000] | 0.000 | 0.067 | 0.00 |
+
+**The intervals are wide and they overlap almost everywhere.** At ten seeds and one or two faults
+per run, a recall point on this curve carries roughly ±0.25. The capped curve sits a little above
+the stored one at rates 3, 5 and 10 on S4 and a little below on S7, and **none of those
+differences is interpretable** — the two sweeps also differ in seed count (10 against 15), so they
+are not paired and no test is offered.
+
+The honest summary of the curve: **recall falls with reference sparsity on both scenarios, and
+everything past one reference in ten is at or near zero.** That much survives the intervals.
+
+### D1f. What the cap cost — reported because it is a cost
+
+Capping the window reduces recalibrations on the low-traffic scenario, exactly as the sqrt(n)
+gate predicts: a window closed at 1800 s on S4 at one reference in ten holds 11 residuals instead
+of 60, so confirmation demands a displacement 2.3× larger.
+
+| S4 rate | recals/run, uncapped | recals/run, capped |
+|---|---|---|
+| 1 | 1.00 | 1.10 |
+| 5 | 0.53 | 0.30 |
+| **10** | **0.73** | **0.00** |
+| **20** | **0.20** | **0.00** |
+
+On S7 (600 veh/h, so references are dense in *time* even when sparse in *vehicles*) the cap is
+roughly neutral.
+
+**So the fix buys commensurability and costs confirmations at sparse rates on low-traffic sites.**
+That trade is the direct consequence of the mechanism chosen in part 1, it was visible in the
+design arithmetic before the run, and it is the reason the cap is set at one full horizon rather
+than half of one.
+
+### D1g. Governance effect: nothing, anywhere
+
+Median of per-seed differences, governed minus ungoverned, at every rate on both scenarios:
+
+**0 of 14 cells separate after Holm.** Most cells are exactly `+0.00 kg` with signs `+0/−0` —
+governed and ungoverned produced *identical* MAE in every seed, because with the capped window the
+controller never acted at all at those rates. The largest effect anywhere is −0.15 kg on S4 at one
+reference in one (p = 0.109).
+
+Reported with the signed bias alongside, as the standing rule requires: `dbias` is likewise
+±0.00 kg everywhere except S4 rate 1, at −1.07 kg.
+
+**With a horizon-commensurable confirmation window, governance has no measurable effect on error
+at any reference rate tested.** That is a negative result about the controller as configured, and
+it belongs beside the headline rather than in a limitation.
+
+---

@@ -1,0 +1,15 @@
+scenario,rate,dMAE,dbias,signs,p,p_holm,verdict
+S4_step_fault,1,-0.15,-1.07,+2/-6,0.109375,1.0,not separated
+S4_step_fault,2,0.0,0.0,+1/-3,0.375,1.0,not separated
+S4_step_fault,3,0.0,0.0,+0/-4,0.125,1.0,not separated
+S4_step_fault,5,0.0,0.0,+1/-1,1.0,1.0,not separated
+S4_step_fault,10,0.0,0.0,+0/-0,1.0,1.0,not separated
+S4_step_fault,20,0.0,0.0,+0/-0,1.0,1.0,not separated
+S4_step_fault,50,0.0,0.0,+0/-0,1.0,1.0,not separated
+S7_sparse_reference,1,0.0,0.0,+1/-0,1.0,1.0,not separated
+S7_sparse_reference,2,0.0,0.0,+3/-2,0.625,1.0,not separated
+S7_sparse_reference,3,0.0,0.0,+2/-1,0.75,1.0,not separated
+S7_sparse_reference,5,0.0,0.0,+1/-2,0.75,1.0,not separated
+S7_sparse_reference,10,0.0,0.0,+1/-0,1.0,1.0,not separated
+S7_sparse_reference,20,0.0,0.0,+0/-0,1.0,1.0,not separated
+S7_sparse_reference,50,0.0,0.0,+0/-0,1.0,1.0,not separated
