@@ -1,0 +1,23 @@
+H1_warm_front: how heavy are the tails? RMSE/MAE per estimator (medians over 30 seeds)
+  static_affine    RMSE/MAE = 2.27   (a normal error distribution gives 1.25)
+  rls              RMSE/MAE = 2.28   (a normal error distribution gives 1.25)
+  kalman           RMSE/MAE = 1.99   (a normal error distribution gives 1.25)
+  -> the squared-error decomposition is dominated by a few passes, so the 'variance'
+     term below is a tail statistic, not a width. The MAE-matched split is the honest one.
+
+MAE-matched decomposition, per seed:  MAE = |bias| + (MAE - |bias|)
+estimator              MAE    |bias|   MAE-|bias|
+  static_affine       1124.5     139.1        983.5
+  rls                 1130.7      35.5       1090.9
+  kalman              1366.1      57.4       1309.8
+
+kalman - static_affine, paired by seed (n=30), exact Wilcoxon:
+  MAE               1124.5 ->    1366.1   diff    +251.4 kg   signs +30/-0   p=1.86e-09   p_holm=5.59e-09
+  |bias|             139.1 ->      57.4   diff     -61.7 kg   signs +6/-24   p=2.69e-05   p_holm=2.69e-05
+  MAE - |bias|       983.5 ->    1309.8   diff    +323.2 kg   signs +30/-0   p=1.86e-09   p_holm=5.59e-09
+
+  the +251 kg MAE penalty splits into:
+    bias      -61.7 kg   (  -25 % of it)  <- kalman is BETTER here
+    spread   +323.2 kg   ( +129 % of it)
+
+  the ablation's quoted 'fixed variance cost' is +29.3 kg; the spread term here is +323.2 kg, a factor of 11.0.

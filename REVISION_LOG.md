@@ -627,3 +627,101 @@ against a committed, frozen tree.
 so the two can disagree halfway through.
 
 ---
+
+## Stage F1 (part 1) — the bias/variance decomposition on H1
+
+Completed 2026-10-04. Analysis only, over the stored `heldout30` sweep (30 seeds). The Kalman Q
+sweep is part 2.
+
+**The "fixed variance cost" label has the right direction and the wrong size. It is a spread
+cost, not a bias cost — but the ablation accounts for one eleventh of it.**
+
+### F1a. The squared-error decomposition is not usable here
+
+`rmse² = bias² + variance` is arithmetically true, but on H1 it describes the tails rather than
+the width:
+
+| estimator | RMSE/MAE (median over 30 seeds) |
+|---|---|
+| `static_affine` | 2.27 |
+| `rls` | 2.28 |
+| `kalman` | 1.99 |
+
+A normal error distribution gives 1.25. At 2.3 the squared error is dominated by a handful of
+passes per run, so a "variance" term read off RMSE is a tail statistic. The decomposition matched
+to the metric the claim is stated in — MAE — is the one reported below. The RMSE split is given
+afterwards for completeness and disagrees with itself, which is the point.
+
+Note in passing that the Kalman's ratio is the *lowest* of the three: it has relatively lighter
+tails and a wider body.
+
+### F1b. The MAE-matched decomposition
+
+Per seed, `MAE = |bias| + (MAE − |bias|)`. Medians over 30 seeds, kg:
+
+| estimator | MAE | \|bias\| | MAE − \|bias\| |
+|---|---|---|---|
+| `static_affine` | 1124.5 | 139.1 | 983.5 |
+| `rls` | 1130.7 | 35.5 | 1090.9 |
+| `kalman` | 1366.1 | 57.4 | 1309.8 |
+
+`kalman − static_affine`, paired by seed, exact Wilcoxon, Holm over the family of three:
+
+| term | static | → kalman | difference | signs | p | p_holm |
+|---|---|---|---|---|---|---|
+| MAE | 1124.5 | 1366.1 | **+251.4** | +30/−0 | 1.9e-09 | 5.6e-09 |
+| \|bias\| | 139.1 | 57.4 | **−61.7** | +6/−24 | 2.7e-05 | 2.7e-05 |
+| MAE − \|bias\| | 983.5 | 1309.8 | **+323.2** | +30/−0 | 1.9e-09 | 5.6e-09 |
+
+**The +251 kg penalty is +323 kg of spread offset by −62 kg of bias.** The Kalman's zero is
+*better* than the static arm's on H1 — by a factor of two and at p_holm = 2.7e-05 — and it pays
+for that with width. So the label's direction is supported: this is a spread cost and not a bias
+cost, and the text may say so.
+
+The MAE p-values sit at the n=30 attainable floor of 1.9e-09, so those two are resolution-limited
+and only the unanimity (30/30) is meaningful. The bias comparison at 2.7e-05 is a measured value.
+
+### F1c. The magnitude is not explained
+
+The ablation that the "fixed variance cost" label rests on measures **+29.3 kg**. The spread term
+on H1 is **+323.2 kg** — a factor of **11**, not the eightfold gap the audit estimated from the
+MAE figure. Correcting the comparison to the right term made the gap larger, not smaller.
+
+So the position going into part 2 is:
+
+- *that* the H1 penalty is a spread cost: **established**, p_holm = 5.6e-09, 30 of 30 seeds.
+- *why it is eleven times the ablation's figure*: **unexplained**.
+
+Part 2 sweeps `process_noise_gain` two decades either side of the shipped 1.0e-11 to test whether
+the Kalman's own answer to "how fast may the gain move" accounts for the magnitude. If the
+penalty tracks Q, the mechanism is identified. If it does not, the label is removed and the
+observation is reported as unexplained — which, on the evidence so far, is the outcome to expect.
+
+### F1d. The same decomposition on the other three held-out scenarios
+
+Reporting only the scenario that fails would be the selective reporting this revision exists to
+avoid — and running the same decomposition on all four turns out to say more than H1 alone does.
+`kalman − static_affine`, medians over 30 seeds, kg, with exact Wilcoxon p per term:
+
+| scenario | ΔMAE | p | Δ\|bias\| | p | Δspread | p |
+|---|---|---|---|---|---|---|
+| `H1_warm_front` | **+251.4** | 1.9e-09 | **−61.7** | 2.7e-05 | **+323.2** | 1.9e-09 |
+| `H2_gain_jolt` | **−47.4** | 1.9e-09 | **−70.8** | 6.9e-06 | +16.2 | 0.119 |
+| `H3_slow_fade` | +28.0 | 0.556 | **−46.1** | 4.2e-04 | **+62.7** | 2.0e-06 |
+| `H4_pileup` | −4.0 | 0.529 | **−25.3** | 0.021 | **+42.1** | 9.5e-04 |
+
+**The sign pattern is the same on all four, and it is the real finding here.** The Kalman
+improves bias on every held-out scenario (−61.7, −70.8, −46.1, −25.3; separated on all four) and
+costs spread on every one (+323.2, +16.2, +62.7, +42.1; separated on three of four). It is
+making the same trade everywhere.
+
+What distinguishes H1 is not the *kind* of failure but its size: the spread cost there is five to
+twenty times the cost on the other three, while the bias credit is unexceptional. So the question
+part 2 has to answer is narrower than "why does the Kalman lose on H1" — it is **why the spread
+cost is an order of magnitude larger on H1 than on the other three draws of the same estimator**.
+
+This also disposes of the reading that H1 and H2 are opposite results. They are the same result:
+the Kalman buys roughly 60–70 kg of bias in both. H2 looks like a win only because its spread
+cost happens to be 16 kg and does not separate.
+
+---
