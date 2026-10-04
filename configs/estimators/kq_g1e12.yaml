@@ -1,0 +1,11 @@
+# Kalman gain process noise at 1.0e-12, for Stage F1.
+#
+# The shipped value is 1.0e-11 and the sweep brackets it by two decades either side. If H1's
+# +251 kg is the fixed variance cost of carrying a gain state, a stiffer Q should walk it back
+# towards the static arm; if it does not, the label is unsupported and goes.
+
+extends: default
+name: kq_g1e12
+description: "Kalman with process_noise_gain 1.0e-12 -- a tenth of the shipped gain Q."
+estimate:
+  process_noise_gain: 1.0e-12

@@ -1,0 +1,60 @@
+# Stage D1 part 2 — the reference-rate experiment, rerun with the confirmation window fixed.
+#
+# WHY A RERUN. `confirmation_passes` counts residuals, so the confirmation window lasted
+# confirmation_passes * reference_every_n / rate -- it scaled with the reference supply, which is
+# exactly the variable this experiment sweeps. Every point on the stored reference-rate curve ran
+# a differently-tuned controller, so the curve confounds reference availability with the
+# controller's own time constant and the two cannot be separated after the fact. On S4 at one
+# reference in ten the window was 9,818 s against an 1,800 s fault horizon; at one in fifty,
+# 49,091 s.
+#
+# THE FIX, and why the cap is one horizon. `control.confirmation_max_s` closes the window at
+# whichever comes first, the count or the clock, so the controller's time constant no longer moves
+# with the swept variable. 1800.0 s is the fault horizon itself, and it is the LARGEST value that
+# is still commensurable with it: a confirmation landing outside the horizon cannot produce a
+# response the horizon would score.
+#
+# It is also the smallest value that keeps the window decidable everywhere. The gate needs at
+# least two residuals to have a level to test, and the residuals available inside the window are:
+#
+#            rate     1     2     3     5    10    20    50
+#   S4  (220/h)    60.0  55.0  36.7  22.0  11.0   5.5   2.2
+#   S7  (600/h)    60.0  60.0  60.0  60.0  30.0  15.0   6.0
+#
+# At a half-horizon cap of 900 s, S4 at one reference in fifty yields 1.1 residuals -- below the
+# floor -- so the controller could never confirm there and the sparse end of the curve would be
+# measuring the cap rather than reference availability. At one horizon every cell is decidable,
+# and the gate's own 1/sqrt(n) scaling charges for the thinner evidence instead of hiding it.
+#
+# PAGE-HINKLEY AT 7.5, the corrected threshold, inherited from `default`. The stored
+# `reference_rate` sweep ran at 15.0 (verified by hash against its own commit in REVISION_LOG
+# A1); `reference_rate_ph75` and `reference_rate30` already ran at 7.5.
+#
+# ESTIMATOR AXIS TRIMMED TO rls, deliberately and at the cost named here. The stored sweeps ran
+# static_affine, rls and kalman; this one runs rls alone, which cuts 840 runs to 280 and about
+# three hours to one. The question D1 asks -- whether detection recall against reference rate was
+# shaped by the controller's blocking rather than by reference availability -- is a question about
+# the CONTROLLER, and holding the estimator fixed isolates it. What is given up is the
+# estimator x rate interaction, so this sweep cannot say whether the fixed window helps the Kalman
+# rung more than the RLS rung. That remains open and is recorded as such.
+#
+# SEEDS. Ten, under the protocol pre-registered in REVISION_LOG.md.
+#
+# NOT HASH-COMPARABLE to the stored reference-rate sweeps: adding control.blocking and
+# control.confirmation_max_s changes every edge_config_hash. Both arms are carried here.
+
+experiment_id: reference_rate_fixed
+description: >
+  Reference rate from one vehicle in one to one in fifty, governed and ungoverned, with the
+  confirmation window capped at one fault horizon so the controller's time constant no longer
+  scales with the swept variable. RLS only, ten seeds.
+scenarios: [S4_step_fault, S7_sparse_reference]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+reference_rates: [1, 2, 3, 5, 10, 20, 50]
+control_arms: [true, false]
+edge_overrides:
+  - edge.control.confirmation_max_s=1800.0
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

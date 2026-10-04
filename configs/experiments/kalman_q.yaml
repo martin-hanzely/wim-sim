@@ -1,0 +1,50 @@
+# Stage F1 — the Kalman process noise on H1, with permission to fail.
+#
+# WHAT IS UNEXPLAINED. On the held-out thermal scenario H1_warm_front the Kalman rung is +251 kg
+# worse than static_affine, unanimously across all thirty seeds. The manuscript labels this a
+# "fixed variance cost" of carrying a gain state. The ablation that is supposed to support the
+# label measures +29.3 kg -- an eightfold gap, unaccounted for. A label that explains an eighth of
+# its own effect is not an explanation.
+#
+# THE TEST. process_noise_gain is the Kalman's own answer to "how fast may the gain move". If the
+# +251 kg is variance from a gain state that is free to wander, then stiffening Q should walk the
+# penalty back towards the static arm, and the sweep will show a monotone relationship between Q
+# and the H1 penalty. The shipped value is 1.0e-11 and this brackets it two decades either side,
+# so the ladder is bracketed rather than ending at its own best point -- which is the mistake the
+# CUSUM threshold ladder made.
+#
+# WHAT WOULD COUNT AS AN ANSWER. Either the penalty tracks Q, in which case the mechanism is
+# identified and the magnitude is explained and reportable; or it does not, in which case the
+# "fixed variance cost" label is unsupported by the evidence and is removed, and the observation
+# is reported as unexplained. An honestly reported unexplained observation is more credible than
+# an explanation the evidence will not carry, and the second outcome is the one to expect given
+# that the ablation already disagrees with the label by a factor of eight.
+#
+# ESTIMATOR AXIS: kalman only, 50 runs rather than 100. The static_affine comparison comes from
+# heldout30's stored H1 arm at the same seeds. That cross-sweep pairing is legitimate because the
+# plant stream is a function of the scenario config and the seed alone -- the edge config cannot
+# reach it -- and H1_warm_front.yaml is unchanged since heldout30 ran.
+#
+# AND THE PAIRING HAS ITS OWN CONTROL. The 1.0e-11 arm here IS heldout30's Kalman configuration.
+# If it does not reproduce heldout30's H1 Kalman numbers at seeds 1-10, the cross-sweep pairing is
+# invalid and the sweep says so itself rather than quietly resting on an assumption.
+
+experiment_id: kalman_q
+description: >
+  Kalman process_noise_gain across four decades around the shipped 1.0e-11, on the held-out
+  thermal scenario, at ten seeds. Tests whether H1's +251 kg penalty is the variance cost the
+  manuscript calls it.
+scenarios: [H1_warm_front]
+estimators: [kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_configs:
+  - kq_g1e13        # 1e-13, nearly frozen
+  - kq_g1e12        # 1e-12
+  - default         # 1e-11, shipped -- and the control against heldout30
+  - kq_g1e10        # 1e-10
+  - kq_g1e09        # 1e-9
+edge_overrides: [edge.control.enabled=true]
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

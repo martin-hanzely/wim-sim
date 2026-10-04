@@ -1,0 +1,61 @@
+# Stage E1 — the sparse-rate tuning claim, tested.
+#
+# THE CLAIM. The article states that no tuning recovers detection below roughly one reference in
+# twenty. It has never been tested: every detector sweep ran at one in ten.
+#
+# THE DETECTOR SET IS PRUNED, on the evidence in C2 rather than on taste. Windowed KS found
+# nothing at all -- 0 of 20 at every one of four alpha values across a thousandfold range, on both
+# scenarios. ADWIN's delta enters a Hoeffding bound as sqrt(log(2n/delta)), so a factor of 450
+# moves its cut threshold by about a quarter, and it reached 2 of 20 at best. Carrying four arms
+# of each would spend two thirds of the budget re-measuring two negatives. One arm of each is
+# carried as a control -- at its own best observed setting, so the control is the strongest
+# version of itself -- and the budget goes to CUSUM and Page-Hinkley.
+#
+# THREE THRESHOLDS EACH, BRACKETING THE BEST POINT RATHER THAN ENDING AT IT:
+#
+#   CUSUM           24.0, 12.0 (shipped), 6.0     -- C2 found recall FALLING as it dropped
+#                                                     (3, 3, 2, 1), so the ladder's best point was
+#                                                     its own endpoint and the other direction has
+#                                                     never been looked at. 24.0 brackets it.
+#   Page-Hinkley    15.0, 7.5 (shipped), 3.75     -- 7.5 and 3.75 tied at 5 of 20, 15.0 gave 1,
+#                                                     and 1.875 fell back to 1. The best point is
+#                                                     interior, so the bracket is the three around
+#                                                     it.
+#
+# RATES. One in twenty and one in fifty -- the region the claim is about. One in ten is NOT
+# carried here: the fixed-window rerun in `reference_rate_fixed` covers it, and repeating it would
+# spend a quarter of this sweep on a rate the claim does not concern.
+#
+# THE CONFIRMATION WINDOW IS CAPPED, as everywhere after Stage D1, so the controller's time
+# constant does not scale with the rate being swept. Without the cap a sweep over reference rate
+# cannot mean what it says.
+#
+# WHAT WOULD COUNT AS AN ANSWER. If detection stays unusable across the sweep the claim stands and
+# is evidenced for the first time. If any configuration recovers usable recall the claim is
+# removed. Both are reportable, and C2 is the reason to expect the first: across 26 arms at one
+# reference in TEN, not one separated from its baseline, and the sparse rates start from a
+# strictly thinner residual stream.
+
+experiment_id: sparse_tuning
+description: >
+  CUSUM and Page-Hinkley at three thresholds each, bracketing their best observed points, with one
+  ADWIN and one KS arm as controls, at one reference in twenty and one in fifty, ten seeds.
+scenarios: [S4_step_fault, S6_combined]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+reference_rates: [20, 50]
+edge_configs:
+  - detect_cusum_h24      # 24.0, above the shipped value
+  - detect_cusum          # 12.0, shipped
+  - detect_cusum_h6       # 6.0
+  - detect_ph             # 15.0
+  - detect_ph_h7p5        # 7.5, shipped
+  - detect_ph_h3p75       # 3.75
+  - detect_adwin_d05      # control, ADWIN at its best observed delta
+  - detect_ks_a01         # control, KS at a mid alpha
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.control.confirmation_max_s=1800.0
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
