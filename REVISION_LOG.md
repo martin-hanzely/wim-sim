@@ -1707,3 +1707,40 @@ estimators tried: the prior over-states and makes it refuse where adaptation wor
 repeated-crossing estimate under-states and makes it adopt where adaptation recovers nothing
 (S2, S3, S5). The second is the less harmful failure — adapting with RLS on S2/S3/S5 costs nothing
 measurable — and that, rather than the share criterion, may be the honest practical advice.
+
+## Item 1.5 (first finding) — the §V-C anti-correlation is a direction mismatch, not a result
+
+**This contradicts `export/` (B3f, and §V-C / §VI-D / §VII of the article).**
+
+B3f reported both adaptive arms *anti-correlated* with the "required gain trajectory (∝ 1/k_true)"
+on S2 seed 1: RLS −0.348, Kalman −0.266. The script that computed it was never committed; its
+data is `export/data/s2_gain_trajectory_long.csv`, whose `gain` column is **sensor units per kg**
+(medians 2.003 × 10⁻⁴ RLS, 2.002 × 10⁻⁴ Kalman, 2.010 × 10⁻⁴ static) — the sensor direction, k.
+The target, ∝ 1/k_true, is the prediction direction. Correlating k̂ against 1/k flips the sign of
+any agreement.
+
+Reproduced on the instrumented RLS run, S2 seed 1 (`scripts/instrument_posterior.py`, 1 293
+reference updates):
+
+| comparison | correlation |
+|---|---:|
+| k̂ against k_true (sensor direction, like with like) | **+0.333** |
+| prediction-direction gain against 1/k_true (like with like) | **+0.332** |
+| k̂ against 1/k_true (the mismatch) | **−0.333** — B3f's −0.348, to within updates-vs-events sampling |
+
+**The estimates move with the true gain, weakly, not against it.** The anti-correlation — "they
+improve the prediction while estimating the underlying parameter worse. We have no explanation" —
+dissolves: it was the sign of a units error. One of the paper's two unexplained observations goes.
+The ten-seed figures for every arm, with the coupling on and off, follow below once the runs finish.
+
+Whether the other half of B3f survives — the adaptive arms sit "four to five times further from
+the required trajectory than a constant" — has to be recomputed like with like: if the rms
+distance was taken between k̂'s deviation and 1/k's, the two deviations were added rather than
+differenced. To be recomputed from the instrumented runs.
+
+**The offset-coupling ablation, seed 1:** with `temp_coupling_per_c = 0` the true zero line is
+constant (0.0500 against 0.0482–0.0505 with coupling), the gain trajectory is identical, and the
+RLS estimates differ by ~5 × 10⁻⁶ relative, MAE identical to 0.01 kg. The preprocessor's zero
+tracker removes the zero line before the feature is taken, so the offset coupling barely reaches
+the estimator. B3f's suggested mechanism — a thermally driven zero shift absorbed into the slope —
+has nothing to work with, and with the sign corrected there is nothing left for it to explain.
