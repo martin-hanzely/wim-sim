@@ -1633,3 +1633,40 @@ SNR, as the brief expected — the SNR fails in the same places. A criterion tha
 the numerator restricted to the excess the adaptive model class can represent (e.g. the excess
 removed by an oracle refit of the same two parameters on the deployment data), which is a
 different and testable quantity. Not computed here.
+
+## Item 1.3 (completed) — the λ sweep. STOP — the framing question
+
+`p1_lambda`: RLS at λ = 0.95, 0.995, 0.999 on S2, S4, S7; ten seeds; commit `48d77c7`, clean,
+90 runs, none failed. λ = 0.99 and frozen from `p1_mem_dev` (`8e902b3`, script-only difference),
+λ = 1.0 from `p1_mem_dev_l1`. Table: `export/data/p1/p1_lambda_sweep.csv`. Paired median
+differences, kg (signs = seeds worse / better):
+
+| λ (memory ≈ 1/(1−λ) refs) | S2 vs frozen | S4 vs frozen | S7 vs frozen | S2 vs 0.99 | S4 vs 0.99 | S7 vs 0.99 |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.95 (20) | **+5.30** (10/0) | **−38.06** (0/10) | −18.90 (1/9) | +4.77 (10/0) | **−8.07** (1/9) | +3.25 (10/0) |
+| 0.99 (100) | −0.04 (5/5) | −28.38 (0/10) | **−21.91** (0/10) | — | — | — |
+| 0.995 (200) | −0.61 (3/7) | −22.78 (0/10) | −19.97 (0/10) | −0.51 (0/10) | +3.39 (10/0) | +1.78 (10/0) |
+| 0.999 (1000) | **−0.90** (3/7) | −19.27 (0/10) | −13.93 (0/10) | −0.78 (0/10) | +6.72 (10/0) | +6.18 (10/0) |
+| 1.0 (∞) | −0.88 (3/7) | −18.50 (0/10) | −11.44 (0/10) | −0.81 (0/10) | +7.64 (10/0) | +7.75 (10/0) |
+
+**The question the paper depends on — does an appropriately tuned memory dominate both frozen and
+λ = 0.99?**
+
+- **Per scenario, yes.** S4's best is λ = 0.95 (−38.1 kg, 81 % recovered; 8.1 kg better than 0.99,
+  9 of 10). S2's best is λ ≥ 0.999 (0.8 kg better than 0.99, 10 of 10; better than frozen 7 of 10,
+  not unanimous). S7's best is the shipped 0.99.
+- **With one λ, no.** The best memory spans a factor of fifty or more — ~20 references on S4, ~100
+  on S7, ≥ 1000 on S2 — and each scenario's optimum is unanimously worse than 0.99 on at least one
+  of the others. λ = 0.95 is worse than *freezing* on S2, 10 of 10.
+
+**So memory length is a first-order choice, of the same size as adapt-versus-freeze itself.** On
+S4 the spread across λ (18.5–38.1 kg) is as large as the shipped arm's whole benefit; on S2 the
+right memory turns "no effect" into a small unanimous gain over 0.99. Freezing is the λ → 1,
+window → 60 corner of the same family, and the growing window (λ = 1) already recovers
+two-thirds of 0.99's S4 benefit. The adapt-versus-freeze framing survives only as "no fixed memory
+is right everywhere, and the right one depends on the drift's time scale" — which is the ordinary
+bias–variance trade of window length, and the more ordinary contribution the brief anticipated.
+
+Caveats: in-sample (λ chosen on the scenarios it is scored on); three scenarios; no held-out check
+of a tuned λ. Non-unanimous comparisons owe a thirty-seed stage (S2 vs frozen at 0.995, 0.999,
+1.0; S7 vs frozen at 0.95).
