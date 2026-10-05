@@ -1325,3 +1325,38 @@ per-event errors, and the export carries per-run aggregates only. Both denominat
 against the same all-vehicle MAE, and the figure says so on its face.
 
 ---
+
+## Phase 1 — confirmed decisions A–C, and items 1.1–1.7
+
+Run order as instructed: 1.2, then 1.3, then the rest. Every new comparison family runs under the
+seed protocol at the top of this log.
+
+### Decision A applied — the median of paired differences, everywhere
+
+`scripts/paper_figures.py` F2 now computes the tracked excess as *frozen excess + median over seeds
+of (tracked − frozen)*, and the recovered share as −(median paired difference) / frozen excess. The
+best tracked arm is the one with the more negative median paired difference. `F2_decomposition.csv`
+is regenerated and gains two columns, `reducible_share_pct` = frozen excess / (floor + frozen
+excess) and `median_paired_diff_kg`. No other export file changed.
+
+| scenario | arm | median paired Δ (kg) | recovered, was (diff. of medians) | recovered, now |
+|---|---|---:|---:|---:|
+| S1 | rls | +0.00 | 0.4 % | **−0.1 %** |
+| S2 | rls | −0.80 | 26.3 % | 29.2 % |
+| S3 | rls | −0.89 | 28.0 % | 25.9 % |
+| S4 | kalman | −31.61 | 67.1 % | 68.7 % |
+| S5 | rls | −0.81 | 26.7 % | 30.7 % |
+| S6 | rls | −32.74 | 6.2 % | **6.5 %** |
+| S7 | **kalman** (was rls) | −14.18 | 81.8 % | 68.4 % |
+
+Three things the brief did not already list:
+
+- **S1 under decision A recovers −0.1 %, not 0.4 %.** The 0.4 % in decision B is a
+  difference-of-medians figure. On the paired basis the median difference is +0.003 kg: adaptation
+  recovers nothing, marginally less than nothing. Decision B's point stands and is sharper.
+- **S7's best tracked arm changes from RLS to Kalman** (−14.18 kg against −14.10 kg). The two are
+  0.08 kg apart and the choice is immaterial to the share (68.4 % against 68.0 %), but the
+  `best_tracked_arm` column changes.
+- S2, S3 and S5 move by 2–4 points each; all three remain below a third.
+
+S6/RLS on the paired basis: **−32.7 kg, 6.5 %**.

@@ -64,26 +64,40 @@ def save(fig, name):
     return p
 
 
-def best_tracked(df, scen):
-    """The tracked arm with the lower median MAE on this scenario."""
+def paired_median(df, scen, arm):
+    """Median over seeds of (arm - static_affine) MAE: the statistic the Wilcoxon test is run on.
+
+    Decision A of the Phase 0 audit. The difference of medians this replaced corresponds to no
+    test reported anywhere, and on S7 it overstated the recovered share by fourteen points.
+    """
     w = wide(df, scen, "mae_kg")
-    return min(("rls", "kalman"), key=lambda e: np.median(w[e]))
+    return float(np.median(w[arm] - w["static_affine"]))
+
+
+def best_tracked(df, scen):
+    """The tracked arm with the more negative median paired difference on this scenario."""
+    return min(("rls", "kalman"), key=lambda e: paired_median(df, scen, e))
 
 
 # ---------------------------------------------------------------- F2
 def f2():
-    frozen_ex, track_ex, floors, tracked_name = [], [], [], []
+    frozen_ex, track_ex, floors, tracked_name, paired = [], [], [], [], []
     for s in SCENS:
         f = floor_med(lad, s)
         w = wide(lad, s, "mae_kg")
         bt = best_tracked(lad, s)
+        d = paired_median(lad, s, bt)
         floors.append(f)
-        frozen_ex.append(max(np.median(w["static_affine"]) - f, 0.0))
-        track_ex.append(max(np.median(w[bt]) - f, 0.0))
+        fe = max(np.median(w["static_affine"]) - f, 0.0)
+        frozen_ex.append(fe)
+        # Not clipped at zero: an arm that does worse than frozen shows it (decision B).
+        track_ex.append(fe + d)
+        paired.append(d)
         tracked_name.append(bt)
     floors = np.array(floors)
     frozen_ex = np.array(frozen_ex)
     track_ex = np.array(track_ex)
+    paired = np.array(paired)
     ratio = np.where(floors > 1e-9, frozen_ex / np.maximum(floors, 1e-9), np.nan)
 
     x = np.arange(len(SCENS))
@@ -108,8 +122,8 @@ def f2():
     _nl = chr(10)
     ax.set_title(
         "F2 — Error decomposition: the floor no estimator can remove, and the excess it can" + _nl
-        + "[ladder30, medians over 30 seeds. Left bar frozen (static_affine), right bar best "
-          "tracked arm." + _nl
+        + "[ladder30, 30 seeds. Left bar frozen (static_affine, median); right bar frozen plus the "
+          "median paired difference of the best tracked arm." + _nl
         + "S6 dominates the linear scale, so the lower panel repeats the recoverable excess "
           "alone on a log axis.]", fontsize=9.6)
     ax.legend(fontsize=8.5, loc="upper left")
@@ -148,8 +162,10 @@ def f2():
                          "best_tracked_arm": tracked_name,
                          "tracked_excess_kg": np.round(track_ex, 1),
                          "excess_over_floor": np.round(ratio, 3),
+                         "reducible_share_pct": np.round(100 * frozen_ex / (floors + frozen_ex), 1),
+                         "median_paired_diff_kg": np.round(paired, 2),
                          "recovered_pct": np.round(
-                             np.where(frozen_ex > 1e-9, 100*(frozen_ex-track_ex)/np.maximum(frozen_ex,1e-9), np.nan), 1)})
+                             np.where(frozen_ex > 1e-9, -100*paired/np.maximum(frozen_ex,1e-9), np.nan), 1)})
 
 
 # ---------------------------------------------------------------- F4
