@@ -1,0 +1,40 @@
+# Revision item 1.2 -- the Kalman observation noise, corrected. Development scenarios, corrected-R arm.
+#
+# THE DEFECT. The shipped R = 1.0e-8 feature units^2 is sigma = 1e-4 mV/V, which at the station's
+# gain is about 0.5 kg of observation noise, against a dynamic-load floor of about 136 kg. The
+# filter is told every reference is near-exact and absorbs almost the whole innovation each time.
+#
+# THE ARMS, over the identical stream (the plant is a function of scenario config and seed only):
+#
+#   static_affine @ default   frozen, the comparison every arm is paired against
+#   kalman        @ default   shipped R = 1e-8 -- kept as the misspecification ablation, and the
+#                             reproduction control: it must match ladder30 at seeds 1-10
+#   kalman        @ kr_floor  R = the station's dynamic-load floor variance, derived in
+#                             scripts/derive_kalman_r.py. Q unchanged -- R is the only difference.
+#
+# The static arm is not rerun at kr_floor: R is not read by static_affine, so that arm would be a
+# second copy of the default one. The kr_floor arm lives in its own experiment (p1_r_dev_floor)
+# and is paired across experiments at the same commit and seeds.
+#
+# Page-Hinkley pinned at 15.0, as ladder30 ran, so the control arms reproduce ladder30 exactly and
+# the comparison against the stored export is a check rather than an assumption.
+#
+# Ten seeds, under the protocol pre-registered in 459d583.
+experiment_id: p1_r_dev_floor
+description: >
+  The corrected-R Kalman (kr_floor) on the seven development scenarios, at ten seeds. Paired
+  against p1_r_dev. Revision item 1.2.
+scenarios: [S1_nominal, S2_thermal_cycle, S3_zero_drift_walk, S4_step_fault, S5_outage,
+            S6_combined, S7_sparse_reference]
+estimators: [kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_config: kr_floor
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+scenario_overrides:
+  S1_nominal: [scenario.duration_s=21600.0]
+calibration_passes: 60
+fault_horizon_s: 1800.0

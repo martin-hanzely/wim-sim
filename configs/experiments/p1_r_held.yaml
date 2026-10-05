@@ -1,0 +1,19 @@
+# Revision item 1.2, held-out scenarios. Control arms; see p1_r_dev.yaml for the design.
+#
+# Page-Hinkley pinned at 7.5, as heldout30 ran, so the control arms reproduce heldout30 at seeds
+# 1-10. Nothing here is tuned on H1-H4: R comes from the S2-S5 truth logs only.
+experiment_id: p1_r_held
+description: >
+  Static and shipped-R Kalman on the four held-out scenarios, at ten seeds -- the control arms for
+  the corrected-R Kalman of revision item 1.2.
+scenarios: [H1_warm_front, H2_gain_jolt, H3_slow_fade, H4_pileup]
+estimators: [static_affine, kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_config: default
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=7.5
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
