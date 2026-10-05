@@ -1744,3 +1744,62 @@ RLS estimates differ by ~5 × 10⁻⁶ relative, MAE identical to 0.01 kg. The p
 tracker removes the zero line before the feature is taken, so the offset coupling barely reaches
 the estimator. B3f's suggested mechanism — a thermally driven zero shift absorbed into the slope —
 has nothing to work with, and with the sign corrected there is nothing left for it to explain.
+
+## Item 1.5 (completed) — posterior correlation, the anti-correlation at ten seeds, and the ablation
+
+60 instrumented S2 runs: RLS λ = 0.99, Kalman at shipped R, Kalman at corrected R (`kr_floor`) ×
+offset coupling on/off × seeds 1–10; none failed. Per-run values in `export/data/p1/p1_posterior.csv`
+(`scripts/p1_posterior_thermal.py`). Medians over seeds:
+
+| arm | posterior corr(θ₀, θ₁) | predicted −E[m]/√E[m²] | corr(k̂, k_true) | seeds < 0 | rms(k̂ dev − k dev) | constant's rms | MAE |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| RLS 0.99 | **−0.521** | −0.523 | +0.072 | 3/10 | 0.50 % | 0.10 % | 137.73 |
+| Kalman, corrected R | **−0.519** | −0.523 | +0.206 | 2/10 | 0.20 % | 0.10 % | 136.97 |
+| Kalman, shipped R | −0.286 | −0.523 | +0.032 | 5/10 | 0.70 % | 0.10 % | 139.16 |
+
+Coupling off: identical to three decimals in every column, every arm.
+
+- **The hypothesis holds in form, and its magnitude is predicted exactly — but it is moderate, not
+  strong.** Both correctly specified estimators carry a posterior correlation of −0.52, which is
+  the regressor-geometry value −E[m]/√E[m²] = −0.523 to two decimals. With masses heavy-tailed
+  (median 1.56 t, mean 6.3 t) the regressor is off-centre but not extremely so. The shipped-R
+  Kalman's −0.29 is its misspecified belief, not the geometry.
+- **There is no anti-correlation in any arm** (medians +0.03 to +0.21; at most 5 of 10 seeds
+  negative, for the shipped Kalman, i.e. no relation at all). With 1.5's first finding, §V-C's
+  anti-correlation was a sign error, and like with like the estimates are weakly positively related
+  to the true gain or unrelated.
+- **B3f's other half survives, like with like:** the estimates sit 2–7× further from the true gain
+  trajectory than a constant does (0.20–0.70 % against 0.10 %). Their parameter motion is mostly
+  noise, not tracking — which is the variance cost, visible directly. The corrected-R Kalman is the
+  closest, as a less noise-driven filter should be.
+- **The offset-coupling ablation is null** — the zero tracker removes the zero line before the
+  feature, so the coupling cannot reach the gain estimate. With the sign corrected there was no
+  anomaly for it to explain.
+
+Brief's note that "1.2 may dissolve this item": it was dissolved, but by the sign error, not by R.
+
+## Item 1.7 — the S2 thermal contribution, derived
+
+From the per-pass truth of the 10 coupling-on S2 runs (`export/data/p1/p1_thermal_s2.csv`). The
+zero line is removed upstream, so temperature reaches a frozen model through the gain alone: a
+model exact at reference gain k_ref errs by t = m_applied · (k/k_ref − 1), on top of the dynamic
+error b. Medians over seeds:
+
+| reference | thermal rms | thermal mean | ΔMAE = E\|b+t\| − E\|b\| | ΔMSE | quadrature shortcut √(MAE_b² + rms_t²) − MAE_b |
+|---|---:|---:|---:|---:|---:|
+| deployment-mean gain (thermal motion alone) | **15.5 kg** | +0.04 kg | **+0.13 kg** | **+235 kg²** | 0.89 kg |
+| commissioning gain, first 60 passes (+ §V-C offset) | 23.0 kg | −8.7 kg | −0.00 kg | +350 kg² | 1.94 kg |
+
+**The 0.23 kg in §V-A does not reproduce, and both its inputs were wrong.**
+
+- Its thermal rms, 7.8 kg (B3b), is mean mass × rms relative gain deviation (6.33 t × 0.124 %).
+  The rms of m·δ needs the *rms* mass, not the mean; computed per pass it is **15.5 kg**.
+- Its combination — 136.1 kg (an MAE) and 7.8 kg (an rms) in quadrature — mixes bases. Done
+  exactly, the thermal motion adds **0.13 kg** to the MAE; the quadrature shortcut with the
+  correct rms would say 0.89 kg, seven times too much.
+
+**For the text:** replace "0.23 kg" with 0.13 kg (ΔMAE, derivation above) or, consistent with 1.1,
+with **ΔMSE = 235 kg², 5.6 % of S2's frozen reducible excess in MSE (4 196 kg²)**. The qualitative
+point — the thermal disturbance S2 exists to study is negligible against its floor — stands and is
+stronger. Against the commissioning gain the MAE effect is nil and the MSE effect 350 kg², the
+difference being §V-C's initialisation offset (−8.7 kg mean).

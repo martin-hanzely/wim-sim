@@ -5,7 +5,9 @@
     reports [gain, bias] in the prediction direction (mass on feature); Kalman [q, k] on the sensor
     side (feature on mass). Both regressors are far from centred, so the hypothesis is a strong
     negative correlation in both;
-  * corr(k_hat, k_true) over the run -- the Sec. V-C anti-correlation;
+  * corr(k_hat, k_true) over the run -- the Sec. V-C anti-correlation, like with like (B3f
+    correlated k_hat against 1/k_true, which flips the sign);
+  * rms distance of k_hat's relative deviation from k_true's, against a constant's;
   * the hypothesis's own prediction for the Kalman, -E[m] / sqrt(E[m^2]) over reference masses.
 
 1.7 -- the thermal contribution to the frozen arm's error on S2, derived rather than asserted.
@@ -46,6 +48,12 @@ def posterior() -> pd.DataFrame:
             "posterior_corr": float(r.posterior_corr.median()),
             "predicted_corr_kalman": float(-m.mean() / np.sqrt((m**2).mean())),
             "corr_khat_ktrue": float(r.k_hat.corr(r.k_at_peak)),
+            # B3f's second claim, like with like: relative deviations about each series' own mean;
+            # a constant's distance is just the target's rms.
+            "rms_dev_estimate_vs_true": float(np.sqrt(np.mean(
+                (r.k_hat / r.k_hat.mean() - r.k_at_peak / r.k_at_peak.mean()) ** 2))),
+            "rms_dev_constant_vs_true": float(np.sqrt(np.mean(
+                (r.k_at_peak / r.k_at_peak.mean() - 1.0) ** 2))),
             "mae_kg": float(r.mae_kg.iloc[0]),
         })
     return pd.DataFrame(rows)
@@ -82,6 +90,8 @@ def main() -> None:
         predicted_corr_kalman=("predicted_corr_kalman", "median"),
         corr_khat_ktrue=("corr_khat_ktrue", "median"),
         n_negative=("corr_khat_ktrue", lambda s: int((s < 0).sum())),
+        rms_estimate=("rms_dev_estimate_vs_true", "median"),
+        rms_constant=("rms_dev_constant_vs_true", "median"),
         mae_kg=("mae_kg", "median"),
     )
     with pd.option_context("display.width", 200):
