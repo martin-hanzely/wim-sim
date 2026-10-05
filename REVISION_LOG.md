@@ -1670,3 +1670,40 @@ bias–variance trade of window length, and the more ordinary contribution the b
 Caveats: in-sample (λ chosen on the scenarios it is scored on); three scenarios; no held-out check
 of a tuned λ. Non-unanimous comparisons owe a thirty-seed stage (S2 vs frozen at 0.995, 0.999,
 1.0; S7 vs frozen at 0.95).
+
+## Item 1.6 (part b) — the floor from repeated crossings of one reference vehicle
+
+`scripts/p1_floor_repeat.py` → `export/data/p1/p1_floor_repeat.csv`. A station crosses its
+calibration truck N = 20 times and reads the spread of measured/static mass: that CV is the truck's
+gross-mass DLC, and floor_est = √(2/π) · CV · mean fleet mass. No per-vehicle floor is read.
+
+**Emulation, stated plainly.** The generator has no "same vehicle again" mode, so the 20 crossings
+are drawn from the scenario's own 5-axle artic traffic (same road, same dynamic-load model), and a
+crossing's measured mass is taken as its applied mass — ignoring ~1 kg of sensor noise and a
+sub-per-cent gain-bias scaling of the spread against a ~300 kg spread. Resampled 1 000 times over
+which 20 crossings are drawn. S1 is excluded: it has no dynamic load to measure.
+
+| | floor est / true | true share → decision | estimated share → decision | P(same decision), N = 20 |
+|---|---:|---|---|---:|
+| S2 | 0.83 | 2.0 % → do not | 18.9 % → **adapt** | **0.017** |
+| S3 | 0.81 | 2.5 % → do not | 21.4 % → **adapt** | **0.011** |
+| S5 | 0.79 | 1.9 % → do not | 22.2 % → **adapt** | **0.002** |
+| S4, S6, S7, H1–H4 | 0.67–0.90 | adapt | adapt | 0.998–1.000 |
+
+- **Much closer than the literature prior** (1.6a: ≥ 1.8× over), but **consistently low, by 10–33 %**:
+  a 5-axle truck's axles cancel more of the body bounce than a 2-axle car's, so its gross DLC is
+  below the fleet's. A truck is the wrong vehicle to calibrate the floor for a car-dominated fleet,
+  and it is the vehicle a station has.
+- **The decision changes on 3 of 10 scenarios**, almost certainly (98–99.8 % of campaigns): every
+  low-excess scenario flips from "do not adapt" to "adapt".
+- **The reason is structural, not a defect of this estimator.** On S2/S3/S5 the excess over the
+  floor is 2–3 kg against a 136 kg floor. A 3 % share threshold needs the floor to within ≈ 4 kg —
+  3 % — and a floor error of 25 kg buries the excess eight times over. **Any field estimate of the
+  floor would have to be accurate to a few per cent for the share criterion to make the
+  low-excess call, and the one practical estimator tested is accurate to 10–33 %.**
+
+So item 1.6's question — is the criterion usable before deployment? — is answered **no**, for both
+estimators tried: the prior over-states and makes it refuse where adaptation works (S4, S7); the
+repeated-crossing estimate under-states and makes it adopt where adaptation recovers nothing
+(S2, S3, S5). The second is the less harmful failure — adapting with RLS on S2/S3/S5 costs nothing
+measurable — and that, rather than the share criterion, may be the honest practical advice.
