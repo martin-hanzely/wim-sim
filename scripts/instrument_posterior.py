@@ -74,6 +74,11 @@ def main() -> None:
     ap.add_argument("--edge-override", action="append", default=[])
     ap.add_argument("--label", default=None)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument(
+        "--truth-out", action="store_true",
+        help="Also save each seed's per-pass truth (time, static and applied mass, k and q at the "
+        "peak) -- the input item 1.7's thermal-contribution derivation needs.",
+    )
     args = ap.parse_args()
 
     _wrap(RecursiveLeastSquares)
@@ -102,6 +107,12 @@ def main() -> None:
             out = write_run(cfg, Path(tmp) / "run")
             cfg, truth, _ = load_run(out.out_dir)
             result = run_closed_loop(cfg, truth, edge, calibration_passes=60)
+        if args.truth_out:
+            cols = ["t_peak_s", "true_mass_kg", "applied_mass_kg", "k_at_peak", "q_at_peak",
+                    "t_sensor_at_peak"]
+            truth[cols].assign(seed=seed).to_parquet(
+                args.out / f"{label}__truth_seed{seed}.parquet", index=False
+            )
         rec = pd.DataFrame(_RECORDS)
         t = truth[["ts_peak_us", "k_at_peak", "q_at_peak"]].sort_values("ts_peak_us")
         rec = pd.merge_asof(
