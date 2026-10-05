@@ -6,11 +6,14 @@ mass the reference reports -- and in feature units it is ``k^2 * E[(m_applied - 
 
 Two quantities, each measured rather than assumed:
 
-* ``E[(m_applied - m_static)^2]`` from the truth log of every vehicle, on the development
-  scenarios that share the base traffic (S2-S5). H1-H4 are not read: R is a station property and
-  the held-out scenarios must not inform it.
+* ``E[(m_applied - m_static)^2]`` over every vehicle the generator schedules, on the development
+  scenarios that share the base traffic (S2-S5). ``schedule_passes`` is called with the seed's own
+  streams, which is the first thing the generator does, so these are the vehicles of the run
+  without synthesising its signal. H1-H4 are not read: R is a station property and the held-out
+  scenarios must not inform it.
 * ``k`` from the station's own commissioning fit -- the Kalman arm's seed fit of feature on mass
-  over the calibration passes, which is the profile the filter starts from.
+  over the first calibration passes, which is the profile the filter starts from. Taken on the two
+  shortest S2-S5 scenarios: the seed fit sees only the first passes, before any injected fault.
 
 The script also prints the batch residual variance of that same fit, in feature units^2: the
 total observation variance the commissioning data itself shows, for comparison.
@@ -28,12 +31,15 @@ from pathlib import Path
 import numpy as np
 
 from wimsim.core.config import load_edge_config, load_run_config
+from wimsim.core.rng import streams
 from wimsim.experiments.closed_loop import run_closed_loop
 from wimsim.experiments.offline import load_run
+from wimsim.signal.vehicles import schedule_passes
 from wimsim.signal.writer import write_run
 
 SCENARIOS = ["S2_thermal_cycle", "S3_zero_drift_walk", "S4_step_fault", "S5_outage"]
 TRUTH_SEEDS = list(range(1, 11))
+GAIN_SCENARIOS = ["S4_step_fault", "S5_outage"]
 GAIN_SEEDS = [1, 2, 3]
 
 STATIONS = {
@@ -57,33 +63,35 @@ def main() -> None:
     station = STATIONS[args.station]
 
     dyn_ms, dyn_abs, n_veh = {}, {}, {}
-    ks, resid_var = [], []
     for scen in SCENARIOS:
         squares, absolutes = [], []
         for seed in TRUTH_SEEDS:
             cfg = load_run_config(scen, args.station, overrides=station["overrides"], seed=seed)
-            with tempfile.TemporaryDirectory() as tmp:
-                out = write_run(cfg, Path(tmp) / "run")
-                cfg, truth, _ = load_run(out.out_dir)
-                d = (truth["applied_mass_kg"] - truth["true_mass_kg"]).to_numpy(dtype=float)
-                squares.append(d**2)
-                absolutes.append(np.abs(d))
-                if seed in GAIN_SEEDS:
-                    edge = load_edge_config(
-                        station["edge"], overrides=["edge.estimate.estimator=kalman"]
-                    )
-                    result = run_closed_loop(
-                        cfg, truth, edge, calibration_passes=args.calibration_passes
-                    )
-                    seed_state = result.profiles[0].state
-                    k = 1.0 / seed_state.gain  # state is reported in the prediction direction
-                    ks.append(k)
-                    # residual_sd is the batch residual in kg, seeded as variance / k^2
-                    resid_var.append((seed_state.residual_sd * k) ** 2)
+            passes = schedule_passes(cfg, streams(cfg.scenario.seed))
+            d = np.array([p.applied_mass_kg - p.true_mass_kg for p in passes], dtype=float)
+            squares.append(d**2)
+            absolutes.append(np.abs(d))
         sq = np.concatenate(squares)
         dyn_ms[scen] = float(sq.mean())
         dyn_abs[scen] = float(np.concatenate(absolutes).mean())
         n_veh[scen] = int(sq.size)
+
+    ks, resid_var = [], []
+    edge = load_edge_config(station["edge"], overrides=["edge.estimate.estimator=kalman"])
+    for scen in GAIN_SCENARIOS:
+        for seed in GAIN_SEEDS:
+            cfg = load_run_config(scen, args.station, overrides=station["overrides"], seed=seed)
+            with tempfile.TemporaryDirectory() as tmp:
+                out = write_run(cfg, Path(tmp) / "run")
+                cfg, truth, _ = load_run(out.out_dir)
+                result = run_closed_loop(
+                    cfg, truth, edge, calibration_passes=args.calibration_passes
+                )
+            seed_state = result.profiles[0].state
+            k = 1.0 / seed_state.gain  # state is reported in the prediction direction
+            ks.append(k)
+            # residual_sd is the batch residual in kg, seeded as variance / k^2
+            resid_var.append((seed_state.residual_sd * k) ** 2)
 
     pooled_ms = float(np.average(list(dyn_ms.values()), weights=list(n_veh.values())))
     k_med = float(np.median(ks))

@@ -1,0 +1,20 @@
+# Kalman measurement noise R set to the station's dynamic-load floor variance, for revision item 1.2.
+#
+# R is the variance of the observation (the feature) about q + k * m_static. Its irreducible part
+# is the dynamic load: k^2 * E[(m_applied - m_static)^2]. Both factors measured, not assumed, by
+# scripts/derive_kalman_r.py (output: data/results/revision_p1/R_default.json):
+#
+#   E[(m_applied - m_static)^2] = 7.276e4 kg^2   (rms 269.7 kg; 227 k vehicles, S2-S5, seeds 1-10)
+#   k                           = 2.0079e-4 /kg  (median of six commissioning seed fits)
+#   R                           = 2.933e-3 feature units^2
+#
+# The shipped R = 1.0e-8 is sigma = 0.50 kg at this gain: 2.9e5 times too small in variance,
+# about 540 times in standard deviation. Q is unchanged; R is the only difference from `default`.
+#
+# One R for the station, applied to every scenario. H1-H4 did not inform it.
+
+extends: default
+name: kr_floor
+description: "Kalman with R = 2.933e-3, the station's dynamic-load floor variance in feature units^2."
+estimate:
+  measurement_noise: 2.933e-3
