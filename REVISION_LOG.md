@@ -1555,3 +1555,81 @@ From the same 210 runs, which now record `floor_ms_kg2` = mean (applied − stat
 with a small negative cross term, or keep MAE and define reducible excess as MAE_total − MAE_floor
 — a difference, not a component — and drop "decomposed" and "without assumption" from §I-B,
 §III-B and §V-A.
+
+## Item 1.3 (continued) — λ = 1.0 and the held-out arms
+
+`p1_mem_dev_l1`, `p1_mem_held`, `p1_mem_held_l1`: commit `48d77c7`, clean, 230 runs, none failed.
+`p1_mem_dev` ran at `8e902b3`; the two commits differ only in `scripts/p1_snr.py`, which no run
+imports (`git diff --stat 8e902b3 48d77c7`), so the dev λ = 1.0 arm is paired across them with
+`--allow-cross-commit`. Tables: `export/data/p1/p1_mem_dev_l1.csv`, `p1_mem_held.csv`.
+
+**λ = 1.0 against λ = 0.99 — a trade, not a dominance:**
+
+| | λ = 1.0 − λ = 0.99 (kg) | signs |
+|---|---:|---|
+| S2 | −0.81 | **10/10 better** |
+| S3, S5, H1 | −0.55, −0.09, −11.0 | 8–9/10 better, not unanimous |
+| S4 | +7.6 | **10/10 worse** |
+| S6 | +15.0 | **10/10 worse** |
+| S7 | +7.8 | **10/10 worse** |
+| H2 | +16.2 | **10/10 worse** |
+| H4 | +12.7 | **10/10 worse** |
+
+No forgetting wins where there is nothing to track and loses everywhere there is. **Neither memory
+length dominates the other.** Whether an intermediate λ dominates both frozen and 0.99 is the λ
+sweep, still running (`p1_lambda`).
+
+**λ = 1.0 against frozen** — a growing-window refit, no forgetting — still wins on S4 (−18.5 kg)
+and S7 (−11.4 kg), 10/10 each: **about two-thirds of RLS's S4 benefit and half of its S7 benefit
+needs no forgetting at all**, only more data than the 60-pass commissioning window. That is §V-C's
+initialisation-bias mechanism showing up in the headline scenarios, not only in S2's bias.
+
+**Held-out, at ten seeds:** RLS 0.99 reproduces `heldout30` (H2 −39.1, H4 −33.3, both 10/10; H1
++26.3 and H3 −0.6 not separated). Periodic refit: H2 −36.7 (10/10), the rest not separated; it is
+worse than RLS 0.99 on all four (H3 10/10).
+
+## Item 1.4 — the SNR criterion: it does not subsume the exceptions. STOP — Contributions 1 and 2
+
+`scripts/p1_snr.py` → `export/data/p1/p1_snr.csv`; against benefit:
+`export/data/p1/p1_snr_vs_benefit.csv`.
+
+SNR = frozen reducible excess (MSE, `rmse² − floor_ms`) / the adaptive arm's variance cost (kg²).
+Variance cost: RLS steady-state misadjustment p·σ²·(1−λ)/(1+λ); periodic p·σ²/W; Kalman the
+run-averaged *actual* error covariance under its own gains and the true noise, propagated to kg
+(not steady-state: the filter needs ~4 × 10⁴ references to reach one and a run has ~10³; not the
+filter's own P: at R = 1 × 10⁻⁸ that collapses to 3.7 kg² while the actual cost is 3 149 kg²).
+σ² = the scenario's measured `floor_ms_kg2`.
+
+| scenario | share (MAE) | SNR, RLS 0.99 | RLS recovered |
+|---|---:|---:|---:|
+| S1 | 100 % | ∞ | 0.0 % |
+| S2 / S3 / S5 | 0.7–1.4 % | 2.4–5.7 | 2–4 % |
+| **S7** | 12.6 % | 63 | **97 %** |
+| **H2** | 22.4 % | 119 | **55 %** |
+| **S4** | 25.8 % | 134 | **60 %** |
+| H3 | 58.6 % | 2 076 | 0.4 % |
+| H4 | 64.7 % | 3 628 | 5.4 % |
+| S6 | 72.4 % | 9 077 | 5.4 % |
+| H1 | 82.5 % | 3 686 | **−2.8 %** |
+
+Spearman with recovered %, n = 11: **share −0.34 (p 0.31); SNR −0.28 (p 0.40).** Neither predicts
+benefit, and both lean the wrong way.
+
+**What the data show instead.** The benefit is not monotone in either quantity. It sits at a
+*moderate* reducible share — S4, S7, H2, 13–26 % — and vanishes at both ends: at the low end
+(S2, S3, S5) because there is nothing to recover, and at the high end (S6, H1, H3, H4, 59–83 %)
+because the excess is large **but not of a kind a two-parameter gain-and-offset model can absorb**.
+S1 is the degenerate case of the same thing: its whole excess is sensor noise and calibration
+error, irreducible per crossing, which the dynamic-load floor does not count.
+
+So the exceptions are not two; they are four scenarios plus S1, and they share one cause. The
+SNR fixes the denominator — the variance cost — but the failure is in the numerator: "reducible"
+(over the dynamic floor) is not "recoverable by this model class". The SNR ordering of the low
+scenarios against S4/S7 is sensible; it says nothing useful above that.
+
+**Consequences (not made — Phase 2):** Contribution 1's criterion, as stated, is not supported
+across eleven scenarios; Contribution 2's "necessary but not sufficient" is not superseded by the
+SNR, as the brief expected — the SNR fails in the same places. A criterion that could work needs
+the numerator restricted to the excess the adaptive model class can represent (e.g. the excess
+removed by an oracle refit of the same two parameters on the deployment data), which is a
+different and testable quantity. Not computed here.

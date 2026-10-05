@@ -1,0 +1,21 @@
+family,comparison,seeds,median_a,median_b,median_paired_diff,signs,unanimous,p,p_holm,rb_rank,rb_sign
+1.3 held,H1_warm_front / p1_mem_held:static_affine -> p1_mem_held:rls,10,1128.255,1129.029,26.306,+7/-3,False,0.232421875,1.0,0.455,0.4
+1.3 held,H2_gain_jolt / p1_mem_held:static_affine -> p1_mem_held:rls,10,316.718,274.449,-39.135,+0/-10,True,0.001953125,0.0390625,-1.0,-1.0
+1.3 held,H3_slow_fade / p1_mem_held:static_affine -> p1_mem_held:rls,10,268.371,278.245,-0.557,+5/-5,False,0.6953125,1.0,-0.164,0.0
+1.3 held,H4_pileup / p1_mem_held:static_affine -> p1_mem_held:rls,10,959.435,916.031,-33.319,+0/-10,True,0.001953125,0.0390625,-1.0,-1.0
+1.3 held,H1_warm_front / p1_mem_held:static_affine -> p1_mem_held:periodic_refit,10,1128.255,1138.146,34.944,+8/-2,False,0.10546875,0.84375,0.6,0.6
+1.3 held,H2_gain_jolt / p1_mem_held:static_affine -> p1_mem_held:periodic_refit,10,316.718,282.395,-36.664,+0/-10,True,0.001953125,0.0390625,-1.0,-1.0
+1.3 held,H3_slow_fade / p1_mem_held:static_affine -> p1_mem_held:periodic_refit,10,268.371,295.221,15.512,+7/-3,False,0.431640625,1.0,0.309,0.4
+1.3 held,H4_pileup / p1_mem_held:static_affine -> p1_mem_held:periodic_refit,10,959.435,930.394,-20.697,+3/-7,False,0.083984375,0.755859375,-0.636,-0.4
+1.3 held,H1_warm_front / p1_mem_held:static_affine -> p1_mem_held_l1:rls,10,1128.255,1132.515,7.447,+6/-4,False,0.845703125,1.0,0.091,0.2
+1.3 held,H2_gain_jolt / p1_mem_held:static_affine -> p1_mem_held_l1:rls,10,316.718,294.099,-25.453,+1/-9,False,0.005859375,0.076171875,-0.927,-0.8
+1.3 held,H3_slow_fade / p1_mem_held:static_affine -> p1_mem_held_l1:rls,10,268.371,299.745,13.836,+6/-4,False,0.921875,1.0,0.055,0.2
+1.3 held,H4_pileup / p1_mem_held:static_affine -> p1_mem_held_l1:rls,10,959.435,936.018,-24.669,+2/-8,False,0.01953125,0.21484375,-0.818,-0.6
+1.3 held,H1_warm_front / p1_mem_held:rls -> p1_mem_held_l1:rls,10,1129.029,1132.515,-10.954,+2/-8,False,0.01953125,0.21484375,-0.818,-0.6
+1.3 held,H2_gain_jolt / p1_mem_held:rls -> p1_mem_held_l1:rls,10,274.449,294.099,16.165,+10/-0,True,0.001953125,0.0390625,1.0,1.0
+1.3 held,H3_slow_fade / p1_mem_held:rls -> p1_mem_held_l1:rls,10,278.245,299.745,10.708,+7/-3,False,0.16015625,0.9609375,0.527,0.4
+1.3 held,H4_pileup / p1_mem_held:rls -> p1_mem_held_l1:rls,10,916.031,936.018,12.694,+10/-0,True,0.001953125,0.0390625,1.0,1.0
+1.3 held,H1_warm_front / p1_mem_held:rls -> p1_mem_held:periodic_refit,10,1129.029,1138.146,10.126,+8/-2,False,0.10546875,0.84375,0.6,0.6
+1.3 held,H2_gain_jolt / p1_mem_held:rls -> p1_mem_held:periodic_refit,10,274.449,282.395,8.017,+9/-1,False,0.005859375,0.076171875,0.927,0.8
+1.3 held,H3_slow_fade / p1_mem_held:rls -> p1_mem_held:periodic_refit,10,278.245,295.221,17.382,+10/-0,True,0.001953125,0.0390625,1.0,1.0
+1.3 held,H4_pileup / p1_mem_held:rls -> p1_mem_held:periodic_refit,10,916.031,930.394,12.622,+9/-1,False,0.00390625,0.0546875,0.964,0.8
