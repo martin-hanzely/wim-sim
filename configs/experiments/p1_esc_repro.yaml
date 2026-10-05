@@ -1,0 +1,16 @@
+# Reproduction control: static and RLS 0.99 at the current commit, seeds 11-12, must equal ladder30 before ladder30's seeds 11-30 stand in as comparators.
+experiment_id: p1_esc_repro
+description: >
+  Reproduction control: static and RLS 0.99 at the current commit, seeds 11-12, must equal ladder30 before ladder30's seeds 11-30 stand in as comparators.
+scenarios: [S4_step_fault, S5_outage]
+estimators: [static_affine, rls]
+seeds: [11, 12]
+edge_config: default
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
+

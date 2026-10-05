@@ -1,0 +1,16 @@
+# Corrected R with Q rescaled (kq_scaled), held-out scenarios, ten seeds (item 1.2).
+experiment_id: p1_kq_held
+description: >
+  Corrected R with Q rescaled (kq_scaled), held-out scenarios, ten seeds (item 1.2).
+scenarios: [H1_warm_front, H2_gain_jolt, H3_slow_fade, H4_pileup]
+estimators: [kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_config: kq_scaled
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=7.5
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
+

@@ -1,0 +1,16 @@
+# Held-out check of a tuned memory: lambda 0.95, chosen on S4, applied to H2 (S4's class). Chosen before running.
+experiment_id: p1_lambda_held_h2
+description: >
+  Held-out check of a tuned memory: lambda 0.95, chosen on S4, applied to H2 (S4's class). Chosen before running.
+scenarios: [H2_gain_jolt]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_config: rls_l095
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=7.5
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
+

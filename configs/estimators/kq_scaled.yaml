@@ -1,0 +1,12 @@
+# Corrected R with Q rescaled to keep the shipped Q/R ratio, for revision item 1.2's open question.
+#
+# kr_floor raised R by 2.933e5 at fixed Q, so its result mixes "correct noise model" with "stiffer
+# filter". Here both Q standard deviations are multiplied by sqrt(2.933e5) = 541.6, so Q^2/R is
+# exactly the shipped ratio: the filter adapts as fast as the shipped one, with a correct R.
+
+extends: kr_floor
+name: kq_scaled
+description: "Kalman, R = 2.933e-3 with Q scaled by 541.6 to keep the shipped Q/R ratio."
+estimate:
+  process_noise_bias: 5.416e-5
+  process_noise_gain: 5.416e-9

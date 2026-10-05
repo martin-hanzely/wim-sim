@@ -1,0 +1,16 @@
+# Thirty-seed stage for the split lambda-sweep comparisons: 0.95 on S4 and S7 (protocol, 459d583).
+experiment_id: p1_esc_lambda095
+description: >
+  Thirty-seed stage for the split lambda-sweep comparisons: 0.95 on S4 and S7 (protocol, 459d583).
+scenarios: [S4_step_fault, S7_sparse_reference]
+estimators: [rls]
+seeds: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+edge_config: rls_l095
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
+

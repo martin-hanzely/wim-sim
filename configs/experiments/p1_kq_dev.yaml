@@ -1,0 +1,17 @@
+# Corrected R with Q rescaled to the shipped Q/R ratio (kq_scaled), development scenarios, ten seeds. Separates correct noise model from stiffer filter (item 1.2).
+experiment_id: p1_kq_dev
+description: >
+  Corrected R with Q rescaled to the shipped Q/R ratio (kq_scaled), development scenarios, ten seeds. Separates correct noise model from stiffer filter (item 1.2).
+scenarios: [S1_nominal, S2_thermal_cycle, S3_zero_drift_walk, S4_step_fault, S5_outage, S6_combined, S7_sparse_reference]
+estimators: [kalman]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_config: kq_scaled
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
+scenario_overrides:
+  S1_nominal: [scenario.duration_s=21600.0]
