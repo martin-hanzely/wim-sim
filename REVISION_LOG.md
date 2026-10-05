@@ -1467,3 +1467,45 @@ in 1.2a, this comparison cannot separate "correct noise model" from "slower adap
 and both stages be reported. Owed: dev static→corrected-Kalman on S1, S2, S3, S5, S6; held-out H3,
 H4; front end B S1, S2, S3, S5, S6, S7; and the shipped→corrected comparisons that split (H1, H3,
 H4, S1, S5, dev S7, B S1, B S5, B S6). Not run: stopped at the item boundary for memory, as agreed.
+
+## Item 1.6 (part a) — the floor from a literature DLC prior: it fails, and why
+
+`scripts/p1_floor_prior.py` → `export/data/p1/p1_floor_prior.csv`. No simulator ground truth read:
+floor = DLC · √(2/π) · mean fleet mass (the station knows its fleet from its reference masses).
+DLC prior: **0.05–0.3** "depending on vehicle suspension, speed and road roughness" — Misaghi,
+Tirado, Nazarian & Carrasco (2021), *Transportation Engineering* 3:100045,
+doi:10.1016/j.treng.2021.100045. **The range was read through search summaries; the article
+returned 403 and the sentence has not been read first-hand. Verify before citing.**
+
+Decision rule: the article's own §VI-A — share < 3 %: do not adapt; > 10 %: adapt.
+
+| | true floor (kg) | true share → decision | DLC 0.05: floor, share → decision | DLC 0.10 | DLC 0.30 |
+|---|---:|---|---|---|---|
+| S1 | 0 | 100 % → adapt | 242, 0 % → **do not** | do not | do not |
+| S2, S3, S5 | 136 | 2–2.5 % → do not | 243–251, 0 % → do not | do not | do not |
+| S4 | 136 | 25 % → adapt | 247, 0 % → **do not** | **do not** | **do not** |
+| S6 | 191 | 73 % → adapt | 248, 64 % → adapt | 29 % → adapt | **do not** |
+| S7 | 158 | 12 % → adapt | 247, 0 % → **do not** | **do not** | **do not** |
+| H1 | 197 | 83 % → adapt | 78 % → adapt | 56 % → adapt | **do not** |
+| H2 | 248 | 23 % → adapt | 23 % → adapt | **do not** | **do not** |
+| H3 | 111 | 64 % → adapt | 20 % → adapt | **do not** | **do not** |
+| H4 | 341 | 64 % → adapt | 74 % → adapt | 47 % → adapt | **do not** |
+
+**The decision changes on 3 of 11 scenarios even at the bottom of the published range, and on 5
+at 0.10** — including S4 and S7, the two scenarios where adaptation recovers most. A prior that
+says "do not adapt" exactly where adaptation works is not a usable substitute for the floor.
+
+**Why: the literature DLC is a per-wheel/axle quantity, and the floor is on gross mass.** A
+vehicle's axles cross at different instants of one body oscillation, so their dynamic components
+partly cancel in the sum. The simulator's per-axle DLC is A/√2 = 0.042 — just under the published
+range, so the prior is not wildly wrong per axle — but its effective gross-mass DLC is
+136 / (√(2/π) · 6 276) ≈ **0.027**. Converting an axle prior to a gross floor needs the axle
+geometry and bounce frequency, which is a model of the very thing being estimated.
+
+(S1's flip to "do not" is the right answer by accident: S1 has no dynamic load at all, which no
+real road matches, and adaptation recovers nothing there.)
+
+**Not done:** 1.6(b), repeated crossings of one reference vehicle. It needs the pipeline's own
+estimates for repeated passes of a fixed vehicle, which the scenario generator cannot currently
+produce; a variant that needs no new generator feature — the commissioning batch's own residual
+spread — is a candidate, but it is not what the brief named.
