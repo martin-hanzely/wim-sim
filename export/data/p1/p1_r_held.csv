@@ -1,0 +1,13 @@
+family,comparison,seeds,median_a,median_b,median_paired_diff,signs,unanimous,p,p_holm,rb_rank,rb_sign
+1.2 held-out,H1_warm_front / export:heldout30:static_affine -> p1_r_held_floor:kalman,10,1128.255,1393.53,264.385,+10/-0,True,0.001953125,0.01953125,1.0,1.0
+1.2 held-out,H2_gain_jolt / export:heldout30:static_affine -> p1_r_held_floor:kalman,10,316.718,291.03,-23.358,+0/-10,True,0.001953125,0.01953125,-1.0,-1.0
+1.2 held-out,H3_slow_fade / export:heldout30:static_affine -> p1_r_held_floor:kalman,10,268.371,327.342,29.539,+7/-3,False,0.130859375,0.916015625,0.564,0.4
+1.2 held-out,H4_pileup / export:heldout30:static_affine -> p1_r_held_floor:kalman,10,959.435,962.912,4.81,+5/-5,False,0.845703125,1.0,0.091,0.0
+1.2 held-out,H1_warm_front / export:heldout30:static_affine -> export:heldout30:kalman,30,1124.454,1366.121,251.391,+30/-0,True,1.862645149230957e-09,2.2351741790771484e-08,1.0,1.0
+1.2 held-out,H2_gain_jolt / export:heldout30:static_affine -> export:heldout30:kalman,30,321.806,271.824,-47.358,+0/-30,True,1.862645149230957e-09,2.2351741790771484e-08,-1.0,-1.0
+1.2 held-out,H3_slow_fade / export:heldout30:static_affine -> export:heldout30:kalman,30,308.31,310.226,28.026,+18/-12,False,0.5561132747679949,1.0,0.127,0.2
+1.2 held-out,H4_pileup / export:heldout30:static_affine -> export:heldout30:kalman,30,941.495,917.589,-4.016,+15/-15,False,0.5291051845997572,1.0,-0.135,0.0
+1.2 held-out,H1_warm_front / export:heldout30:kalman -> p1_r_held_floor:kalman,10,1372.667,1393.53,-0.446,+5/-5,False,0.76953125,1.0,0.127,0.0
+1.2 held-out,H2_gain_jolt / export:heldout30:kalman -> p1_r_held_floor:kalman,10,270.069,291.03,27.173,+10/-0,True,0.001953125,0.01953125,1.0,1.0
+1.2 held-out,H3_slow_fade / export:heldout30:kalman -> p1_r_held_floor:kalman,10,315.423,327.342,-1.619,+5/-5,False,0.6953125,1.0,0.164,0.0
+1.2 held-out,H4_pileup / export:heldout30:kalman -> p1_r_held_floor:kalman,10,944.17,962.912,6.368,+7/-3,False,0.556640625,1.0,0.236,0.4

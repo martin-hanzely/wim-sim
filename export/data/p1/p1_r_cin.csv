@@ -1,0 +1,15 @@
+family,comparison,seeds,median_a,median_b,median_paired_diff,signs,unanimous,p,p_holm,rb_rank,rb_sign
+1.2 cin,S1_nominal / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,12.182,12.178,-0.005,+1/-9,False,0.00390625,0.03515625,-0.964,-0.8
+1.2 cin,S2_thermal_cycle / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,151.932,149.966,-1.443,+1/-9,False,0.009765625,0.068359375,-0.891,-0.8
+1.2 cin,S3_zero_drift_walk / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,149.555,149.523,-0.354,+4/-6,False,0.275390625,1.0,-0.418,-0.2
+1.2 cin,S4_step_fault / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,193.903,173.843,-23.928,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 cin,S5_outage / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,151.029,149.517,-0.708,+2/-8,False,0.275390625,1.0,-0.418,-0.6
+1.2 cin,S6_combined / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,678.262,674.128,-0.364,+4/-6,False,0.921875,1.0,0.055,-0.2
+1.2 cin,S7_sparse_reference / export:cintron_ladder30:static_affine -> p1_r_cin_floor:kalman,10,196.04,181.284,-16.288,+1/-9,False,0.005859375,0.046875,-0.927,-0.8
+1.2 cin,S1_nominal / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,12.181,12.178,-0.006,+4/-6,False,0.845703125,1.0,0.091,-0.2
+1.2 cin,S2_thermal_cycle / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,152.677,149.966,-1.931,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 cin,S3_zero_drift_walk / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,152.063,149.523,-1.748,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 cin,S4_step_fault / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,163.295,173.843,10.072,+10/-0,True,0.001953125,0.02734375,1.0,1.0
+1.2 cin,S5_outage / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,152.702,149.517,-2.423,+2/-8,False,0.009765625,0.068359375,-0.891,-0.6
+1.2 cin,S6_combined / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,689.123,674.128,-10.69,+3/-7,False,0.02734375,0.13671875,-0.782,-0.4
+1.2 cin,S7_sparse_reference / export:cintron_ladder30:kalman -> p1_r_cin_floor:kalman,10,172.78,181.284,8.049,+10/-0,True,0.001953125,0.02734375,1.0,1.0

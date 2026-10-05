@@ -1416,3 +1416,54 @@ station's R is derived.
 were misspecified by very different amounts**, fourteen-fold apart, which any reading of the
 transfer comparison (F9) under the shipped R has to allow for. `kr_floor_cintron`; transfer arm
 `p1_r_cin_floor`, five seed shards.
+
+### 1.2d. Result — STOP: this changes the abstract, Contribution 1 and the conclusion
+
+All 180 corrected-R runs complete, none failed, clean tree (`p1_r_dev_floor`, `p1_r_held_floor` at
+`93fd0ac`; `p1_r_cin_floor` at `45d51d5`). Paired against the stored arms at seeds 1–10. Tables in
+`export/data/p1/p1_r_{dev,held,cin}.csv` (`scripts/p1_compare.py`, Holm within each family).
+
+**The three findings the brief named:**
+
+| finding | shipped R | corrected R | verdict |
+|---|---|---|---|
+| H1 Kalman penalty vs frozen | +251.4 kg, 30/30 (`heldout30`) | **+264.4 kg, 10/10**, p_holm 0.020 | **persists**, essentially unchanged (corrected vs shipped: −0.4 kg, 5/5 split) |
+| S6/Kalman adverse effect | +12.05 kg, rb_sign **+0.33** (30 seeds) | **−4.54 kg**, 3+/7−, rb_sign −0.40, p_holm 1.0 | **removed** — no longer adverse; corrected vs shipped −24.0 kg, 10/10 |
+| §V-C anti-correlation of estimated and true gain | −0.266 (Kalman, seed 1) | **not measured** — needs the 1.5 instrumented run | open |
+
+The front-end-B counterpart of the S6 exception (§V-D: Kalman +9.6 kg, p_holm 0.027) also goes:
+corrected −0.36 kg, 4+/6−, p_holm 1.0.
+
+**What else changes — the Kalman's headline wins were bought partly by the misspecified R.**
+Recovered share of reducible excess (frozen excess from 30 seeds, paired median at seeds 1–10):
+
+| scenario | shipped R (seeds 1–10) | corrected R | corrected − shipped, paired |
+|---|---:|---:|---:|
+| S4 / Kalman | −33.1 kg, 71.9 % | **−18.2 kg, 39.5 %** (10/10) | **+10.8 kg, 10/10 worse** |
+| S7 / Kalman | −21.7 kg | **−12.5 kg, 60.3 %** (10/10) | **+6.7 kg, 9/1 worse** |
+| H2 / Kalman | −49.7 kg | **−23.4 kg** (10/10) | **+27.2 kg, 10/10 worse** |
+| S2, S3, S5 / Kalman | +1.3 to +1.9 kg (worse than frozen) | −0.07 to −0.95 kg (n.s.) | −1.6 to −1.9 kg, 9–10/10 better |
+| B: S4 / S7 Kalman | −34.4 / −23.9 kg | −23.9 / −16.3 kg | +10.1 / +8.0 kg, 10/10 worse |
+
+So a correctly specified R makes the Kalman arm **better where there is nothing to recover**
+(S2, S3, S5, S6 — the small adverse effects on the low-excess scenarios and the S6 exception both
+disappear) and **worse where there is** (S4, S7, H2 — roughly half the benefit is lost). That is the
+signature of a stiffer filter, which is what raising R by 2.9 × 10⁵ at fixed Q produces; as noted
+in 1.2a, this comparison cannot separate "correct noise model" from "slower adaptation".
+
+**Consequences for the text (not made — Phase 2):**
+
+- **Abstract and conclusion.** With corrected R as the main arm, the Kalman entries become S4 39.5 %
+  and S7 60.3 %; with RLS unchanged (S4 58.9 %, S7 68.0 %) the headline range is **39 % to 68 %**,
+  not "59 % to 69 %". S4's best arm becomes RLS.
+- **Contribution 2 / §V-B.** The S6/Kalman exception that "necessary but not sufficient" was
+  partly resting on was an artefact of R. S6 still recovers only 6.5 % (RLS) and ~1 % (Kalman), so
+  "high share, little benefit" stands on recovery; "adaptation is worse than freezing there" does not.
+- **§V-E / Table V.** The H1 penalty is not an R artefact, and remains unexplained. H2/Kalman halves.
+- **Table I.** R = 1.0 × 10⁻⁸ moves to an ablation row; "a misspecified observation model costs
+  X" is reportable both ways — **+10.8 kg of benefit on S4 and +24.0 kg of harm on S6**.
+
+**Protocol consequences — escalations owed.** Non-unanimous comparisons must go to thirty seeds
+and both stages be reported. Owed: dev static→corrected-Kalman on S1, S2, S3, S5, S6; held-out H3,
+H4; front end B S1, S2, S3, S5, S6, S7; and the shipped→corrected comparisons that split (H1, H3,
+H4, S1, S5, dev S7, B S1, B S5, B S6). Not run: stopped at the item boundary for memory, as agreed.

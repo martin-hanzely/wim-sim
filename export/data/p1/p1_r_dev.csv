@@ -1,0 +1,15 @@
+family,comparison,seeds,median_a,median_b,median_paired_diff,signs,unanimous,p,p_holm,rb_rank,rb_sign
+1.2 dev,S1_nominal / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,0.956,0.956,-0.0,+4/-6,False,0.10546875,0.52734375,-0.6,-0.2
+1.2 dev,S2_thermal_cycle / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,137.806,136.974,-0.953,+2/-8,False,0.064453125,0.38671875,-0.673,-0.6
+1.2 dev,S3_zero_drift_walk / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,134.326,134.081,-0.066,+4/-6,False,0.322265625,1.0,-0.382,-0.2
+1.2 dev,S4_step_fault / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,182.072,162.021,-18.187,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 dev,S5_outage / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,135.045,134.099,-0.116,+4/-6,False,0.625,1.0,-0.2,-0.2
+1.2 dev,S6_combined / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,676.595,681.862,-4.539,+3/-7,False,0.375,1.0,-0.345,-0.4
+1.2 dev,S7_sparse_reference / export:ladder30:static_affine -> p1_r_dev_floor:kalman,10,180.516,168.548,-12.483,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 dev,S1_nominal / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,0.96,0.956,-0.005,+2/-8,False,0.322265625,1.0,-0.382,-0.6
+1.2 dev,S2_thermal_cycle / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,139.159,136.974,-1.919,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 dev,S3_zero_drift_walk / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,137.287,134.081,-1.584,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 dev,S4_step_fault / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,149.288,162.021,10.849,+10/-0,True,0.001953125,0.02734375,1.0,1.0
+1.2 dev,S5_outage / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,139.787,134.099,-1.68,+1/-9,False,0.005859375,0.046875,-0.927,-0.8
+1.2 dev,S6_combined / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,700.318,681.862,-24.043,+0/-10,True,0.001953125,0.02734375,-1.0,-1.0
+1.2 dev,S7_sparse_reference / export:ladder30:kalman -> p1_r_dev_floor:kalman,10,161.973,168.548,6.652,+9/-1,False,0.005859375,0.046875,0.927,0.8
