@@ -1,0 +1,17 @@
+# Kalman measurement noise R at the influence-line station's dynamic-load floor, for revision 1.2.
+#
+# Same derivation as kr_floor.yaml, at this station's own scale
+# (data/results/revision_p1/R_cintron.json):
+#
+#   E[(m_applied - m_static)^2] = 7.276e4 kg^2   (the vehicles do not depend on the station)
+#   k                           = 1.4459e-5 /kg  (median of six commissioning seed fits)
+#   R                           = 1.521e-5 feature units^2
+#
+# The shipped R = 1.0e-8 is sigma = 6.9 kg at this gain: overconfident by ~39x in standard
+# deviation, against ~540x on the default station. Q unchanged.
+
+extends: cintron_sim
+name: kr_floor_cintron
+description: "cintron_sim with Kalman R = 1.521e-5, the station's dynamic-load floor variance."
+estimate:
+  measurement_noise: 1.521e-5

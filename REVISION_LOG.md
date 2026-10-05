@@ -1360,3 +1360,59 @@ Three things the brief did not already list:
 - S2, S3 and S5 move by 2–4 points each; all three remain below a third.
 
 S6/RLS on the paired basis: **−32.7 kg, 6.5 %**.
+
+## Item 1.2 — the Kalman observation noise, corrected
+
+### 1.2a. R, derived from the station's own scale
+
+`scripts/derive_kalman_r.py`; output in `data/results/revision_p1/R_default.json`.
+
+R is the variance of the observation `z` (feature units) about `q + k·m_static`. Its irreducible
+part is the dynamic load, `k²·E[(m_applied − m_static)²]`. Each factor is measured:
+
+| quantity | value | source |
+|---|---|---|
+| `E[(m_applied − m_static)²]` | **7.276 × 10⁴ kg²** (rms **269.7 kg**) | every vehicle `schedule_passes` draws on S2–S5, seeds 1–10, 227 k vehicles |
+| mean \|m_applied − m_static\| | 134.3–136.4 kg by scenario | same — agrees with the `dynamic_floor_kg` the scorer reports |
+| `k` | **2.0079 × 10⁻⁴ /kg** (six fits, 2.0034–2.0140) | the Kalman arm's own commissioning seed fit, S4 and S5, seeds 1–3 |
+| **R** | **2.933 × 10⁻³ feature units²** | product |
+| commissioning batch residual variance | 2.1–3.7 × 10⁻³ | same six fits — the total the data itself shows; consistent |
+
+**The audit's conversion is confirmed for k and corrected for σ.** k = 2.0 × 10⁻⁴ per kg holds to
+0.4 %. But the floor is 136 kg as an **MAE** and 270 kg as an **rms**: the dynamic error is
+proportional to mass, the fleet is heavy-tailed, and the squares are dominated by trucks. Against
+an rms of 270 kg, the shipped R = 1 × 10⁻⁸ (σ = 0.50 kg) is overconfident by **≈ 540× in standard
+deviation**, 2.9 × 10⁵ in variance — not 270×.
+
+**One R per station, applied to all scenarios** (confirmed with the author). H1–H4 did not inform
+it. A constant R remains a misspecification of a noise whose standard deviation grows with mass;
+that is recorded, not fixed — the filter's model has one R.
+
+**Q unchanged** (confirmed with the author). Adaptation speed is governed by Q/R, so raising R by
+2.9 × 10⁵ at fixed Q also makes the filter adapt more slowly. The 1.2 comparison therefore cannot
+separate "correctly specified noise" from "stiffer filter"; it answers the question as asked.
+
+### 1.2b. The control arms reproduce the stored sweeps exactly — and were stopped
+
+`p1_r_dev`, `p1_r_held`, `p1_r_cin` rerun static and shipped-R Kalman at seeds 1–10, each with its
+original sweep's Page-Hinkley pin, at commit `2e8c788`, clean tree. On the first **55 rows** they
+matched `ladder30`, `heldout30` and `cintron_ladder30` to **max |Δ MAE| = 1.8 × 10⁻¹⁵ kg** — every
+row, all three families.
+
+They were then stopped. Rerunning 305 more cells to reproduce numbers already shown to reproduce
+bit for bit buys nothing; the corrected-R arm is paired against the stored arms at seeds 1–10
+instead (`p1_compare.py export:<sweep>:<arm>`, with `--allow-cross-commit` and this entry as the
+reason). The partial rows stay in `data/results/p1_r_*/rows.partial.jsonl` as the evidence.
+
+### 1.2c. The corrected-R arm
+
+`p1_r_dev_floor` (S1–S7) and `p1_r_held_floor` (H1–H4), kalman at `kr_floor`, ten seeds, five seed
+shards each, commit `93fd0ac`, clean tree. The transfer arm follows once the influence-line
+station's R is derived.
+
+**The influence-line station** (`R_cintron.json`): the same vehicles, so the same
+`E[(m_applied − m_static)²]`; `k = 1.4459 × 10⁻⁵ /kg`; **R = 1.521 × 10⁻⁵**. The shipped R there is
+σ = 6.9 kg — overconfident by ≈ 39× in standard deviation rather than 540×. **The two stations
+were misspecified by very different amounts**, fourteen-fold apart, which any reading of the
+transfer comparison (F9) under the shipped R has to allow for. `kr_floor_cintron`; transfer arm
+`p1_r_cin_floor`, five seed shards.
