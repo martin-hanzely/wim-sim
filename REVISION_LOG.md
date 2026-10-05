@@ -1509,3 +1509,49 @@ real road matches, and adaptation recovers nothing there.)
 estimates for repeated passes of a fixed vehicle, which the scenario generator cannot currently
 produce; a variant that needs no new generator feature — the commissioning batch's own residual
 spread — is a candidate, but it is not what the brief named.
+
+## Item 1.3 (partial) — periodic batch refit; λ = 1.0 and the λ sweep not yet run
+
+`p1_mem_dev`: static, RLS λ = 0.99, periodic refit (every 60 references on the latest 60), S1–S7,
+ten seeds, commit `8e902b3`, clean, 210 runs, none failed. `export/data/p1/p1_mem_dev.csv`.
+
+| scenario | RLS 0.99 vs frozen | periodic vs frozen | periodic vs RLS 0.99 |
+|---|---:|---:|---:|
+| S2 | −0.04 (5/5) | **+2.64 (9/1 worse)** | **+2.69 (10/10 worse)** |
+| S3 | −0.03 (5/5) | +2.02 (9/1 worse) | **+2.59 (10/10 worse)** |
+| S4 | **−28.4 (10/10)** | **−16.7 (10/10)** | +9.4 (9/1 worse) |
+| S5 | −0.07 | +0.82 (8/2 worse) | +2.20 (8/2) |
+| S6 | **−26.3 (10/10)** | −9.4 (9/1) | +11.8 (8/2) |
+| S7 | **−21.9 (10/10)** | **−16.9 (10/10)** | **+1.96 (10/10 worse)** |
+
+The practitioner's schedule recovers part of what continuous adaptation does on S4/S6/S7 and pays
+a visible variance cost on the low-excess scenarios (S2: worse than frozen, 9 of 10). **RLS at the
+shipped λ = 0.99 dominates it on every scenario.** So the adaptive arm survives this baseline; the
+memory-length question — λ = 1.0 and the λ sweep — is the part still owed (`p1_mem_dev_l1` running;
+`p1_mem_held`, `p1_mem_held_l1`, `p1_lambda` not started: the queue hit the 2 h background limit).
+
+## Item 1.1 — the decomposition in MSE: exact, nearly additive, not quite independent
+
+From the same 210 runs, which now record `floor_ms_kg2` = mean (applied − static)²,
+`excess_ms_kg2` = mean (est − applied)² and `cross_kg2` = 2·mean of their product.
+`export/data/p1/p1_mse_decomposition.csv`.
+
+- **The identity holds exactly**: rmse² = floor + excess + cross to machine precision on every run.
+- **Additivity holds to within 3 %.** |cross| ≤ 2.8 % of total MSE on every scenario and arm
+  (S6: 0.05 %). The implied correlation between the dynamic error and the model error is
+  |ρ| ≤ 0.04.
+- **Independence holds approximately, not exactly.** The cross term is negative on most seeds of
+  every scenario with a floor (typically 8–10 of 10), and individually non-zero at ten seeds on S2,
+  S3 and S7 for the frozen arm (Wilcoxon p 0.010, 0.006, 0.037, uncorrected). The model error
+  leans slightly against the dynamic error — consistent with a fit that absorbs a little of the
+  bounce. Small, signed, real.
+- **MAE is not additive, as the brief said**: total MAE is 25–100 kg *less* than MAE(floor) +
+  MAE(excess), every scenario and arm.
+- **Reducible share moves on the MSE basis.** Frozen arm: S2 5.7 % (MAE basis 2.0 %), S3 5.2 %,
+  S5 3.2 %, S4 55 %, S7 41 %, S6 99.5 %, S1 100 %. The "under 3 %" grouping of S2/S3/S5 does not
+  survive a change to MSE.
+
+**For the text:** either move the decomposition to MSE and state additivity as holding within 3 %
+with a small negative cross term, or keep MAE and define reducible excess as MAE_total − MAE_floor
+— a difference, not a component — and drop "decomposed" and "without assumption" from §I-B,
+§III-B and §V-A.
