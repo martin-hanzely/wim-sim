@@ -841,7 +841,9 @@ class EstimateConfig(_Base):
         description="per_axle_sum estimates each axle and adds; whole_signal treats the merged "
         "vehicle window as one measurement.",
     )
-    estimator: Literal["static_affine", "rls", "kalman", "affine_temp"] = Field(
+    estimator: Literal[
+        "static_affine", "rls", "kalman", "affine_temp", "periodic_refit"
+    ] = Field(
         "static_affine",
         description="The ladder, in order of adaptivity. static_affine fits once and freezes, so "
         "it is the floor the others must beat; rls is the same model and objective with a "
@@ -849,7 +851,9 @@ class EstimateConfig(_Base):
         "plant's own [q, k] and is the only one not attenuated by feature noise. The residual "
         "learner is phase 6, behind a feature flag. affine_temp is static_affine plus the "
         "section III-B interaction term, batch-only and off the adaptivity ladder: it exists to "
-        "test whether the third PARAMETER earns its place, not to add a third adaptive mechanism.",
+        "test whether the third PARAMETER earns its place, not to add a third adaptive mechanism. "
+        "periodic_refit is static_affine refitted every refit_every references on the latest "
+        "refit_window of them: the schedule a practitioner runs, and the memory-length baseline.",
     )
     forgetting: float = Field(
         0.99,
@@ -857,6 +861,17 @@ class EstimateConfig(_Base):
         le=1.0,
         description="RLS forgetting factor. 1.0 is recursive OLS; the literature sweeps "
         "0.90-0.999. Ignored by the other estimators.",
+    )
+    refit_every: int = Field(
+        60,
+        ge=1,
+        description="periodic_refit: references between refits. Ignored by the other estimators.",
+    )
+    refit_window: int = Field(
+        60,
+        ge=2,
+        description="periodic_refit: how many of the most recent references each refit uses. "
+        "Ignored by the other estimators.",
     )
     measurement_noise: float = Field(
         1.0e-8,

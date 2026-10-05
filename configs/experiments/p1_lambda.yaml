@@ -1,0 +1,25 @@
+# Revision item 1.3 -- the forgetting-factor sweep on S2, S4 and S7.
+#
+# lambda in {0.95, 0.99, 0.995, 0.999, 1.0}. 0.99 and 1.0 are the p1_mem_dev and p1_mem_dev_l1
+# arms at the same seeds and commit; this sweep supplies the other three. The frozen comparator is
+# p1_mem_dev's static_affine.
+#
+# A sweep over a tuning parameter is a new comparison family under the pre-registered protocol:
+# ten seeds, escalation to thirty only where signs are not unanimous, both stages reported.
+# Choosing the best lambda from this sweep and reporting it on the same scenarios is in-sample;
+# the report says so, and the held-out check is a separate run.
+experiment_id: p1_lambda
+description: >
+  RLS at forgetting factors 0.95, 0.995 and 0.999 on S2, S4 and S7, at ten seeds. Revision
+  item 1.3.
+scenarios: [S2_thermal_cycle, S4_step_fault, S7_sparse_reference]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_configs: [rls_l095, rls_l0995, rls_l0999]
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

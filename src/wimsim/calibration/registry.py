@@ -16,6 +16,7 @@ from typing import Any
 from wimsim.calibration.affine_temp import AffineTemp
 from wimsim.calibration.base import EstimatorState
 from wimsim.calibration.kalman import KalmanCalibration
+from wimsim.calibration.periodic_refit import PeriodicRefit
 from wimsim.calibration.rls import RecursiveLeastSquares
 from wimsim.calibration.static_affine import StaticAffine
 
@@ -28,6 +29,7 @@ ESTIMATORS: dict[str, type] = {
     AffineTemp.estimator_name: AffineTemp,
     RecursiveLeastSquares.estimator_name: RecursiveLeastSquares,
     KalmanCalibration.estimator_name: KalmanCalibration,
+    PeriodicRefit.estimator_name: PeriodicRefit,
 }
 
 

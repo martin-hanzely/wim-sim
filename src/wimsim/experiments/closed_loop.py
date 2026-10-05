@@ -148,6 +148,13 @@ def _estimator_for(cfg: EdgeConfig):
     shared = {"coverage_target": est.coverage_target}
     if est.estimator == "rls":
         return build_estimator("rls", forgetting=est.forgetting, **shared)
+    if est.estimator == "periodic_refit":
+        return build_estimator(
+            "periodic_refit",
+            refit_every=est.refit_every,
+            refit_window=est.refit_window,
+            **shared,
+        )
     if est.estimator == "kalman":
         return build_estimator(
             "kalman",

@@ -161,6 +161,30 @@ def test_the_adaptive_estimators_fold_in_every_reference_observation(loaded) -> 
     assert states["rls"] > 1, "RLS should have moved as references arrived"
 
 
+def test_periodic_refit_moves_in_the_loop_only_at_its_interval(loaded) -> None:
+    """Revision item 1.3's baseline. Inside the loop it must refit -- an estimator rebuilt from its
+    profile on every pass would silently behave as the frozen arm -- and only on schedule."""
+    cfg, truth, _ = loaded
+    result = run_closed_loop(
+        cfg,
+        truth,
+        _edge(
+            **{
+                "estimate.estimator": "periodic_refit",
+                "estimate.refit_every": "5",
+                "estimate.refit_window": "8",
+                "control.reference_every_n": "1",
+            }
+        ),
+        calibration_passes=8,
+    )
+    gains = [round(e.calibration.gain, 12) for e in result.events]
+    distinct = len(dict.fromkeys(gains))
+    assert distinct > 1, "periodic_refit never refitted inside the loop"
+    # at one reference per pass and a refit every five, the gain changes at most once in five
+    assert distinct <= len(gains) // 5 + 2
+
+
 # -- uncertainty ---------------------------------------------------------------------------------
 
 

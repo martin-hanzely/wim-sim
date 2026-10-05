@@ -1,0 +1,18 @@
+# Revision item 1.3 -- the lambda = 1.0 arm, held-out. See p1_mem_dev.yaml for the design.
+# Page-Hinkley pinned at 7.5, as heldout30 ran. Nothing is tuned on H1-H4: periodic_refit's 60/60 is the commissioning
+# budget, fixed before any run.
+experiment_id: p1_mem_held_l1
+description: >
+  RLS at lambda 1.0 (no forgetting) on the four held-out scenarios, at ten seeds. Paired
+  against p1_mem_held. Revision item 1.3.
+scenarios: [H1_warm_front, H2_gain_jolt, H3_slow_fade, H4_pileup]
+estimators: [rls]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+edge_config: rls_l1
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=7.5
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0

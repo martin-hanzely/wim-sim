@@ -1,0 +1,8 @@
+# RLS forgetting factor 0.999, for revision item 1.3 (memory length). The shipped value is 0.99;
+# 1.0 is the growing-window refit with no forgetting.
+
+extends: default
+name: rls_l0999
+description: "RLS with forgetting factor 0.999."
+estimate:
+  forgetting: 0.999
