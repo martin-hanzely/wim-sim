@@ -211,6 +211,39 @@ def test_the_dynamic_load_floor_is_reported_separately() -> None:
     assert result.dynamic_floor_kg == pytest.approx(300.0)
 
 
+def test_the_squared_error_decomposes_exactly_into_floor_excess_and_cross_term() -> None:
+    """Revision item 1.1. MAE does not decompose -- |a + b| is not |a| + |b| -- but MSE does,
+    exactly, once the cross term is kept: e = a + b with a = est - applied and b = applied - static,
+    so mean(e^2) = mean(b^2) + mean(a^2) + 2 mean(a b). Additivity holds iff the cross term is
+    zero, and that is an empirical question the metrics must let a reader answer."""
+    truth = _truth(n=4)
+    truth["applied_mass_kg"] = truth["true_mass_kg"] + np.array([300.0, -300.0, 300.0, -300.0])
+    events = [
+        _Ev(r.t_entry_s, r.t_peak_s, r.t_exit_s, r.applied_mass_kg + a)
+        for r, a in zip(truth.itertuples(), [100.0, -100.0, -100.0, 100.0], strict=True)
+    ]
+    result = score_events(events, truth)
+    assert result.floor_ms_kg2 == pytest.approx(300.0**2)
+    assert result.excess_ms_kg2 == pytest.approx(100.0**2)
+    # a and b agree in sign on two events and disagree on two: the cross term cancels
+    assert result.cross_kg2 == pytest.approx(0.0)
+    assert result.rmse_kg**2 == pytest.approx(
+        result.floor_ms_kg2 + result.excess_ms_kg2 + result.cross_kg2
+    )
+
+
+def test_a_correlated_excess_shows_up_in_the_cross_term() -> None:
+    truth = _truth(n=4)
+    truth["applied_mass_kg"] = truth["true_mass_kg"] + 300.0
+    events = [
+        _Ev(r.t_entry_s, r.t_peak_s, r.t_exit_s, r.applied_mass_kg + 100.0)
+        for r in truth.itertuples()
+    ]
+    result = score_events(events, truth)
+    assert result.cross_kg2 == pytest.approx(2 * 100.0 * 300.0)
+    assert result.rmse_kg**2 == pytest.approx(400.0**2)
+
+
 def test_axle_count_accuracy_is_reported() -> None:
     truth = _truth(n=4)
     events = _events_for(truth)

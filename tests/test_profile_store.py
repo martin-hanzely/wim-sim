@@ -50,7 +50,7 @@ def test_the_registry_holds_every_estimator_the_buildspec_names() -> None:
     """Profiles name their estimator as a string, so this mapping is what makes a stored profile
     reconstructible at all. A profile naming an estimator nothing can build is a mass nobody can
     ever reproduce."""
-    assert set(ESTIMATORS) == {"static_affine", "rls", "kalman", "affine_temp"}
+    assert set(ESTIMATORS) == {"static_affine", "rls", "kalman", "affine_temp", "periodic_refit"}
     assert ESTIMATORS["static_affine"] is StaticAffine
     assert ESTIMATORS["rls"] is RecursiveLeastSquares
     assert ESTIMATORS["kalman"] is KalmanCalibration
@@ -58,6 +58,9 @@ def test_the_registry_holds_every_estimator_the_buildspec_names() -> None:
     # three-parameter map earns its place against the two-parameter one, and it is registered
     # because a sweep can only reach what the registry holds.
     assert ESTIMATORS["affine_temp"] is AffineTemp
+    # `periodic_refit` is not a buildspec estimator either: revision item 1.3's memory-length
+    # baseline, registered for the same reason.
+    assert ESTIMATORS["periodic_refit"].estimator_name == "periodic_refit"
 
 
 def test_every_registered_estimator_reports_the_name_it_is_registered_under() -> None:

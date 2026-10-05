@@ -103,6 +103,14 @@ class ScoreResult:
     """Coverage over the intervals the configuration actually asked for."""
     per_class: dict[str, dict[str, float]] = field(default_factory=dict)
 
+    floor_ms_kg2: float = float("nan")
+    """Mean of (applied - static)^2: the dynamic-load floor in squared error."""
+    excess_ms_kg2: float = float("nan")
+    """Mean of (est - applied)^2: everything the calibration and the sensor contribute."""
+    cross_kg2: float = float("nan")
+    """2 * mean((est - applied) * (applied - static)). With it, ``rmse_kg**2`` is exactly
+    floor + excess + cross; the squared error is additive in floor and excess iff this is zero."""
+
     @property
     def recall(self) -> float:
         return self.n_matched / self.n_truth if self.n_truth else float("nan")
@@ -126,6 +134,9 @@ class ScoreResult:
             "bias_kg": self.bias_kg,
             "mae_vs_applied_kg": self.mae_vs_applied_kg,
             "dynamic_floor_kg": self.dynamic_floor_kg,
+            "floor_ms_kg2": self.floor_ms_kg2,
+            "excess_ms_kg2": self.excess_ms_kg2,
+            "cross_kg2": self.cross_kg2,
             "coverage": self.coverage,
             "mean_interval_width_kg": self.mean_interval_width_kg,
             "coverage_by_source": {k: list(v) for k, v in self.coverage_by_source.items()},
@@ -299,6 +310,9 @@ def score_events(
         bias_kg=float(np.mean(error)),
         mae_vs_applied_kg=float(np.mean(np.abs(est - applied))),
         dynamic_floor_kg=_nan_mean(np.abs(applied - static)),
+        floor_ms_kg2=_nan_mean((applied - static) ** 2),
+        excess_ms_kg2=_nan_mean((est - applied) ** 2),
+        cross_kg2=2.0 * _nan_mean((est - applied) * (applied - static)),
         coverage=float(np.mean(covered)),
         mean_interval_width_kg=float(np.mean(widths)),
         coverage_by_source=by_source,
