@@ -1891,3 +1891,40 @@ them is another ~250 runs.
 
 A criterion restricted to the excess the adaptive model class can represent (1.4) needs an oracle
 refit arm that does not exist; it is new research, not an owed run.
+
+## Second-round thirty-seed stages — Q-rescaled Kalman and held-out λ on H1
+
+240 runs, seeds 11–30, commit `cef3c07`, clean, none failed. Stage 1 ran at `fdcb53f`;
+`git diff fdcb53f cef3c07 -- src configs` is empty, so the two stages ran identical code and
+configuration. Both stages in `export/data/p1/p1_escalations.csv` (families "1.2 Q-rescaled dev",
+"1.2 Q-rescaled held-out", "1.3 held-out tuned lambda").
+
+**This corrects two statements in the previous entry.**
+
+**1. R's mis-specification is not harmless — it is small.** At thirty seeds the Q-rescaled Kalman
+(correct R, shipped Q/R) beats the shipped one on S1, S2 (−0.25 kg, 4/26), S3 (−0.61), S4 (−0.81,
+8/22), S5 (−2.13, 4/26), S7 (−0.57, 2/28), H2 (−0.45) and H4 (−3.03, 3/27); p_holm 2 × 10⁻⁷ to
+0.037. H1 and H3 do not separate. **A correctly specified R is worth 0.25–3 kg; the adaptation rate
+is worth 10–25 kg** (1.2d vs the Q-rescaled table). "A misspecified observation model costs X" is
+reportable after all, with X of that size — an order of magnitude below the rate effect that item
+1.2 originally attributed to it.
+
+**2. The S6 exception does not separate at the shipped rate.** Q-rescaled against frozen on S6:
++21.8 kg at ten seeds (8/2), **+10.9 kg at thirty (20/10, p_holm 0.24)**. The previous entry's
+"returns at the shipped rate" overstated a ten-seed result. This matches `ladder30`, where the
+shipped Kalman's S6 effect (+12.05 kg, rank-biserial +0.33) never separated either. **The S6
+"exception" in §V-B was never a significant effect under any R or rate**; it is a point estimate
+with an interval spanning zero, and should be reported as such or not leaned on.
+
+Against frozen, the Q-rescaled Kalman separates on none of S1, S2, S3, S5, S6, H3, H4 at thirty
+seeds (S2 +0.28, S3 0.00, S5 −0.20, H3 +21.4, H4 −8.5 kg): at the shipped rate the Kalman, like
+RLS at λ = 0.99, recovers nothing on the low-excess scenarios — the slower corrected-R filter and
+long-memory RLS do (previous entry).
+
+**3. The held-out λ check holds for H2 only.** λ = 0.999 on H1: against λ = 0.99 −10.2 kg at ten
+seeds (8/2, p_holm 0.039), **−8.4 kg at thirty (20/10, p_holm 0.32)** — does not survive; against
+frozen +12.6 kg, n.s. The H2 result (λ = 0.95: −57.8 kg vs frozen, −15.0 vs 0.99, both 10/10) was
+unanimous at ten and is not escalated. **A memory tuned in-sample transferred to the abrupt-fault
+held-out scenario and not to the thermal one** — where nothing beats freezing.
+
+With this, every comparison opened in Phase 1 that split at ten seeds has its thirty-seed stage.

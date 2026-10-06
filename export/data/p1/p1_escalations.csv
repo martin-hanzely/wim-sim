@@ -109,3 +109,49 @@ family,stage,comparison,seeds,median_paired_diff,signs,p,p_holm,rb_rank
 1.3 lambda,30 seeds,S2_thermal_cycle / static -> rls 0.999,30,-1.466,+6/-24,6.917864084243774e-06,2.0753592252731323e-05,-0.854
 1.3 lambda,30 seeds,S7_sparse_reference / static -> rls 0.95,30,-11.82,+7/-23,1.3966113328933716e-05,2.793222665786743e-05,-0.832
 1.3 lambda,30 seeds,S4_step_fault / rls 0.99 -> rls 0.95,30,-7.248,+1/-29,3.725290298461914e-09,1.4901161193847656e-08,-0.996
+1.2 Q-rescaled dev,10 seeds,S1_nominal / static -> kalman Q-rescaled,10,-0.002,+3/-7,0.193359375,0.80078125,-0.491
+1.2 Q-rescaled dev,10 seeds,S2_thermal_cycle / static -> kalman Q-rescaled,10,0.989,+8/-2,0.10546875,0.6328125,0.6
+1.2 Q-rescaled dev,10 seeds,S3_zero_drift_walk / static -> kalman Q-rescaled,10,1.062,+6/-4,0.375,0.80078125,0.345
+1.2 Q-rescaled dev,10 seeds,S5_outage / static -> kalman Q-rescaled,10,0.044,+5/-5,0.6953125,0.80078125,0.164
+1.2 Q-rescaled dev,10 seeds,S6_combined / static -> kalman Q-rescaled,10,21.773,+8/-2,0.02734375,0.21875,0.782
+1.2 Q-rescaled dev,10 seeds,S1_nominal / kalman shipped R -> kalman Q-rescaled,10,-0.005,+2/-8,0.16015625,0.80078125,-0.527
+1.2 Q-rescaled dev,10 seeds,S2_thermal_cycle / kalman shipped R -> kalman Q-rescaled,10,-0.117,+2/-8,0.01953125,0.1953125,-0.818
+1.2 Q-rescaled dev,10 seeds,S3_zero_drift_walk / kalman shipped R -> kalman Q-rescaled,10,-0.354,+2/-8,0.009765625,0.1171875,-0.891
+1.2 Q-rescaled dev,10 seeds,S4_step_fault / kalman shipped R -> kalman Q-rescaled,10,-0.577,+3/-7,0.064453125,0.451171875,-0.673
+1.2 Q-rescaled dev,10 seeds,S5_outage / kalman shipped R -> kalman Q-rescaled,10,-1.176,+2/-8,0.01953125,0.1953125,-0.818
+1.2 Q-rescaled dev,10 seeds,S7_sparse_reference / kalman shipped R -> kalman Q-rescaled,10,-0.349,+2/-8,0.009765625,0.1171875,-0.891
+1.2 Q-rescaled dev,10 seeds,S1_nominal / kalman corrected R -> kalman Q-rescaled,10,-0.002,+3/-7,0.193359375,0.80078125,-0.491
+1.2 Q-rescaled dev,30 seeds,S1_nominal / static -> kalman Q-rescaled,30,-0.001,+13/-17,0.3284698575735092,1.0,-0.209
+1.2 Q-rescaled dev,30 seeds,S2_thermal_cycle / static -> kalman Q-rescaled,30,0.279,+17/-13,0.871207794174552,1.0,0.037
+1.2 Q-rescaled dev,30 seeds,S3_zero_drift_walk / static -> kalman Q-rescaled,30,0.001,+15/-15,0.40449450351297855,1.0,-0.178
+1.2 Q-rescaled dev,30 seeds,S5_outage / static -> kalman Q-rescaled,30,-0.195,+13/-17,0.18396909348666668,0.9198454674333334,-0.282
+1.2 Q-rescaled dev,30 seeds,S6_combined / static -> kalman Q-rescaled,30,10.948,+20/-10,0.04048972204327583,0.242938332259655,0.428
+1.2 Q-rescaled dev,30 seeds,S1_nominal / kalman shipped R -> kalman Q-rescaled,30,-0.007,+3/-27,2.6885420083999634e-05,0.00021508336067199707,-0.811
+1.2 Q-rescaled dev,30 seeds,S2_thermal_cycle / kalman shipped R -> kalman Q-rescaled,30,-0.249,+4/-26,1.6391277313232422e-07,1.8030405044555664e-06,-0.944
+1.2 Q-rescaled dev,30 seeds,S3_zero_drift_walk / kalman shipped R -> kalman Q-rescaled,30,-0.607,+4/-26,1.6391277313232422e-07,1.8030405044555664e-06,-0.944
+1.2 Q-rescaled dev,30 seeds,S4_step_fault / kalman shipped R -> kalman Q-rescaled,30,-0.809,+8/-22,0.001038169488310814,0.007267186418175697,-0.66
+1.2 Q-rescaled dev,30 seeds,S5_outage / kalman shipped R -> kalman Q-rescaled,30,-2.126,+4/-26,1.6838312149047852e-06,1.5154480934143066e-05,-0.892
+1.2 Q-rescaled dev,30 seeds,S7_sparse_reference / kalman shipped R -> kalman Q-rescaled,30,-0.573,+2/-28,1.862645149230957e-08,2.2351741790771484e-07,-0.978
+1.2 Q-rescaled dev,30 seeds,S1_nominal / kalman corrected R -> kalman Q-rescaled,30,-0.001,+13/-17,0.3284698575735092,1.0,-0.209
+1.2 Q-rescaled held-out,10 seeds,H3_slow_fade / static -> kalman Q-rescaled,10,30.548,+7/-3,0.375,1.0,0.345
+1.2 Q-rescaled held-out,10 seeds,H4_pileup / static -> kalman Q-rescaled,10,-4.783,+4/-6,0.375,1.0,-0.345
+1.2 Q-rescaled held-out,10 seeds,H1_warm_front / kalman shipped R -> kalman Q-rescaled,10,-0.421,+3/-7,0.625,1.0,-0.2
+1.2 Q-rescaled held-out,10 seeds,H2_gain_jolt / kalman shipped R -> kalman Q-rescaled,10,-0.448,+3/-7,0.048828125,0.341796875,-0.709
+1.2 Q-rescaled held-out,10 seeds,H3_slow_fade / kalman shipped R -> kalman Q-rescaled,10,-5.087,+2/-8,0.01953125,0.15625,-0.818
+1.2 Q-rescaled held-out,10 seeds,H4_pileup / kalman shipped R -> kalman Q-rescaled,10,-3.752,+2/-8,0.009765625,0.087890625,-0.891
+1.2 Q-rescaled held-out,10 seeds,H1_warm_front / kalman corrected R -> kalman Q-rescaled,10,0.244,+5/-5,0.845703125,1.0,-0.091
+1.2 Q-rescaled held-out,10 seeds,H3_slow_fade / kalman corrected R -> kalman Q-rescaled,10,-6.915,+4/-6,0.16015625,0.9609375,-0.527
+1.2 Q-rescaled held-out,10 seeds,H4_pileup / kalman corrected R -> kalman Q-rescaled,10,-11.739,+3/-7,0.275390625,1.0,-0.418
+1.2 Q-rescaled held-out,30 seeds,H3_slow_fade / static -> kalman Q-rescaled,30,21.387,+17/-13,0.8078304156661034,0.9542129635810852,0.054
+1.2 Q-rescaled held-out,30 seeds,H4_pileup / static -> kalman Q-rescaled,30,-8.468,+12/-18,0.0803273618221283,0.4016368091106415,-0.368
+1.2 Q-rescaled held-out,30 seeds,H1_warm_front / kalman shipped R -> kalman Q-rescaled,30,-0.736,+9/-21,0.17059839516878128,0.6823935806751251,-0.29
+1.2 Q-rescaled held-out,30 seeds,H2_gain_jolt / kalman shipped R -> kalman Q-rescaled,30,-0.448,+9/-21,0.00466480478644371,0.03731843829154968,-0.578
+1.2 Q-rescaled held-out,30 seeds,H3_slow_fade / kalman shipped R -> kalman Q-rescaled,30,-4.341,+8/-22,0.009301122277975082,0.06510785594582558,-0.535
+1.2 Q-rescaled held-out,30 seeds,H4_pileup / kalman shipped R -> kalman Q-rescaled,30,-3.026,+3/-27,6.146728992462158e-08,5.532056093215942e-07,-0.961
+1.2 Q-rescaled held-out,30 seeds,H1_warm_front / kalman corrected R -> kalman Q-rescaled,30,-2.764,+14/-16,0.22855282202363014,0.6856584660708904,-0.256
+1.2 Q-rescaled held-out,30 seeds,H3_slow_fade / kalman corrected R -> kalman Q-rescaled,30,1.819,+16/-14,0.4771064817905426,0.9542129635810852,-0.153
+1.2 Q-rescaled held-out,30 seeds,H4_pileup / kalman corrected R -> kalman Q-rescaled,30,-11.022,+8/-22,0.00993151031434536,0.06510785594582558,-0.531
+1.3 held-out tuned lambda,10 seeds,H1_warm_front / static -> rls 0.999,10,10.672,+6/-4,0.625,0.625,0.2
+1.3 held-out tuned lambda,10 seeds,H1_warm_front / rls 0.99 -> rls 0.999,10,-10.16,+2/-8,0.01953125,0.0390625,-0.818
+1.3 held-out tuned lambda,30 seeds,H1_warm_front / static -> rls 0.999,30,12.589,+18/-12,0.370740607380867,0.370740607380867,0.191
+1.3 held-out tuned lambda,30 seeds,H1_warm_front / rls 0.99 -> rls 0.999,30,-8.422,+10/-20,0.15794767439365387,0.31589534878730774,-0.299

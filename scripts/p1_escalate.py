@@ -74,6 +74,13 @@ def main() -> None:
     l0999 = both(runs(lam, "rls", "rls_l0999"), runs(esc_lam, "rls", "rls_l0999"))
     l095 = both(runs(lam, "rls", "rls_l095"), runs(esc_095, "rls"))
 
+    kq_dev = both(runs(pd.read_parquet(R / "p1_kq_dev/results.parquet"), "kalman"),
+                  runs(merged("p1_kq_dev_esc"), "kalman"))
+    kq_held = both(runs(pd.read_parquet(R / "p1_kq_held/results.parquet"), "kalman"),
+                   runs(merged("p1_kq_held_esc"), "kalman"))
+    h1_0999 = both(runs(pd.read_parquet(R / "p1_lambda_held_h1/results.parquet"), "rls"),
+                   runs(merged("p1_lambda_held_h1_esc"), "rls"))
+
     families = {
         "1.2 dev": [(s, "static", "kalman corrected R", lad_s, kr_dev)
                     for s in ("S1_nominal", "S2_thermal_cycle", "S3_zero_drift_walk", "S5_outage", "S6_combined")]
@@ -103,6 +110,23 @@ def main() -> None:
                        ("S2_thermal_cycle", "static", "rls 0.999", lad_s, l0999),
                        ("S7_sparse_reference", "static", "rls 0.95", lad_s, l095),
                        ("S4_step_fault", "rls 0.99", "rls 0.95", lad_r, l095)],
+        # Second round: comparisons that split at ten seeds in the Q-rescaled and held-out-lambda
+        # runs. Stage 1 at fdcb53f, seeds 11-30 at cef3c07; src/ and configs/ identical between.
+        "1.2 Q-rescaled dev": [(s, "static", "kalman Q-rescaled", lad_s, kq_dev)
+                               for s in ("S1_nominal", "S2_thermal_cycle", "S3_zero_drift_walk",
+                                         "S5_outage", "S6_combined")]
+        + [(s, "kalman shipped R", "kalman Q-rescaled", lad_k, kq_dev)
+           for s in ("S1_nominal", "S2_thermal_cycle", "S3_zero_drift_walk", "S4_step_fault",
+                     "S5_outage", "S7_sparse_reference")]
+        + [("S1_nominal", "kalman corrected R", "kalman Q-rescaled", kr_dev, kq_dev)],
+        "1.2 Q-rescaled held-out": [(s, "static", "kalman Q-rescaled", hel_s, kq_held)
+                                    for s in ("H3_slow_fade", "H4_pileup")]
+        + [(s, "kalman shipped R", "kalman Q-rescaled", hel_k, kq_held)
+           for s in ("H1_warm_front", "H2_gain_jolt", "H3_slow_fade", "H4_pileup")]
+        + [(s, "kalman corrected R", "kalman Q-rescaled", kr_held, kq_held)
+           for s in ("H1_warm_front", "H3_slow_fade", "H4_pileup")],
+        "1.3 held-out tuned lambda": [("H1_warm_front", "static", "rls 0.999", hel_s, h1_0999),
+                                      ("H1_warm_front", "rls 0.99", "rls 0.999", hel_r, h1_0999)],
     }
 
     rows = []
