@@ -422,16 +422,14 @@ def f3():
             f"(S2 {excess['S2_thermal_cycle']:.1f}, S4 {excess['S4_step_fault']:.1f}, "
             f"S7 {excess['S7_sparse_reference']:.1f} kg). The argument is excess against misadjustment. "
             f"On S2 the sign changes between λ = 0.95 ({s2.loc['0.95'].median_paired_diff_kg:+.2f} kg, "
-            f"{s2.loc['0.95'].signs}) and λ = 0.99: a short memory costs more than the whole excess. The "
+            f"{s2.loc['0.95'].signs}) and λ = 0.99: a short memory costs more than the whole excess. "
             "At the shipped λ = 0.99 the difference is "
             f"{s2.loc['0.99'].median_paired_diff_kg:+.2f} kg ({s2.loc['0.99'].signs}, raw p "
-            f"{s2.loc['0.99'].p:.3f}); whether that separates depends on the correction family: p_holm "
-            f"{l30:.3f} in ladder30's pre-registered 14-test family (not separated), "
-            f"{s2.loc['0.99'].p_holm:.3f} in this figure's 15-cell family (separated). At 0.995 it is "
+            f"{s2.loc['0.99'].p:.3f}, p_holm {s2.loc['0.99'].p_holm:.3f} over this figure's fifteen cells), "
+            "a marginal result. At 0.995 it is "
             f"{s2.loc['0.995'].median_paired_diff_kg:+.2f} kg ({s2.loc['0.995'].signs}, p_holm "
             f"{s2.loc['0.995'].p_holm:.1e}) and at 0.999 {s2.loc['0.999'].median_paired_diff_kg:+.2f} kg "
-            f"({s2.loc['0.999'].signs}). [PENDING: the article's inference sentence for S2 at 0.99 "
-            "depends on which family it adopts; see the notes.] On S4 the ordering is "
+            f"({s2.loc['0.999'].signs}). On S4 the ordering is "
             f"reversed: λ = 0.95 is best ({s4r.loc['0.95'].median_paired_diff_kg:+.1f} kg against frozen) and "
             f"beats λ = 0.99 by {-np.median(d4):.1f} kg on {int((d4 < 0).sum())} of {len(d4)} seeds "
             f"(p {s4.p_value:.1e}). On S7 the best cell is λ = {best['S7_sparse_reference']} "
@@ -623,6 +621,8 @@ def f8():
     off = (k_win - k_run_med) / k_run_med
     m_mean = float(pd.read_csv("export/data/vehicle_mass_by_scenario.csv",
                                index_col="scenario").loc["S2_thermal_cycle", "mean_kg"])
+    # m_hat = m * k / k_win: a window gain above deployment's under-predicts, so the bias is negative
+    bias_mean = m_mean * (1.0 / (1.0 + off) - 1.0)
 
     fig, ax = plt.subplots(figsize=(9.4, 5.2))
     bins = np.linspace(tr.T_sensor_c.min(), tr.T_sensor_c.max(), 60)
@@ -639,8 +639,8 @@ def f8():
             f"ΔT = {t_run_med - t_win_mean:.2f} °C", ha="center", fontsize=9.5)
     ax.text(0.98, 0.70,
             f"gain in window is {100*off:+.3f} % from the run median\n"
-            f"→ {off*m_mean:+.1f} kg on the mean vehicle ({m_mean:,.0f} kg)\n"
-            f"→ {off*20000:+.1f} kg on a 20 t vehicle\n"
+            f"→ bias {bias_mean:+.1f} kg on the mean vehicle ({m_mean:,.0f} kg)\n"
+            f"→ bias {bias_mean * 20000 / m_mean:+.1f} kg on a 20 t vehicle\n"
             f"carried as a BIAS for the whole run,\nbecause the fit is then frozen",
             transform=ax.transAxes, ha="right", va="top", fontsize=8.5,
             bbox={"boxstyle": "round", "fc": "#fffbe6", "ec": "#b8860b", "lw": 0.8})
@@ -667,9 +667,13 @@ def f8():
             "temperature acts on the gain as a hidden variable. What the window misrepresents is therefore "
             "the conditional P(mass | feature), which depends on that hidden variable — an unrepresentative "
             f"fitting sample, not a covariate shift. The window's gain is {100 * off:+.3f} % from the run "
-            f"median, {off * m_mean:+.1f} kg on the mean S2 vehicle ({m_mean:,.0f} kg), carried as a bias because the fit is frozen."),
+            f"median, so the frozen arm under-predicts: a bias of {bias_mean:+.1f} kg on the mean S2 vehicle "
+            f"({m_mean:,.0f} kg), carried for the whole run because the fit is frozen. This thermal term is "
+            "one part of the frozen arm's signed bias; the other, larger and varying by seed, is the "
+            "sampling error of the 60-pass fit (export/data/b3_s2_bias_split.txt)."),
         notes=["The caption must not say 'covariate shift': the covariate (the feature) is not what moves.",
-               "The previous version used a mean vehicle of 6 325 kg with no stored source; this one uses the S2 fleet mean from `export/data/vehicle_mass_by_scenario.csv`."])
+               "The previous version used a mean vehicle of 6 325 kg with no stored source; this one uses the S2 fleet mean from `export/data/vehicle_mass_by_scenario.csv`.",
+               "The previous version quoted the gain offset (+9.2 kg) as if it were the bias; the bias has the opposite sign."])
     return {"window_min": win_s / 60, "T_window_mean_c": t_win_mean,
             "T_run_median_c": t_run_med, "delta_c": t_run_med - t_win_mean,
             "gain_offset_pct": 100 * off}
