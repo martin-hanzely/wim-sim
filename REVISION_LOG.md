@@ -1986,8 +1986,11 @@ unchanged. Every run's per-event MAE equals the closed loop's score and the stor
 Outputs: `data/results/b4_h1/` (ignored), summaries `export/data/b4_h1_summary.txt`,
 `export/data/b4_h1_offset_gain.txt`.
 
-- Inversion hypothesis **not confirmed.** θ̂₁ (k̂) never changes sign; its minimum is 0.39 of truth in
-  one event (shipped, seed 5), otherwise ≥ 0.57. The penalty is in the bulk, not the tail: Kalman/frozen
+- Inversion hypothesis **not confirmed.** θ̂₁ (k̂) never changes sign. Against the frozen fit's k̂ on the
+  same vehicle (k̂/k_true is not a fair scale: the frozen fit itself sits at 0.78 of k_true, the plant
+  gain being in different units), the minimum is 0.51 (shipped; 21 of 110,925 events below 0.75) and
+  0.74 (corrected); 99.9% of events lie above 0.83. (An earlier draft of this entry quoted 0.39 / 0.57
+  against k_true; superseded.) The penalty is in the bulk, not the tail: Kalman/frozen
   |error| quantile ratio 2.6 at p50, 1.0–1.1 at p90–p99.9; the top 1% of per-event penalties carry 17%
   (shipped) / 11% (corrected) of it; removing each arm's worst 1% events leaves +244 / +259 kg of the
   +257 / +264 kg penalty.
@@ -2012,3 +2015,40 @@ signed bias at r = 0.996, median |diff| 0.66 kg. Split per seed:
   seed spread (frozen signed bias over 30 seeds: SD 28.8, median −17.6, mean −12.0 kg).
 - Like-for-like: in ΔMAE the window offset costs −0.001 kg (median, 7 seeds) and thermal motion
   +0.131 kg; "two orders of magnitude" compared a bias with a ΔMAE and does not survive.
+
+## Phase 3 — article revised to `ARTICLE-FINAL-v3.md` (2026-10-06)
+
+v2 kept unchanged beside it. Items B2, B3, B5, C1–C8 and D, after the A1/B4/B3 report was approved.
+
+- **B2** S2 at λ 0.99 reported plainly: −0.80 kg, 19/30, raw p 0.029, p_holm 0.029 in Table III's
+  15-cell family, "marginal". "Sharpest form" framing, §VI-A second-order paragraph and the
+  conclusion's single-setting-benchmark sentence removed. F3 sidecar PENDING marker resolved (2ca4f74).
+- **B3** §V-E rewritten around the per-seed reconstruction (thermal −8.4 to −9.6 kg, sampling
+  −34.5 to +7.8 kg); "+9.2 kg" → −9.2 kg bias; "two orders of magnitude" dropped; F8 caption and
+  annotation corrected (2ca4f74). Abstract, contribution 4 and conclusion reworded as approved.
+- **B5** % of fleet mean mass beside every kg in Table III, abstract and conclusion
+  (`vehicle_mass_by_scenario.csv`); "under 0.1% of vehicle mass, methodological not practical" in the
+  abstract, §V-B, §VI-A and conclusion.
+- **B4** §V-H: ruled-out list (observation noise, adaptation rate, process noise, inversion, gap
+  propagation) and the descriptive rotation; still "unexplained". No figure added.
+- **C1** three self-references removed (§V-B, §V-C, §V-D); escalation reporting kept.
+- **C2** Status block removed; run count 3,765 (definition in Supplementary Note S1: 3,670 completed
+  runs in ladder30, cintron_ladder30, heldout30, kalman_q and all p1_* sweeps with partial merges not
+  double-counted; 55 control-arm reruns; 40 B4 runs); corrected R = 2.933 × 10⁻³ feature²
+  (`configs/estimators/kr_floor.yaml`).
+- **C3** Krutchkoff 1967 (Technometrics 9(3):425–439) and Osborne 1991 (Int. Stat. Rev. 59(3):309–336),
+  both verified. §III-C corrected at the same time: only the Kalman fits feature on mass (classical);
+  frozen and RLS fit mass on feature (inverse). v2 said all arms fit feature on mass.
+- **C4** formulas (4) sign-count, (5) rank-weighted, with S6/Kalman +0.33 vs +0.46. §V-D corrected: v2
+  attached the [0.00, 0.67] interval to the rank-weighted +0.46; it belongs to the sign-count +0.33.
+- **C5** dirty-worktree note moved to Supplementary Note S1. **C6** flourishes removed. **C7** option
+  (b): contribution 1 reworded to "simulator and data released for reproduction" — (a) would need an
+  oracle-floor export that A1 showed does not exist. **C8** misadjustment-not-measured and 3-of-7
+  memory-sweep limitations added verbatim in substance; floor-excludes-sensor-noise added (A1 fallback).
+- **Other corrections found in D**: §V-H "+262 kg with corrected observation noise" was the Q-rescaled
+  arm (+262.4); corrected R is +264.4 kg (10/10). "(−0.7 kg between arms, p_holm 0.68)" was Q-rescaled
+  vs shipped; corrected vs shipped at 30 seeds is +4.8 kg, 16/14, p_holm 1.0. Both now stated. §III-A
+  feature is the sum of axle peaks (whole_signal), not "the peak amplitude".
+- **D** abstract, contributions and conclusion numbers checked against F2/F3/F7/F12 CSVs,
+  p1_escalations, b3/b4 outputs and vehicle_mass_by_scenario.csv. DOI remains `[X]`; other [CITE-*]
+  keys remain unresolved.
