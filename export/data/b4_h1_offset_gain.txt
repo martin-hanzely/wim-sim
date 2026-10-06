@@ -1,0 +1,14 @@
+rls feature identical to frozen's: max rel diff 5.81459182709275e-16
+   corr(offset diff, k_hat/k_frozen): 0.717
+kalman_shipped feature identical to frozen's: max rel diff 1.737188174749888e-15
+   corr(offset diff, k_hat/k_frozen): 0.487
+kalman_corrected feature identical to frozen's: max rel diff 5.193725519738434e-16
+   corr(offset diff, k_hat/k_frozen): 0.589
+                                                 rls  kalman_shipped  kalman_corrected
+penalty (arm)                                 26.306         256.823           264.385
+arm gain, frozen offset                       10.823         115.444           108.535
+frozen gain, arm offset                       19.809         214.570           225.412
+median |offset diff| kg                       66.989         430.850           437.702
+median signed offset diff kg                 -49.589        -430.726          -437.702
+median k_hat/k_frozen                          0.998           0.943             0.939
+corr(posterior q,k) proxy: corr(q_hat,k_hat)  -0.909          -0.443            -0.782

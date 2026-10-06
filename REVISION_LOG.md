@@ -1972,3 +1972,43 @@ agent; F3's sidecar carries both values and a [PENDING] marker on the inference 
   the shipped one by at most 4.34 kg (H3), 11 of 11 in its favour; H1 −0.74 kg, p_holm 0.68.
 - Kalman with R corrected is not on F3 (no defined effective memory); table only: S2 −1.44 kg (30
   seeds, 4/26), S4 −18.2 (10 seeds, 0/10), S7 −5.29 (30 seeds, 2/28).
+
+## Phase 3 — A1 feasibility, B4 H1 diagnostics, B3 bias analysis (2026-10-06)
+
+**A1 (oracle floor) — not feasible from stored files; stopped as instructed, no reruns.** `data/results/`
+holds one aggregate row per run; per-event estimates and truth exist only in memory during scoring
+(`scoring.py:309-315`). The only per-event files (`revision_p1/posterior/`) are S2 reference updates
+from the coupling ablation. Table II keeps the dynamic-load floor; fallback is C8.
+
+**B4 (H1 penalty) — 40 runs**, `scripts/h1_diagnostics.py` at 24f1103 (clean tree): H1, seeds 1–10,
+frozen / RLS λ0.99 / shipped Kalman / corrected-R Kalman, the heldout30 and p1_r_held_floor cells
+unchanged. Every run's per-event MAE equals the closed loop's score and the stored `mae_kg` (40/40).
+Outputs: `data/results/b4_h1/` (ignored), summaries `export/data/b4_h1_summary.txt`,
+`export/data/b4_h1_offset_gain.txt`.
+
+- Inversion hypothesis **not confirmed.** θ̂₁ (k̂) never changes sign; its minimum is 0.39 of truth in
+  one event (shipped, seed 5), otherwise ≥ 0.57. The penalty is in the bulk, not the tail: Kalman/frozen
+  |error| quantile ratio 2.6 at p50, 1.0–1.1 at p90–p99.9; the top 1% of per-event penalties carry 17%
+  (shipped) / 11% (corrected) of it; removing each arm's worst 1% events leaves +244 / +259 kg of the
+  +257 / +264 kg penalty.
+- Label gaps never approach max_gap: longest 316 s (none ≥ 1800 s), so P is never propagated at the cap.
+- Descriptive, not an explanation: against frozen, the Kalman's line is rotated — gain 5.7–6.1% lower
+  (median k̂/k̂_frozen 0.943 / 0.939) and offset ≈ 431–438 kg-equivalent higher — so light vehicles are
+  under-predicted and heavy ones over-predicted, with the mean bias nearly preserved. Penalty by mass
+  quintile (shipped): +355, +344, +303, −17, +299 kg. Swapping only the Kalman's offset into the frozen
+  model reproduces +215 kg of the penalty; only its gain, +115 kg. Why the filter settles there is not
+  established.
+- Caveat in the script: the event field `feature` it writes is the largest single peak, not the
+  inverted feature (axle_peak_sum); the split recovers the latter exactly as m̂·k̂ + q̂ (identical across
+  arms to 2e-15).
+
+**B3 (§V-E bias) — analysis on stored files, no runs.** `scripts/b3_s2_bias_split.py` refits the frozen
+model on each seed's first 60 stored truth passes (S2, seeds 1–10) and reproduces the stored per-seed
+signed bias at r = 0.996, median |diff| 0.66 kg. Split per seed:
+- thermal window term −8.4 to −9.6 kg on every seed (negative: the window's gain is higher than
+  deployment's, so the inversion under-predicts). The article's "+9.2 kg" is a gain offset quoted with
+  the bias sign reversed; as a bias it is −9.2 kg (seed 1, fleet mean) / −8.7 kg median (p1_thermal_s2).
+- 60-pass fit-sampling term (same fit, gain held constant) −34.5 to +7.8 kg; it carries the seed-to-
+  seed spread (frozen signed bias over 30 seeds: SD 28.8, median −17.6, mean −12.0 kg).
+- Like-for-like: in ΔMAE the window offset costs −0.001 kg (median, 7 seeds) and thermal motion
+  +0.131 kg; "two orders of magnitude" compared a bias with a ΔMAE and does not survive.

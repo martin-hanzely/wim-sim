@@ -1,0 +1,78 @@
+== per-arm, median over 10 seeds
+ arm                 static         rls  kalman_shipped  kalman_corrected
+mae              1128.2553   1129.0289       1372.6670         1393.5296
+p50               189.9403    210.0726        472.4510          492.3431
+p90              4961.4917   4859.4803       5492.0110         5684.2059
+p99              9509.8258   9860.6269       9643.9645         9065.8979
+max             14958.5771  15252.9020      17218.3534        15862.0900
+kurt_err            6.3071      6.9609          5.7710            4.4812
+top1pct_share       0.0949      0.0999          0.0828            0.0732
+mae_rel_pct        12.0532     13.2360         27.1711           28.6305
+p99_rel_pct        31.1763     34.1243         68.0122           69.0882
+kurt_rel           -0.4424     -0.2907         -0.0737           -0.2984
+bias               36.6711     31.3948        -20.2347          -16.8324
+k_ratio_min         0.7828      0.7179          0.6564            0.6798
+k_ratio_p01         0.7829      0.7333          0.6809            0.7086
+k_ratio_med         0.7848      0.7879          0.7417            0.7372
+k_ratio_max         0.7873      0.8550          1.0078            0.9213
+k_hat_min           0.0002      0.0001          0.0001            0.0001
+k_sign_changes      0.0000      0.0000          0.0000            0.0000
+n               11125.0000  11125.0000      11125.0000        11125.0000
+
+matched-vehicle sets equal across arms: 1.0
+
+== rls vs static: per-seed mean penalty median +26.3 kg (min -42.7, max +45.2); signs 7/10
+   quantile ratio arm/static (median over seeds): {0.5: np.float64(1.112), 0.9: np.float64(0.995), 0.99: np.float64(1.023), 0.999: np.float64(1.032)}
+   share of penalty from top 1% of per-event penalties: median 0.471
+   penalty with arm's worst 1% events removed: median +18.7 kg
+   fraction of events with |k_hat/k - 1| <= 0.10: 0.000; penalty on those: median +nan kg
+   mean penalty by mass quintile (kg): {0: 23.5, 1: 21.0, 2: 9.4, 3: -15.8, 4: 29.5}  rel %: {0: 1.97, 1: 1.53, 2: 0.61, 3: -0.58, 4: 0.11}
+
+== kalman_shipped vs static: per-seed mean penalty median +256.8 kg (min +188.6, max +319.9); signs 10/10
+   quantile ratio arm/static (median over seeds): {0.5: np.float64(2.605), 0.9: np.float64(1.098), 0.99: np.float64(1.011), 0.999: np.float64(1.07)}
+   share of penalty from top 1% of per-event penalties: median 0.167
+   penalty with arm's worst 1% events removed: median +244.2 kg
+   fraction of events with |k_hat/k - 1| <= 0.10: 0.012; penalty on those: median -126.7 kg
+   mean penalty by mass quintile (kg): {0: 354.6, 1: 344.0, 2: 302.9, 3: -17.1, 4: 298.6}  rel %: {0: 29.74, 1: 24.95, 2: 19.38, 3: 0.13, 4: 1.68}
+
+== kalman_corrected vs static: per-seed mean penalty median +264.4 kg (min +186.1, max +321.6); signs 10/10
+   quantile ratio arm/static (median over seeds): {0.5: np.float64(2.609), 0.9: np.float64(1.135), 0.99: np.float64(0.956), 0.999: np.float64(0.976)}
+   share of penalty from top 1% of per-event penalties: median 0.109
+   penalty with arm's worst 1% events removed: median +259.3 kg
+   fraction of events with |k_hat/k - 1| <= 0.10: 0.005; penalty on those: median -60.3 kg
+   mean penalty by mass quintile (kg): {0: 373.7, 1: 355.5, 2: 315.8, 3: -39.8, 4: 301.7}  rel %: {0: 31.35, 1: 25.78, 2: 20.22, 3: -0.66, 4: 1.74}
+
+== k_hat/k_true quantiles across all events
+                     count    mean     std     min    0.1%      1%     50%     99%   99.9%     max
+arm                                                                                               
+static            110916.0  0.7875  0.0164  0.7619  0.7620  0.7621  0.7849  0.8215  0.8216  0.8217
+rls               110916.0  0.7860  0.0293  0.6994  0.7022  0.7152  0.7853  0.8519  0.8696  0.8757
+kalman_shipped    110916.0  0.7468  0.0485  0.3907  0.6464  0.6627  0.7410  0.9473  1.0449  2.1406
+kalman_corrected  110916.0  0.7411  0.0282  0.5732  0.6499  0.6824  0.7376  0.8546  0.9698  0.9834
+
+== true k range on H1: 0.00019926797992315433 0.00020051040424371667
+
+== kalman_shipped: updates 11157, gaps>=1800s 0, max gap 316s, gaps>=3600s 0
+   trace_prior median: gap>=1800 nan  other 1.259146727997622e-10
+   p_kk prior median: gap>=1800 nan  other 1.0556460084633625e-18
+   mean per-event penalty by time since last label:
+                   mean   count
+since_label_s                 
+(0.0, 300.0]    256.59  110922
+(300.0, 900.0]   77.74       3
+
+== kalman_corrected: updates 11157, gaps>=1800s 0, max gap 316s, gaps>=3600s 0
+   trace_prior median: gap>=1800 nan  other 7.6286045239203865e-06
+   p_kk prior median: gap>=1800 nan  other 4.92228643686326e-14
+   mean per-event penalty by time since last label:
+                   mean   count
+since_label_s                 
+(0.0, 300.0]    261.40  110922
+(300.0, 900.0]   -6.72       3
+
+== rls: updates 11157, gaps>=1800s 0, max gap 316s, gaps>=3600s 0
+   mean per-event penalty by time since last label:
+                  mean   count
+since_label_s                
+(0.0, 300.0]    13.53  110922
+(300.0, 900.0]  71.27       3
