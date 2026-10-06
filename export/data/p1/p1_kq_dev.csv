@@ -1,0 +1,22 @@
+family,comparison,seeds,median_a,median_b,median_paired_diff,signs,unanimous,p,p_holm,rb_rank,rb_sign
+1.2 Q-rescaled dev,S1_nominal / export:ladder30:static_affine -> p1_kq_dev:kalman,10,0.956,0.95,-0.002,+3/-7,False,0.193359375,0.80078125,-0.491,-0.4
+1.2 Q-rescaled dev,S2_thermal_cycle / export:ladder30:static_affine -> p1_kq_dev:kalman,10,137.806,138.802,0.989,+8/-2,False,0.10546875,0.6328125,0.6,0.6
+1.2 Q-rescaled dev,S3_zero_drift_walk / export:ladder30:static_affine -> p1_kq_dev:kalman,10,134.326,135.395,1.062,+6/-4,False,0.375,0.80078125,0.345,0.2
+1.2 Q-rescaled dev,S4_step_fault / export:ladder30:static_affine -> p1_kq_dev:kalman,10,182.072,147.341,-34.941,+0/-10,True,0.001953125,0.041015625,-1.0,-1.0
+1.2 Q-rescaled dev,S5_outage / export:ladder30:static_affine -> p1_kq_dev:kalman,10,135.045,134.822,0.044,+5/-5,False,0.6953125,0.80078125,0.164,0.0
+1.2 Q-rescaled dev,S6_combined / export:ladder30:static_affine -> p1_kq_dev:kalman,10,676.595,699.157,21.773,+8/-2,False,0.02734375,0.21875,0.782,0.6
+1.2 Q-rescaled dev,S7_sparse_reference / export:ladder30:static_affine -> p1_kq_dev:kalman,10,180.516,160.493,-22.343,+0/-10,True,0.001953125,0.041015625,-1.0,-1.0
+1.2 Q-rescaled dev,S1_nominal / export:ladder30:kalman -> p1_kq_dev:kalman,10,0.96,0.95,-0.005,+2/-8,False,0.16015625,0.80078125,-0.527,-0.6
+1.2 Q-rescaled dev,S2_thermal_cycle / export:ladder30:kalman -> p1_kq_dev:kalman,10,139.159,138.802,-0.117,+2/-8,False,0.01953125,0.1953125,-0.818,-0.6
+1.2 Q-rescaled dev,S3_zero_drift_walk / export:ladder30:kalman -> p1_kq_dev:kalman,10,137.287,135.395,-0.354,+2/-8,False,0.009765625,0.1171875,-0.891,-0.6
+1.2 Q-rescaled dev,S4_step_fault / export:ladder30:kalman -> p1_kq_dev:kalman,10,149.288,147.341,-0.577,+3/-7,False,0.064453125,0.451171875,-0.673,-0.4
+1.2 Q-rescaled dev,S5_outage / export:ladder30:kalman -> p1_kq_dev:kalman,10,139.787,134.822,-1.176,+2/-8,False,0.01953125,0.1953125,-0.818,-0.6
+1.2 Q-rescaled dev,S6_combined / export:ladder30:kalman -> p1_kq_dev:kalman,10,700.318,699.157,-1.161,+0/-10,True,0.001953125,0.041015625,-1.0,-1.0
+1.2 Q-rescaled dev,S7_sparse_reference / export:ladder30:kalman -> p1_kq_dev:kalman,10,161.973,160.493,-0.349,+2/-8,False,0.009765625,0.1171875,-0.891,-0.6
+1.2 Q-rescaled dev,S1_nominal / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,0.956,0.95,-0.002,+3/-7,False,0.193359375,0.80078125,-0.491,-0.4
+1.2 Q-rescaled dev,S2_thermal_cycle / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,136.974,138.802,1.661,+10/-0,True,0.001953125,0.041015625,1.0,1.0
+1.2 Q-rescaled dev,S3_zero_drift_walk / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,134.081,135.395,1.25,+10/-0,True,0.001953125,0.041015625,1.0,1.0
+1.2 Q-rescaled dev,S4_step_fault / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,162.021,147.341,-13.484,+0/-10,True,0.001953125,0.041015625,-1.0,-1.0
+1.2 Q-rescaled dev,S5_outage / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,134.099,134.822,0.484,+10/-0,True,0.001953125,0.041015625,1.0,1.0
+1.2 Q-rescaled dev,S6_combined / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,681.862,699.157,22.587,+10/-0,True,0.001953125,0.041015625,1.0,1.0
+1.2 Q-rescaled dev,S7_sparse_reference / p1_r_dev_floor:kalman -> p1_kq_dev:kalman,10,168.548,160.493,-7.68,+0/-10,True,0.001953125,0.041015625,-1.0,-1.0

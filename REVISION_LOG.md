@@ -1803,3 +1803,91 @@ with **ΔMSE = 235 kg², 5.6 % of S2's frozen reducible excess in MSE (4 196 kg�
 point — the thermal disturbance S2 exists to study is negligible against its floor — stands and is
 stronger. Against the commissioning gain the MAE effect is nil and the MSE effect 350 kg², the
 difference being §V-C's initialisation offset (−8.7 kg mean).
+
+## Owed runs — thirty-seed stages, the Q-rescaled Kalman, the held-out tuned λ
+
+898 runs, commit `fdcb53f`, clean, none failed. Reproduction control at that commit: static and
+RLS 0.99 on S4/S5, seeds 11–12, equal `ladder30` exactly (8/8, max |Δ| = 0.0), so the stored
+sweeps' seeds 11–30 stand in for the comparator arms. Tables: `export/data/p1/p1_escalations.csv`
+(`scripts/p1_escalate.py`, both stages side by side, Holm within family at each stage),
+`p1_kq_dev.csv`, `p1_kq_held.csv`, `p1_lambda_held.csv`.
+
+### Thirty-seed stages — what changed from ten
+
+**The low-excess scenarios do benefit, with the right memory. This contradicts §VI-A's "a low
+share is a reliable reason not to adapt".** At thirty seeds, against frozen, on S2 (frozen excess
+2.73 kg): RLS λ = 0.995 −1.22 kg (7/23 seeds, p_holm 7.9 × 10⁻⁵), λ = 0.999 −1.47 kg (6/24,
+2.1 × 10⁻⁵), λ = 1.0 −1.48 kg (5/25, 8.4 × 10⁻⁵), corrected-R Kalman −1.44 kg (4/26,
+2.3 × 10⁻⁵) — **about half of S2's reducible excess**. S3: λ = 1.0 −1.00 kg, corrected-R
+Kalman −0.73 kg, both separating. The shipped λ = 0.99 recovers nothing on S2 (`ladder30`).
+The "no measurable difference on S1, S2, S3, S5" was a statement about λ = 0.99 and the shipped
+Kalman, not about adaptation.
+
+**1.2, held:**
+- S6 static → corrected-R Kalman: −4.72 kg, 10/20, p_holm 0.18 — the adverse effect stays gone.
+- Corrected vs shipped: better on S5 (−2.37, 3/27) and front-end-B S6 (−12.5, 4/26), worse on S7
+  (+7.37, 25/5). H1 +4.8, H3 −3.9, H4 +7.2: none separate. **The H1 penalty is unaffected by R.**
+- Front end B: corrected-R beats frozen on S1, S2, S3, S5 and S7 at thirty seeds; S7's effect
+  shrinks from −16.3 (ten seeds) to −8.9 kg.
+
+**1.3, held:**
+- Periodic refit is worse than RLS 0.99 at thirty seeds on S1, S4 (+10.3, 29/1), S5, S6, H1, H2,
+  H4. Its ten-seed "worse than frozen on S2" (+2.6, 9/1) does **not** survive: +2.49, 24/6,
+  p_holm 0.13. It beats frozen on S6 (−13.9, 3/27).
+- λ = 1.0 beats frozen on S2, S3, S6 (−17.1), H2 (−24.3), H4 (−21.4); and beats 0.99 on S3
+  (−0.47, 3/27). H3 at ten seeds (+13.8 against frozen) reverses at thirty (−26.4, n.s.).
+- λ = 0.95 beats 0.99 on S4: −7.25 kg, 1/29, p_holm 1.5 × 10⁻⁸.
+
+### The Q-rescaled Kalman — the 1.2 effects were the adaptation rate, not R
+
+`kq_scaled`: R = 2.933 × 10⁻³ with both Q standard deviations × 541.6, so Q²/R is the shipped
+ratio. Ten seeds, dev and held-out.
+
+| | shipped R (seeds 1–10) | corrected R, Q fixed | **corrected R, Q rescaled** | rescaled − shipped |
+|---|---:|---:|---:|---:|
+| S4 vs frozen | −33.1 | −18.2 | **−34.9** (10/10) | −0.6 |
+| S7 vs frozen | −21.7 | −12.5 | **−22.3** (10/10) | −0.3 |
+| S6 vs frozen | +22.7 | −4.5 | **+21.8** (8/2) | −1.2 (10/10) |
+| S2 vs frozen | +1.3 | −1.0 | **+1.0** (8/2) | −0.1 |
+| H1 vs frozen | +256.8 | +264.4 | **+262.4** (10/10) | −0.4 |
+| H2 vs frozen | −49.7 | −23.4 | **−50.1** (10/10) | −0.4 |
+
+**With R correct and the shipped Q/R ratio, the filter behaves like the shipped one to within
+1.2 kg everywhere.** Everything item 1.2 attributed to "correcting R" is the stiffer filter that
+raising R at fixed Q produces. This is what Kalman algebra predicts — the gain depends on Q/R, and
+the commissioning covariance is set from the data, not from R — and it is now measured.
+
+Consequences, superseding 1.2d where they conflict:
+- **"A misspecified observation model costs X" is not supportable.** R's absolute value is
+  immaterial at fixed Q/R; the shipped R was mis-specified, but the mis-specification is harmless.
+  What matters is the adaptation rate, exactly as for RLS's λ (1.3).
+- **The S6 Kalman exception is a property of the adaptation rate and returns at the shipped rate**
+  (+21.8 kg, 8/2 at ten seeds; not unanimous, so a thirty-seed stage is owed). It is the Kalman
+  analogue of λ = 0.95 losing on S2: a fast filter pays variance where it cannot gain.
+- **The H1 penalty is independent of both R and the rate** within the range tested (+257 to
+  +264 kg at every setting), and of Q across four decades (F1). It remains unexplained.
+- Kalman and RLS tell the same story: the adaptation rate trades S4/S7/H2 against S2/S3/S6.
+
+### Held-out check of a tuned memory
+
+The choice was fixed before running, by drift class, from the in-sample λ sweep.
+
+| | vs frozen | vs λ = 0.99 |
+|---|---:|---:|
+| H2 (S4's class), λ = 0.95 | **−57.8 kg**, 10/10, p_holm 0.008 | **−15.0 kg**, 10/10, p_holm 0.008 |
+| H1 (S2's class), λ = 0.999 | +10.7 kg, 6/4, n.s. | −10.2 kg, 8/2, p_holm 0.039 |
+
+**A memory chosen in-sample for the abrupt-fault class transfers to its held-out counterpart and
+beats the shipped λ unanimously.** For the thermal class it beats 0.99 but not frozen — on H1
+nothing beats frozen. Both are ten-seed results; H1 is not unanimous and owes a thirty-seed stage.
+
+### Still owed after this round (new comparisons that split at ten seeds)
+
+`kq_scaled` vs frozen on S1, S2, S3, S5, S6, H3, H4 and vs shipped on most scenarios; the H1
+λ = 0.999 comparisons. Not run: they arose from this round, and the protocol's escalation for
+them is another ~250 runs.
+
+### Not done, by decision
+
+A criterion restricted to the excess the adaptive model class can represent (1.4) needs an oracle
+refit arm that does not exist; it is new research, not an owed run.
