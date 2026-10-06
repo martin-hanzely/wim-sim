@@ -1,0 +1,18 @@
+# Thirty-seed stage for the lambda-sweep cells F3 draws but the protocol did not escalate: 0.995,
+# 0.999 and 1.0 on S4 and S7. Their ten-seed signs were unanimous, so this is for figure
+# uniformity (article F3 at thirty seeds), not protocol-required; both stages are reported.
+# Seeds 1-2 are run as a reproduction control against p1_lambda and p1_mem_dev_l1.
+experiment_id: p1_esc_lambda_fill
+description: >
+  Thirty-seed stage, for figure uniformity, of RLS at 0.995, 0.999 and 1.0 on S4 and S7.
+scenarios: [S4_step_fault, S7_sparse_reference]
+estimators: [rls]
+seeds: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+edge_configs: [rls_l0995, rls_l0999, rls_l1]
+edge_overrides:
+  - edge.control.enabled=true
+  - edge.drift.page_hinkley_threshold=15.0
+reference_every_n: 10
+overrides: [scenario.output.samples=none]
+calibration_passes: 60
+fault_horizon_s: 1800.0
