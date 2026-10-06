@@ -1928,3 +1928,47 @@ unanimous at ten and is not escalated. **A memory tuned in-sample transferred to
 held-out scenario and not to the thermal one** — where nothing beats freezing.
 
 With this, every comparison opened in Phase 1 that split at ten seeds has its thirty-seed stage.
+
+---
+
+## Phase 2 figures — regenerated in article numbering (2026-10-06)
+
+`scripts/paper_figures.py` now writes the article's F2, F3 (new), F5, F7, F8, F10, F12, F13, F14,
+each with a generated sidecar `export/figures/<stem>.md` naming the statistic (median of per-seed
+paired differences throughout; no difference of medians anywhere). Repo F4/F6/F7/F9/F11 renamed to
+F5/F7/F8/F10/F12; repo F12 (accuracy vs GVW) dropped; old-numbered PNGs and CSVs removed. Article
+F4, F6, F9, F11 are the existing sweep figures, unchanged.
+
+**F3 runs.** The cells the protocol did not escalate (S2 at 0.95; S4, S7 at 0.995, 0.999, 1.0) were
+run at seeds 11–30 for figure uniformity, not because the protocol required it (`p1_esc_lambda_fill`,
+`p1_esc_lambda095_s2`, c4cb665, 140 runs, 0 failed). Reproduction control: seeds 1–2 of the fill
+config at c4cb665 equal `p1_lambda` / `p1_mem_dev_l1`, 12/12 exactly. **Provenance note:** the five
+runs of `p1_esc_lambda095_s2_s26` are stamped `git_dirty` because I edited `scripts/paper_figures.py`
+and `export/` while the queue ran. `src/` and `configs/` were identical to c4cb665 throughout; the
+five were rerun and agree in every result field (only wall time differs); the reruns were themselves
+stamped dirty (provenance inspects the package's checkout) and were discarded.
+
+**F3, thirty seeds, RLS − frozen (median paired diff):**
+S2 +4.13 (25/5) · −0.80 (19/30) · −1.22 · −1.47 · −1.48 kg at λ = 0.95 … 1.0;
+S4 −35.5 · −27.1 · −23.3 · −20.6 · −19.9 (all 0/30); S7 −11.8 · −14.1 · −12.0 · −6.5 · −4.7.
+S4: 0.95 beats 0.99 by 7.2 kg on 29/30. S2 at 0.95 at ten seeds was +5.30 (10/0); at thirty +4.13 (25/5).
+
+**FLAG — S2 at λ = 0.99 is family-dependent.** Raw p 0.029. Holm over ladder30's pre-registered 14
+shipped-setting comparisons: p_holm 0.198 (not separated). Holm over F3's 15 cells: 0.029
+(separated), because the other fourteen p are all small. The article's framing (b) — "at the shipped
+memory the evidence is null" — and the abstract's "no measurable benefit at 0.99" hold under the
+single-setting benchmark's own correction, not as a property of the data. Reported to the article
+agent; F3's sidecar carries both values and a [PENDING] marker on the inference sentence.
+
+**Other findings from regeneration:**
+- F5 plots the sign-count rank-biserial; its axis said "matched-pairs" (conventionally rank-weighted).
+  S6/kalman: +0.33 sign-count, +0.46 rank-weighted. Both now in the CSV; label corrected.
+- F7: 23.67 / 5.74 / 5.62 kg are MEDIANS over seeds of |run bias|; the means are 25.76 / 5.95 / 5.97.
+  The brief's "mean absolute bias" is a mislabel; the figure labels both statistics.
+- F8: input trajectory moved from a temp folder into `export/data/F8_s2_seed1_trajectory.csv`. The
+  "6 325 kg mean vehicle" had no stored source; replaced by the S2 fleet mean, 6 283 kg
+  (`vehicle_mass_by_scenario.csv`). The mean-vehicle effect is 9.18 kg, still +9.2 kg rounded.
+- F14: "within 1.2 kg on every scenario" superseded; at thirty seeds the Q-rescaled filter differs from
+  the shipped one by at most 4.34 kg (H3), 11 of 11 in its favour; H1 −0.74 kg, p_holm 0.68.
+- Kalman with R corrected is not on F3 (no defined effective memory); table only: S2 −1.44 kg (30
+  seeds, 4/26), S4 −18.2 (10 seeds, 0/10), S7 −5.29 (30 seeds, 2/28).

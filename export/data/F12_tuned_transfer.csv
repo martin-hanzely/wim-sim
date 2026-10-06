@@ -1,0 +1,9 @@
+chosen_on,applied_to,side,lambda,against,seeds,median_paired_diff_kg,signs
+S4_step_fault,S4_step_fault,development,0.95,frozen,30,-35.48674086169137,+0/-30
+S4_step_fault,S4_step_fault,development,0.95,rls λ=0.99,30,-7.24797227541913,+1/-29
+S4_step_fault,H2_gain_jolt,held out,0.95,frozen,10,-57.834500401958124,+0/-10
+S4_step_fault,H2_gain_jolt,held out,0.95,rls λ=0.99,10,-14.978147197210077,+0/-10
+S2_thermal_cycle,S2_thermal_cycle,development,0.999,frozen,30,-1.4663725975351412,+6/-24
+S2_thermal_cycle,S2_thermal_cycle,development,0.999,rls λ=0.99,30,-0.8042038118218784,+0/-30
+S2_thermal_cycle,H1_warm_front,held out,0.999,frozen,30,12.588537250249829,+18/-12
+S2_thermal_cycle,H1_warm_front,held out,0.999,rls λ=0.99,30,-8.422414997060628,+10/-20
