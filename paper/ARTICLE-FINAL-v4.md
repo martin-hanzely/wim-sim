@@ -212,7 +212,7 @@ One interval does exclude zero on the unfavourable side: the Kalman observer on 
 
 ### E. Adaptation corrects an unrepresentative fitting window
 
-**FIGURE 6** — `s2__gain_tracking.png`. **FIGURE 7** — `F7__bias_by_scenario.png`. **FIGURE 8** — `F8__fitting_window.png`.
+**FIGURE 6** — `F6__s2_gain_tracking__CORRECTION.png`. **FIGURE 7** — `F7__bias_by_scenario.png`. **FIGURE 8** — `F8__fitting_window.png`.
 
 On S2 **median absolute bias** falls from **23.67 kg** (0.38%; frozen) to **5.74 kg** (0.09%; RLS) and **5.62 kg** (Kalman), at p_holm = 7.7 × 10⁻⁷ and 2.0 × 10⁻⁶. The corresponding means are 25.76, 5.95 and 5.97 kg. The frozen arm's signed bias has median −17.6 kg and mean −12.0 kg across 30 seeds, with a seed-to-seed standard deviation of 28.8 kg; the adaptive arms' is 6.9 kg (RLS) and 7.2 kg (Kalman). All these statistics are distinct and each is labelled where used.
 
@@ -225,7 +225,7 @@ Adaptation removes both. The fall in median absolute bias is therefore mostly th
 
 Temperature is not a model input, so the thermal term is **not covariate shift**: it is a shift in P(y | s) driven by a hidden variable, produced by an unrepresentative fitting sample. Neither term decays under a frozen fit, and a detection scheme defined as departure from the initial fit is poorly placed to observe them, since the initial fit is itself displaced. We have not tested whether such a scheme would fire.
 
-**One result is partly explained and partly not.** Both adaptive arms sit **two to seven times further** from the true gain trajectory than a constant does, and are anti-correlated with it.
+**One result is partly explained and partly not.** Both adaptive arms sit **two to seven times further** from the true gain trajectory than a constant does (0.20–0.70% against 0.10%, ten seeds). They are not anti-correlated with it: compared in the same direction, the correlation between estimated and true gain is +0.03 to +0.21 (median over seeds by arm), weak or absent. Their parameter motion is mostly noise rather than tracking.
 
 The posterior correlation between θ₀ and θ₁ on S2 is **−0.52** for both RLS and the corrected-R Kalman, matching the geometric prediction −E[m]/√E[m²] for an uncentred regressor. The parameters therefore trade against each other by construction, which permits the pair to move away from truth while the prediction improves. The shipped Kalman sits at −0.29; the corrected observation model puts the posterior where the geometry predicts, a further reason to specify R.
 
@@ -326,7 +326,7 @@ The fitting window should span the deployment conditions and contain enough cros
 - **No survey of reporting practice was conducted.** We do not claim that memory length or noise floors are commonly unreported, only that both are needed to interpret a comparison.
 - Hyperparameters other than λ were set on scenarios later used for evaluation.
 - Out-of-distribution failures are confounded with difficulty.
-- The H1 penalty and the magnitude of the §V-E anti-correlation are unexplained.
+- The H1 penalty and the magnitude of the §V-E distance from the true gain are unexplained.
 - No embedded benchmark.
 
 ### D. Reproducibility
@@ -367,7 +367,7 @@ One result resists explanation: on a held-out thermal scenario the Kalman observ
 | **3** | `F3__forgetting_factor_sweep.png` | **new, primary**; caption reports S2 at λ = 0.99 in its own family |
 | 4 | `ladder30__accuracy.png` | unchanged |
 | 5 | `F5__effect_sizes.png` | regenerated |
-| 6 | `s2__gain_tracking.png` | unchanged |
+| 6 | `F6__s2_gain_tracking__CORRECTION.png` | corrected: estimated against true gain, both in the sensor direction |
 | 7 | `F7__bias_by_scenario.png` | regenerated |
 | 8 | `F8__fitting_window.png` | regenerated; bias stated with its sign (−9.2 kg) |
 | 9 | `cintron_ladder30__accuracy.png` | unchanged |

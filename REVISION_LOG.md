@@ -2092,3 +2092,10 @@ which item 1.5 showed to be a direction mismatch. The correction is supplied as 
 the original's mismatch reproduced as −0.35 / −0.30 on the same data. rms distance from k_true
 RLS 0.44 %, Kalman 0.57 %, a constant 0.12 % (3.6× and 4.7×, inside item 1.5's 2–7×). The original
 `s2__gain_tracking.png` is kept, superseded, for the record.
+
+## Article under version control; F6 correction applied (2026-10-09)
+
+v4 copied verbatim to `paper/ARTICLE-FINAL-v4.md` (commit b230ddf), then corrected in the repo copy:
+§V-E "anti-correlated" replaced by the like-with-like result (+0.03 to +0.21, not anti-correlated);
+the limitations bullet reads "distance from the true gain"; Figure 6 and Appendix A row 6 point to
+`F6__s2_gain_tracking__CORRECTION.png`. No other text changed; the Desktop copy is untouched.
