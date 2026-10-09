@@ -1,0 +1,4 @@
+estimator,n_events,corr_khat_ktrue,corr_khat_inv_ktrue_original_figure,rms_distance_pct
+static_affine,12753,-0.0,0.0,0.1241
+rls,12753,0.3474,-0.3473,0.4435
+kalman,12753,0.3036,-0.3036,0.5726

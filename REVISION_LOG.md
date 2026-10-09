@@ -2078,3 +2078,17 @@ with the true gain — the B3f direction mismatch that item 1.5 dissolved (like 
 +0.21). Now: 2–7× further than a constant, not anti-correlated; the limitations bullet reads
 "distance" for "anti-correlation". **F6 (`s2__gain_tracking.png`) still plots k̂-direction gains
 against 1/k_true** and needs regenerating like with like; not done.
+
+## F6 corrected; v4 checked (2026-10-09)
+
+`ARTICLE-FINAL-v4.md` (Desktop) is the final text. Against the runs it differs from v3 only in
+framing, except that §V-E and its limitations bullet restore "anti-correlated with" the true gain,
+which item 1.5 showed to be a direction mismatch. The correction is supplied as text, not applied.
+
+`scripts/f6_gain_tracking_correction.py` redraws F6 like with like from
+`export/data/s2_gain_trajectory_long.csv` (k̂ per event) and `F8_s2_seed1_trajectory.csv` (true k):
+`export/figures/F6__s2_gain_tracking__CORRECTION.png` + sidecar, stats in
+`export/data/F6_correction_stats.csv`. Seed 1, t ≥ 1 h: corr(k̂, k_true) RLS +0.35, Kalman +0.30;
+the original's mismatch reproduced as −0.35 / −0.30 on the same data. rms distance from k_true
+RLS 0.44 %, Kalman 0.57 %, a constant 0.12 % (3.6× and 4.7×, inside item 1.5's 2–7×). The original
+`s2__gain_tracking.png` is kept, superseded, for the record.

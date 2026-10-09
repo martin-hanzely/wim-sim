@@ -184,7 +184,7 @@ medians is not used in any figure, caption, sidecar or CSV.
 | **F3** | `F3__forgetting_factor_sweep.png` | **new, primary figure**: λ sweep on S2, S4, S7, 30 seeds per cell |
 | F4 | `ladder30__accuracy.png` | carried over unchanged |
 | F5 | `F5__effect_sizes.png` | regenerated (was F4): caption restricted to the shipped memory |
-| F6 | `s2__gain_tracking.png` | carried over unchanged |
+| F6 | `F6__s2_gain_tracking__CORRECTION.png` | **correction**: k̂ against k_true, both sensor-side; replaces `s2__gain_tracking.png`, which plotted k̂ against 1/k_true |
 | F7 | `F7__bias_by_scenario.png` | regenerated (was F6): median signed and median absolute bias, labelled |
 | F8 | `F8__fitting_window.png` | regenerated (was F7): no "covariate shift"; input trajectory now stored in `export/data` |
 | F9 | `cintron_ladder30__accuracy.png` | carried over unchanged |
