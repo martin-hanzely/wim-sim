@@ -1,5 +1,14 @@
 # Manuscript claims against the code — read this first
 
+> **Pre-revision (2026-10-03).** This file describes the draft and the sweeps as they stood before
+> the paper's revision. Where it conflicts with the revision, the revision wins: see
+> [`REVISION_LOG.md`](../REVISION_LOG.md) for the record, `export/data/p1/` for its tables,
+> [`figures/FIGURES.md`](figures/FIGURES.md) for the current figures and their sidecars, and the
+> revision section of [`docs/experiments.md`](../docs/experiments.md#the-revision-memory-length-the-noise-model-and-the-floor)
+> for a summary. Known supersessions: the S2 null holds only at λ = 0.99; the S6/Kalman exception
+> never separated; the H1 penalty is unexplained but not an R, Q, rate, inversion or gap effect; the
+> S2 frozen bias is mostly 60-pass sampling error, with the thermal term negative (about −9 kg).
+
 Every verdict below was checked against the repository at commit `f40ca51`. Where a claim is
 contradicted, what is true instead is stated, with a file or test to check it.
 

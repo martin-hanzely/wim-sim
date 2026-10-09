@@ -124,16 +124,21 @@ expressed in it.
 
 ## The ladder
 
-Three estimators, each one step from the last, so a result can be attributed.
+Three estimators, each one step from the last, so a result can be attributed — and a fourth, added
+for the revision, that sits between the first two.
 
 ```mermaid
 flowchart LR
     SA["StaticAffine — B0<br/>kg = gain·feature + bias<br/>fitted once, then frozen"]
+    PR["PeriodicRefit<br/>StaticAffine, refitted every 60<br/>references on the latest 60"]
     RL["RecursiveLeastSquares — B2<br/>same model, same objective,<br/>same direction; the fit never ends"]
     KF["KalmanCalibration — B2<br/>state s = [q, k]<br/>holds the parameters the plant HAS"]
 
+    SA -->|"adapts in steps:<br/>a hard window"| PR
     SA -->|"the only difference:<br/>adaptivity"| RL
     RL -->|"the only difference:<br/>the direction of the model"| KF
+
+    style PR fill:#fff3cd,stroke:#b8860b
 ```
 
 Each rung is deliberately a *small* step. That isolation is the point: when RLS beats the baseline
@@ -145,6 +150,33 @@ else changed.
 | `StaticAffine` | once, frozen | no | mass on feature | yes |
 | `RecursiveLeastSquares` | continuously | forgetting factor λ | mass on feature | yes |
 | `KalmanCalibration` | continuously | random walk on `[q, k]` | feature on mass | **no** |
+| `PeriodicRefit` | every 60 references, on the latest 60 | in steps | mass on feature | yes |
+
+In the calibration literature the two directions have names: regressing mass on the feature and
+predicting directly is the **inverse** estimator, fitting the feature on mass and inverting is the
+**classical** one. Their bias properties differ — the inverse estimator is pulled toward the mean of
+its calibration sample — which is the regression-dilution point below in its standard form
+(Krutchkoff, *Technometrics* 9:425–439, 1967; Osborne, *Int. Stat. Rev.* 59:309–336, 1991).
+
+### Added for the revision: one more arm, and the settings that turned out to matter
+
+`PeriodicRefit` is the schedule an operator actually runs: `StaticAffine` exactly between refits,
+refitted every `refit_every` references on the most recent `refit_window` of them (both 60 by
+default). It exists so that "adapt versus freeze" has a practitioner's baseline to beat. It loses:
+at thirty seeds it is worse than RLS at λ = 0.99 on every development scenario.
+
+The estimator configs the revision added are variants, not new estimators:
+
+| config | what it changes | why |
+|---|---|---|
+| `rls_l095`, `rls_l0995`, `rls_l0999`, `rls_l1` | the forgetting factor λ | the memory-length sweep; λ = 1 is a growing-window refit |
+| `kr_floor` | Kalman R = 2.933 × 10⁻³ (shipped 1.0 × 10⁻⁸) | R derived from the station's own dynamic-load variance |
+| `kr_floor_cintron` | R = 1.521 × 10⁻⁵ | the same derivation at the influence-line station's scale |
+| `kq_scaled` | `kr_floor` with both Q standard deviations × 541.6 | correct R at the shipped Q/R ratio — separates "correct noise model" from "slower filter" |
+
+What they found is in [`experiments.md`](experiments.md#the-revision-memory-length-the-noise-model-and-the-floor):
+the memory length (λ, or Q/R for the filter) is worth 10–25 kg on the scenarios that drift, a
+correctly specified R alone 0.25–3 kg.
 
 **RLS changes exactly one thing.** Same model, same objective, same prediction direction as the
 baseline; only the fit is never finished. With `λ = 1` it *is* recursive OLS — order-invariant, and

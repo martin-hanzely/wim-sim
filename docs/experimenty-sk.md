@@ -180,6 +180,26 @@ Export stojí na **14 sweepoch a 4 454 behoch**, čo je 138 074 pozorovaní v dl
 Mimo sweepov: `wimsim validate-sim` — krížová validácia parametrov simulátora metódou „vynechaj
 jeden záznam“ nad ôsmimi reálnymi nahrávkami.
 
+### 4.1 Revízia článku (4. – 6. 10. 2026)
+
+Revízia pridala **3 265 behov**, žiadny nezlyhal. Najprv auditné etapy A–F (1 170 behov), potom
+sweepy `p1_*` (2 000 behov), 55 kontrolných opakovaní a 40 inštrumentovaných diagnostických behov:
+
+| skupina | sweepy | behy | na čo |
+|---|---|---:|---|
+| auditné etapy | `blocking`, `reference_rate_fixed`, `sparse_tuning`, `kalman_q` | 1 170 | blokujúci regulátor, okno potvrdenia, riedke referencie, procesný šum Q |
+| pamäť | `p1_mem_*`, `p1_esc_periodic_*` | 820 | periodické prefitovanie a rastúce okno (λ = 1) |
+| faktor zabúdania | `p1_lambda*`, `p1_esc_lambda*` | 350 | λ ∈ {0,95; 0,995; 0,999} na S2, S4, S7 a preladená pamäť na H1, H2 |
+| opravené R | `p1_r_*_floor*` | 480 | Kalman s R odvodeným z rozptylu dynamického zaťaženia |
+| preškálované Q | `p1_kq_*` | 330 | opravené R pri pôvodnom pomere Q/R |
+| reprodukčné kontroly | `p1_esc_repro`, `p1_esc_lambda_fill_repro` | 20 | nový commit musí presne zopakovať uložené behy |
+| kontrolné ramená | `p1_r_cin`, `p1_r_dev`, `p1_r_held` | 55 | zastavené po bitovej zhode s uloženými sweepmi |
+| diagnostika H1 | `scripts/h1_diagnostics.py` | 40 | stav estimátora pri každom vozidle |
+
+Článok sa opiera o **3 765 behov**: `ladder30`, `cintron_ladder30`, `heldout30`, `kalman_q`, všetky
+sweepy `p1_*`, 55 kontrolných opakovaní a 40 diagnostických behov. Čiastočné spojenia
+(`*_s1_2` atď.) sa nepočítajú dvakrát.
+
 ---
 
 ## 5. Prahy Page-Hinkleyho, čiže prečo sa sweepy nedajú miešať
@@ -226,6 +246,15 @@ dlho sa čakalo.
 | `detector_thresholds` | 340 | 5 | 21,8 h | ~4,4 h | 231 |
 | `recal_coverage` | 300 | 1 | 17,6 h | 17,6 h | 211 |
 | `theta2` | 180 | 1 | 15,9 h | 15,9 h | 318 |
+| revízia: pamäť (`p1_mem_*`, `p1_esc_periodic_*`) | 820 | 4–5 | 29,9 h | — | 131 |
+| revízia: faktor zabúdania (`p1_lambda*`, `p1_esc_lambda*`) | 350 | 1–5 | 17,3 h | — | 178 |
+| revízia: opravené R (`p1_r_*_floor*`) | 480 | 4–5 | 28,5 h | — | 214 |
+| revízia: preškálované Q (`p1_kq_*`) | 330 | 4–5 | 14,3 h | — | 156 |
+| revízia: reprodukčné kontroly | 20 | 1 | 0,5 h | 0,5 h | 96 |
+
+Revízne sweepy spolu: **2 000 behov, 90,5 h strojového času**. Nástenný čas sa pre ne neuvádza,
+pretože časť z nich bežala súbežne v jednej fronte (`xargs -P 8` nad príkazmi
+`wimsim experiment`). Podiel súčet/shardy by preto nehovoril, ako dlho sa na ktorý sweep čakalo.
 
 **Stĺpec „s/beh“ sa nedá porovnávať naprieč riadkami** a je tu napriek tomu, lebo bez neho sa
 nedá prečítať nič ostatné. Líšia sa v troch veciach naraz: dĺžkou scenára (S1 má 6 h, S6 má 48 h
@@ -304,6 +333,127 @@ sweepov sa púšťajú len cielené súbory.
 
 ---
 
+## 6a. Protokol revízie a čo sa naučilo o provenancii
+
+Pravidlo o počte seedov bolo zapísané do gitu **pred prvým revíznym behom** (commit `459d583`):
+
+```mermaid
+flowchart TB
+    Q["porovnanie: vetva proti zamrznutému modelu,<br/>párované podľa seedu"] --> T10["10 seedov"]
+    T10 --> U{"znamienka cez seedy<br/>jednomyseľné?"}
+    U -->|áno| R1["hlási sa desaťseedová etapa"]
+    U -->|nie| T30["eskalácia na 30 seedov<br/>(seedy 11–30 z uložených sweepov<br/>až po reprodukčnej kontrole)"]
+    T30 --> R2["hlásia sa OBE etapy,<br/>aj keď si protirečia"]
+    U -->|"áno, ale obrázok potrebuje<br/>rovnaký počet seedov"| T30F["eskalácia aj tak,<br/>označená ako „kvôli jednotnosti obrázka“"]
+    T30F --> R2
+
+    style R2 fill:#e6ffe6,stroke:#0a0
+```
+
+Štatistika je **medián párových rozdielov** (vetva mínus zamrznutý model; záporné číslo je v
+prospech adaptácie), nikdy nie rozdiel mediánov. Holmova korekcia sa robí v deklarovanej rodine a
+korigované *p* sa uvádza spolu s ňou. To isté pozorovanie totiž môže v jednej rodine prejsť a v
+druhej nie: S2 pri λ = 0,99 má surové *p* = 0,029, v štrnásťtestovej rodine `ladder30` 0,198 a v
+pätnásťbunkovej rodine prehľadávania pamäte 0,029.
+
+Tri desaťseedové výsledky tridsiatku neprežili: „periodické prefitovanie je na S2 horšie než
+zamrznutý model“, „výnimka Kalmana na S6 sa vracia pri pôvodnej rýchlosti“ a „λ = 0,999 poráža
+λ = 0,99 na H1“.
+
+**Tri poučenia o provenancii:**
+
+- **Aj nesledovaný súbor urobí beh „špinavým“.** `git_state()` volá `git status --porcelain` v
+  repozitári, z ktorého je balík nainštalovaný. Rozpracovaný analytický skript kdekoľvek v strome
+  preto označí každý práve bežiaci beh. Samostatný worktree nepomôže, pečiatka ide za
+  nainštalovaným balíkom, nie za pracovným adresárom. Takto je označených päť behov (S2, λ = 0,95,
+  seedy 26–30). Zdrojový kód aj konfigurácie boli overené ako nezmenené a opakovaný beh sa zhodoval
+  vo všetkých výsledkových poliach. Počas fronty patria analytické výstupy do ignorovaného
+  `data/results/`.
+- **Uložená vetva sa smie použiť až po reprodukcii.** Eskalácie berú seedy 11–30 z uložených
+  sweepov, ale až keď reprodukčná kontrola pri novom commite dá presne tie isté čísla (12/12 a 8/8
+  riadkov, max |Δ| = 0).
+- **Inštrumentácia musí zopakovať uložené číslo.** Obalený estimátor, ktorý zmení jedinú operáciu s
+  pohyblivou čiarkou, je iný experiment. Diagnostika H1 to pri každom behu overuje tvrdením
+  (*assert*) proti skóre uzavretej slučky aj proti uloženému sweepu.
+
+---
+
+## 6b. Čo revízia zistila
+
+Úplný záznam je v [`REVISION_LOG.md`](../REVISION_LOG.md). Tabuľky sú v `export/data/p1/` a každý
+obrázok článku má v `export/figures/` sprievodný súbor, ktorý menuje vykreslenú štatistiku.
+Anglický prehľad je v [`experiments.md`](experiments.md#the-revision-memory-length-the-noise-model-and-the-floor).
+
+**Dĺžka pamäte je prvoradá.** RLS mínus zamrznutý model, medián párových rozdielov v kg, 30 seedov:
+
+| scenár | prebytok | λ = 0,95 | 0,99 | 0,995 | 0,999 | 1,0 |
+|---|---:|---:|---:|---:|---:|---:|
+| S2 pomalý | 2,7 | **+4,13** | −0,80 | −1,22 | −1,47 | **−1,48** |
+| S4 skokový | 46,0 | **−35,5** | −27,1 | −23,3 | −20,6 | −19,9 |
+| S7 rampa, riedke značky | 20,7 | −11,8 | **−14,1** | −12,0 | −6,5 | −4,7 |
+
+Každý scenár chce inú pamäť: skokový drift najkratšiu, pomalý najdlhšiu a rampa s riedkymi
+značkami strednú. Na S2 sa znamienko otáča, krátka pamäť stojí viac než celý dostupný prebytok.
+Všetky čísla na S2 sú pod 0,1 % priemernej hmotnosti vozidla (6 283 kg). Zistením je otočenie
+znamienka, nie praktický dopad na váženie.
+
+**Šumový model Kalmana: R trochu, Q/R veľa.** Správne R (2,933 × 10⁻³ namiesto 1,0 × 10⁻⁸) prinesie
+0,25–3 kg, rýchlosť adaptácie 10–25 kg. Najprv treba prejsť pamäť, potom ladiť šumový model.
+
+**Zaujatosť zamrznutého modelu na S2 sa dá zrekonštruovať.** Nový fit na prvých 60 uložených
+prejazdoch zopakuje uloženú zaujatosť každého seedu (r = 0,996) a rozloží ju na dve časti:
+
+```mermaid
+flowchart LR
+    W["fitovacie okno<br/>60 prejazdov"] --> TH["tepelný člen<br/>−8,4 až −9,6 kg pri každom seede<br/>okno o 7,05 °C chladnejšie → zosilnenie o 0,146 % vyššie<br/>→ inverzia podhodnocuje"]
+    W --> SA["výberový člen<br/>−34,5 až +7,8 kg podľa seedu<br/>priamka cez 60 prejazdov,<br/>každý s ~136 kg kmitania"]
+    TH --> B["znamienková zaujatosť<br/>medián −17,6 kg"]
+    SA --> B
+    B -->|"adaptácia zahodí oboje"| A["medián absolútnej zaujatosti<br/>23,67 → 5,74 kg (RLS)"]
+
+    style SA fill:#fff3cd,stroke:#b8860b
+```
+
+Pokles absolútnej zaujatosti je teda hlavne zahodenie výberovej chyby malého okna. Tepelný posun
+z neho tvorí asi 9 kg. Skoršie „+9,2 kg“ bol posun zosilnenia, nie zaujatosť. Ako zaujatosť má
+opačné znamienko.
+
+**Penalizácia Kalmana na H1 zostáva nevysvetlená, ale zoznam vylúčeného sa predĺžil:**
+
+```mermaid
+flowchart TB
+    P["penalizácia Kalmana na H1<br/>+251 kg pôvodne, +264 kg s opraveným R"] --> H1["šum pozorovania R"]
+    P --> H2["rýchlosť adaptácie"]
+    P --> H3["procesný šum Q,<br/>štyri rády"]
+    P --> H4["nestabilita inverzie:<br/>k̂ → 0"]
+    P --> H5["rast kovariancie<br/>v medzerách medzi značkami"]
+
+    H1 --> X1["vylúčené: +4,8 kg, p_holm 1,0"]
+    H2 --> X2["vylúčené: bez zmeny pri oboch rýchlostiach"]
+    H3 --> X3["vylúčené: opačný smer,<br/>ani zďaleka nie tá veľkosť"]
+    H4 --> X4["vylúčené: k̂ nemení znamienko, minimum 0,51<br/>zamrznutého; penalizácia je v jadre rozdelenia,<br/>bez najhoršieho 1 % zostane +244 kg"]
+    H5 --> X5["vylúčené: najdlhšia medzera 316 s,<br/>strop 3 600 s sa nedosiahne"]
+
+    P --> D["ako vyzerá: priamka je OTOČENÁ —<br/>zosilnenie ~6 % nižšie, ofset ~430 kg vyšší;<br/>ľahké vozidlá podhodnotené, ťažké nadhodnotené"]
+
+    style X1 fill:#ffe6e6,stroke:#c00
+    style X2 fill:#ffe6e6,stroke:#c00
+    style X3 fill:#ffe6e6,stroke:#c00
+    style X4 fill:#ffe6e6,stroke:#c00
+    style X5 fill:#ffe6e6,stroke:#c00
+    style D fill:#fff3cd,stroke:#b8860b
+```
+
+Prečo sa filter usadí práve v tomto otočení, nevieme.
+
+**Podlahu nevieme odhadnúť vopred.** Literárny koeficient dynamického zaťaženia (0,05–0,3 na
+nápravu; pôvodnú vetu sme z prvej ruky nečítali) podlahu nadhodnotí a otočí rozhodnutie na S4 a S7.
+Dvadsať opakovaných prejazdov jedného kamióna ju podhodnotí o 10–33 % a otočí S2, S3 a S5 opačným
+smerom. Orákulovú podlahu so skutočnými časovo premennými parametrami nebolo z čoho spočítať,
+pretože žiadny beh neukladá predikcie po jednotlivých vozidlách.
+
+---
+
 ## 7. Reprodukcia
 
 ```bash
@@ -340,3 +490,20 @@ wimsim verify-determinism /tmp/a /tmp/b
 
 Porovnáva `samples.parquet`, `truth_passes.parquet` a `truth_timeseries.parquet` po bajtoch, plus
 `config_hash` a `output_hash` z oboch manifestov.
+
+Revízne analýzy a obrázky článku:
+
+```bash
+# eskalačná etapa: seedy 11–30 po shardoch; reprodukčná kontrola ide pred ňou
+wimsim experiment p1_esc_lambda_fill --seeds 1,2 --out data/results/p1_esc_lambda_fill_repro
+wimsim experiment p1_esc_lambda_fill --seeds 11,12,13,14,15 --out data/results/p1_esc_lambda_fill_s11
+
+# obrázky článku a ich sprievodné súbory (export/figures/*.md)
+python scripts/paper_figures.py
+
+# diagnostika H1 a rozklad zaujatosti S2
+python scripts/h1_diagnostics.py --arm kalman_shipped --seeds 1-10 --out data/results/b4_h1
+python scripts/b4_h1_summary.py
+python scripts/b4_h1_offset_gain.py
+python scripts/b3_s2_bias_split.py
+```

@@ -217,6 +217,13 @@ mass from a single crossing of a bouncing vehicle. The truth log records both qu
 floor is *measurable* rather than hidden inside the residual, and `dynamic_error_kg` is the column
 that makes it visible.
 
+It is the irreducible error **relative to the scalar feature**, and it counts dynamic load only:
+sensor noise `n(t)` carried through the feature into the mass is not in it. On `S1_nominal`, where
+dynamic load is off, the floor is therefore zero while the error is not, and the gap is an upper
+bound on what any estimator could recover. A floor that also counted propagated sensor noise —
+the error of an oracle predicting with the true `k(t)` and `q(t)` — would need per-event
+predictions, which no run keeps; it has not been computed.
+
 Dynamic load is **off** in `S1_nominal` (the sanity baseline must be clean) and **on** everywhere
 else.
 

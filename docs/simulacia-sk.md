@@ -262,17 +262,28 @@ inak záviseli od toho, kde sa prúd náhodou rozsekal — a test
 
 ## 6. Estimátory
 
-Tri priečky rebríka, zámerne malé kroky, aby bol rozdiel pripísateľný:
+Tri priečky rebríka, zámerne malé kroky, aby bol rozdiel pripísateľný, a štvrtá, pridaná pri
+revízii, ktorá leží medzi prvými dvoma:
 
 ```mermaid
 flowchart LR
     SA["static_affine — B0<br/>kg = gain·príznak + bias<br/>raz nafitované, potom zmrazené"]
+    PR["periodic_refit<br/>static_affine, prefitované každých<br/>60 referencií na posledných 60"]
     RLS["rls — B2<br/>ten istý model, ten istý cieľ<br/>fit sa nikdy neskončí"]
     KAL["kalman — B2<br/>stav s = [q, k]<br/>drží parametre, ktoré plant SKUTOČNE má"]
 
+    SA -->|"adaptuje po krokoch:<br/>pevné okno"| PR
     SA -->|"jediný rozdiel:<br/>adaptivita"| RLS
     RLS -->|"jediný rozdiel:<br/>smer modelu"| KAL
+
+    style PR fill:#fff3cd,stroke:#b8860b
 ```
+
+**Smer regresie má v kalibračnej literatúre meno.** `static_affine`, `periodic_refit` a `rls`
+regresujú hmotnosť na príznak a predikujú priamo. To je **inverzný** odhad. `kalman` modeluje
+príznak ako funkciu hmotnosti a pri predikcii ho invertuje. To je **klasický** odhad. Inverzný odhad
+sa ťahá k priemeru svojej kalibračnej vzorky, klasický toto zmrštenie nemá, zato má väčší rozptyl
+(Krutchkoff, *Technometrics* 9:425–439, 1967; Osborne, *Int. Stat. Rev.* 59:309–336, 1991).
 
 **`static_affine`** je základná čiara. Nafituje priamku a zmrazí ju.
 
@@ -293,6 +304,24 @@ meracou rovnicou `x = [1, m]·s + v`. Predikcia je potom `m̂ = (x − q)/k`.
 
 Existujú dve parametrizácie a obe sú potrebné, preto sú obe vystavené: *smer predikcie*
 (`gain`/`bias`, kg na senzorovú jednotku) a *strana snímača* (`q`/`k`).
+
+**`periodic_refit`** je harmonogram, ktorý by naozaj spustil operátor stanice. Medzi prefitmi je to
+presne `static_affine`. Každých `refit_every` referencií sa prefituje na posledných `refit_window`
+(obe predvolene 60) a znova zmrazí. Jeho pamäť je pevné okno, nie geometrické zabúdanie RLS.
+Prehráva: pri tridsiatich seedoch je horší než RLS pri λ = 0,99 na každom vývojovom scenári.
+
+**Varianty, ktoré pridala revízia**, menia nastavenie, nie estimátor:
+
+| konfigurácia | čo mení | prečo |
+|---|---|---|
+| `rls_l095`, `rls_l0995`, `rls_l0999`, `rls_l1` | faktor zabúdania λ | prehľadávanie dĺžky pamäte; λ = 1 je rastúce okno |
+| `kr_floor` | R Kalmana = 2,933 × 10⁻³ (pôvodne 1,0 × 10⁻⁸) | R odvodené z rozptylu dynamického zaťaženia stanice |
+| `kr_floor_cintron` | R = 1,521 × 10⁻⁵ | to isté pre stanicu s vplyvovou čiarou |
+| `kq_scaled` | `kr_floor` s oboma smerodajnými odchýlkami Q × 541,6 | správne R pri pôvodnom pomere Q/R; oddelí „správny šumový model“ od „pomalšieho filtra“ |
+
+Pôvodné R predpokladá 0,5 kg šumu značiek, hoci dynamická chyba má efektívnu hodnotu 270 kg. Rýchlosť
+adaptácie Kalmana však závisí od Q/R, nie od R samotného. Oprava R pri pevnom Q preto filter zároveň
+spomalí, a na oddelenie týchto dvoch účinkov slúži `kq_scaled`.
 
 ### 6.1 Konformné intervaly
 
@@ -398,6 +427,20 @@ hlási sa ako nezachytené alebo falošne pozitívne, nie zahodí sa.
 Hlási sa okrem iného: `mae_kg`, `rmse_kg`, `bias_kg` (znamienkové!), `mape`, `coverage` proti
 nominálnej hodnote, `dynamic_floor_kg`, `match_recall`, detekčné `recall`, `false_alarms_per_hour`,
 `mean_detection_delay_s`, `reconverge_s` a počet rekalibrácií.
+
+Od revízie aj **rozklad štvorcovej chyby** na tri stĺpce:
+
+```
+floor_ms_kg2  = priemer (m_applied − m_static)²          podlaha: kmitanie vozidla
+excess_ms_kg2 = priemer (m̂ − m_applied)²                 chyba modelu
+cross_kg2     = 2 · priemer (m̂ − m_applied)(m_applied − m_static)
+rmse² = floor_ms_kg2 + excess_ms_kg2 + cross_kg2         presne, pri každom behu
+```
+
+V stredných štvorcoch rozklad platí presne a krížový člen je do 3 % celku. Pri MAE nie je aditívny
+vôbec. Preto je **prebytok = MAE_celková − MAE_podlahy** rozdiel, nie zložka. Podlaha obsahuje len
+dynamické zaťaženie, šum snímača prenesený cez príznak v nej nie je. Na S1, kde dynamické zaťaženie
+chýba, je preto 0,9 kg „prebytku“ horná hranica toho, čo by mohol získať akýkoľvek estimátor.
 
 Dve definície, ktoré sú ťažké naschvál:
 

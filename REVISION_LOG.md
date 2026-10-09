@@ -2052,3 +2052,29 @@ v2 kept unchanged beside it. Items B2, B3, B5, C1–C8 and D, after the A1/B4/B3
 - **D** abstract, contributions and conclusion numbers checked against F2/F3/F7/F12 CSVs,
   p1_escalations, b3/b4 outputs and vehicle_mass_by_scenario.csv. DOI remains `[X]`; other [CITE-*]
   keys remain unresolved.
+
+## Docs brought up to date with the revision (2026-10-09)
+
+The docs predated the revision (last touched 2026-10-03, 0007f14). Changes, EN and SK:
+
+- `docs/experiments.md`: new section "The revision: memory length, the noise model and the floor"
+  (protocol, floor/excess, λ table, R vs Q/R, S2 bias reconstruction, H1 ruled-out list,
+  provenance lessons; three Mermaid diagrams); inline notes where earlier conclusions are
+  superseded (S2/S3 "indistinguishable", cintron S6/Kalman, the ladder30 "stationary" paragraph).
+- `docs/controller.md`: `PeriodicRefit` added to the ladder and its diagram; classical/inverse
+  naming with Krutchkoff 1967 and Osborne 1991; table of the λ, R and Q variant configs.
+- `docs/signal-model.md`: the floor counts dynamic load only; S1's excess is an upper bound.
+- `docs/experimenty-sk.md`: revision sweeps and run counts (3,265 in the revision; 3,765 behind
+  the paper), runtimes (2,000 `p1_*` runs, 90.5 machine-hours), the seed protocol, provenance
+  lessons, a results summary with two diagrams, the reproduction commands.
+- `docs/simulacia-sk.md`: `periodic_refit` in the estimator ladder and diagram; classical/inverse;
+  variant configs; the MSE decomposition columns.
+- `README.md`: a revision row in the status table; doc descriptions updated.
+- `export/{README,RESULTS,CONTRADICTIONS,OPEN}.md`: a pre-revision banner pointing to this log; the
+  2,400 lines beneath it are unchanged.
+
+**Article v3 corrected while doing this.** §V-E still said the adaptive arms are "anti-correlated"
+with the true gain — the B3f direction mismatch that item 1.5 dissolved (like with like, +0.03 to
++0.21). Now: 2–7× further than a constant, not anti-correlated; the limitations bullet reads
+"distance" for "anti-correlation". **F6 (`s2__gain_tracking.png`) still plots k̂-direction gains
+against 1/k_true** and needs regenerating like with like; not done.

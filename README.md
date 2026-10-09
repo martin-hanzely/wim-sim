@@ -45,6 +45,7 @@ These constrain every decision in this repository.
 | 4 | Full observability: OTel tracing, metric set, truth exporter, five dashboards | **done** -- one pass traceable acquire-to-persist in Tempo; all five dashboards live |
 | 5 | The controller: RLS + Kalman, drift detectors, MAPE-K state machine, conformal UQ, profile store | **done** -- on `S4_step_fault` bias falls from -136.9 kg to -9.4 kg, both injected faults detected and corrected |
 | 6 | Experiments and real data: runner, scenario suite, `ReplaySource`, sim-to-real gap report | **done** -- 63-run checkpoint table, 0 failed; on `S7_sparse_reference` the adaptive estimators cut bias from -96.7 kg to -15 kg, and the detector now finds real crossings on 14 of 16 channel-runs |
+| revision | The paper's revision: pre-registered seed protocol, memory-length sweep, corrected Kalman noise model, periodic-refit baseline, H1 diagnostics | **done** -- 3,265 runs, 0 failed; the optimal memory differs by drift type and reverses the adapt-or-freeze verdict on S2. Record in [`REVISION_LOG.md`](REVISION_LOG.md) |
 
 ---
 
@@ -218,7 +219,8 @@ docs/                 signal-model.md, observability.md, experiments.md, sim-to-
 - [`docs/infrastructure.md`](docs/infrastructure.md) -- the phase-3 stack: what each service is
   for, how an event travels from the generator to a dashboard, and the failure modes the
   publisher and ingest are built around.
-- [`docs/controller.md`](docs/controller.md) -- phase 5: the estimator ladder, the drift
+- [`docs/controller.md`](docs/controller.md) -- phase 5: the estimator ladder (with the
+  periodic-refit arm and the λ, R and Q variants the revision added), the drift
   detectors and their measured operating points, the MAPE-K machine, conformal intervals, and the
   profile store. Includes the checkpoint numbers and the project's clearest answer to "how small a
   drift can this system act on" -- two floors, of which the one I had documented as binding turned
@@ -232,13 +234,17 @@ docs/                 signal-model.md, observability.md, experiments.md, sim-to-
   the buildspec assumes, and speed *is* observable from its two gauges.
 - [`docs/experiments.md`](docs/experiments.md) -- phase 6: the runner, the results table, the
   figures, the sim-to-real gap report, and the three separate reasons the default pipeline detected
-  nothing at all on the real recordings.
+  nothing at all on the real recordings. Ends with the revision: the seed protocol, the
+  memory-length sweep, the Kalman noise model, the reconstruction of S2's frozen bias, what the H1
+  penalty has been shown not to be, and the provenance lessons.
 - [`docs/determinism.md`](docs/determinism.md) -- how reproducibility is actually enforced.
 - [`docs/simulacia-sk.md`](docs/simulacia-sk.md) and
   [`docs/experimenty-sk.md`](docs/experimenty-sk.md) -- the generative model, the edge
   pipeline, the control loop and the experiment machinery, **in Slovak**, with mermaid
-  diagrams. A walkthrough rather than a specification: where they disagree with the code,
+  diagrams, including the revision's protocol, runtimes and findings. A walkthrough rather than a specification: where they disagree with the code,
   the code and the English docs win.
 - [`export/`](export/README.md) -- the results package for the manuscript: every drafted claim in
   Sections III-V checked against the code, the numbers behind Section VI, and the machine-readable
   per-seed data. Self-contained; start at [`export/CONTRADICTIONS.md`](export/CONTRADICTIONS.md).
+  The paper's figures are indexed in [`export/figures/FIGURES.md`](export/figures/FIGURES.md),
+  each with a sidecar naming the statistic it plots; the revision's tables are in `export/data/p1/`.

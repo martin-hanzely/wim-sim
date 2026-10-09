@@ -133,6 +133,13 @@ static carries -24.7 kg through a 72-hour thermal cycle and -14.8 kg through a B
 while RLS and Kalman sit within 4 kg of zero. MAE is dominated by dynamic load the calibration
 cannot touch; the bias is the part it can, and it is the part that matters for a scale.
 
+> **Superseded in part by the revision.** "Indistinguishable MAE" on S2 and S3 is a property of the
+> shipped memory (λ = 0.99), not of adaptation. At thirty seeds a longer memory recovers about half
+> of S2's 2.7 kg excess (λ = 0.999: −1.47 kg, 24 of 30 seeds), and a shorter one is *worse* than
+> freezing (λ = 0.95: +4.13 kg, 25 of 30). And most of the static arm's S2 bias is the sampling error
+> of its 60-pass fit, not the thermal cycle. See
+> [the revision section](#the-revision-memory-length-the-noise-model-and-the-floor).
+
 **Where the plant steps, adaptation is the whole result.** S4 injects two sensitivity steps. Static
 reaches 1.40x the floor; Kalman 1.13x, RLS 1.17x. Static also takes far longer to come back. All
 three departed and reconverged on all three seeds; mean time from the first fault:
@@ -816,6 +823,12 @@ rather than suggested, and it is the result Section VI-I needs.
   Kalman estimator is significantly worse than the frozen baseline on this instrument. The same
   comparison on the contact-force station was +12.05 kg and did not reach significance.
 
+> **Revision note.** The S6/Kalman penalty belongs to the filter's adaptation rate, not to the
+> instrument. With R derived from this station's own dynamic-load variance (`kr_floor_cintron`) it
+> becomes −0.36 kg (10 seeds, p_holm 1.0), and the corrected filter beats the shipped one here by
+> 12.5 kg (30 seeds, 26 of 30). On the contact-force station the shipped-rate effect never separated
+> at any R (+10.9 kg at thirty seeds, p_holm 0.24).
+
 ### A caution about the three-seed run, which matters for how it was read
 
 The three-seed medians were **systematically larger in magnitude** than the thirty-seed ones for the
@@ -1042,6 +1055,14 @@ written up as findings.
 against MAEs of 139 to 697 kg. Even had they been detectable they would not have mattered, which is
 why the effect size sits beside the p-value in every row.
 
+> **Read with the revision.** Three qualifications, all measured since. (1) S2, S3 and S5 are not
+> stationary — they drift slowly; S1 is the only drift-free scenario. (2) "Indistinguishable" holds
+> at λ = 0.99 and the shipped Kalman. At thirty seeds a longer memory separates on S2 and S3. S2 at
+> λ = 0.99 (raw p 0.029) does not survive Holm in this table's fourteen-test family (0.198) but does
+> in the memory sweep's fifteen-cell family (0.029); a corrected p belongs to its family. (3) The
+> `effect` column here is the **rank-weighted** rank-biserial. The paper quotes the **sign-count**
+> form (S6/Kalman: +0.33 against +0.46 here).
+
 ## Four detectors, run one at a time
 
 Section IV-G describes four detectors in parallel. The shipped pipeline runs two, so every detection
@@ -1188,6 +1209,169 @@ raising an error -- which is indistinguishable from an empty road. A threshold i
 measured noise, or in kilograms multiplied through the profile's own gain, would have refused to be
 portable in silence. This has not been changed; `detect` is deliberately truth-free and does not
 know the gain. It is recorded here as a design question for section IV-B.
+
+## The revision: memory length, the noise model and the floor
+
+Everything above was produced before the paper's revision (2026-10-04 to 10-06). The revision ran
+3,265 more under a pre-registered protocol — 1,170 in its audit stages, then 2,000 in the `p1_*`
+sweeps, 55 control reruns and 40 instrumented diagnostics — and changed what the paper claims.
+The full record, including the results that were wrong at ten seeds, is in
+[`REVISION_LOG.md`](../REVISION_LOG.md); the tables are in `export/data/p1/`; every paper figure has a
+sidecar in `export/figures/` naming the statistic it plots. This section is the map.
+
+### The protocol, committed before any revision run
+
+```mermaid
+flowchart TB
+    Q["a comparison:<br/>arm against frozen, paired by seed"] --> T10["10 seeds"]
+    T10 --> U{"per-seed signs<br/>unanimous?"}
+    U -->|yes| R1["report the 10-seed stage"]
+    U -->|no| T30["escalate to 30 seeds<br/>(seeds 11–30 reuse stored arms<br/>only after a reproduction control<br/>matches them exactly)"]
+    T30 --> R2["report BOTH stages,<br/>even when they disagree"]
+    U -->|"yes, but a figure needs<br/>uniform seed counts"| T30F["escalate anyway,<br/>labelled 'for figure uniformity'"]
+    T30F --> R2
+
+    style R2 fill:#e6ffe6,stroke:#0a0
+```
+
+The statistic is the **median of per-seed paired differences** (arm minus frozen; negative favours
+adapting), never the difference of medians. Holm correction is within a declared family, and a
+corrected p is quoted with its family, because the same observation can separate in one and not
+in another.
+
+Three ten-seed results did not survive thirty: periodic refit "worse than frozen on S2", the
+Kalman "S6 exception" returning at the shipped rate, and λ = 0.999 beating λ = 0.99 on H1.
+
+### The floor, and what "excess" is
+
+`scoring.py` now records `floor_ms_kg2`, `excess_ms_kg2` and `cross_kg2`. In mean squares the
+decomposition is exact (rmse² = floor + excess + cross on every run) and additive to within 3 %.
+In MAE it is not additive at all, so the paper's **excess = MAE_total − MAE_floor** is a
+*difference*, not a component.
+
+The floor counts dynamic load only. Sensor noise propagated through the feature is not in it, so on
+S1 (no dynamic load) the 0.9 kg "excess" is an upper bound on what any estimator could recover. An
+oracle floor using the true time-varying parameters would need per-event predictions, which no run
+keeps; it was not computed.
+
+**Can the floor be known before deployment? Not with either estimator tried.** A literature
+dynamic-load-coefficient prior (0.05–0.3 per axle; the source sentence has not been read
+first-hand) flips the adapt/freeze decision on S4 and S7, where adapting helps most, because a
+per-axle DLC overstates the gross-mass floor. Twenty repeated crossings of one truck understate it
+by 10–33 % and flip S2, S3 and S5 the other way.
+
+### Memory length is first-order
+
+RLS minus frozen, median paired difference, kg, thirty seeds (`F3__forgetting_factor_sweep.png`):
+
+| scenario | excess | λ = 0.95 | 0.99 | 0.995 | 0.999 | 1.0 |
+|---|---:|---:|---:|---:|---:|---:|
+| S2 gradual | 2.7 | **+4.13** | −0.80 | −1.22 | −1.47 | **−1.48** |
+| S4 abrupt | 46.0 | **−35.5** | −27.1 | −23.3 | −20.6 | −19.9 |
+| S7 ramp, sparse | 20.7 | −11.8 | **−14.1** | −12.0 | −6.5 | −4.7 |
+
+Each scenario wants a different memory: the shortest for abrupt shifts (S4: λ = 0.95 beats 0.99 by
+7.2 kg on 29 of 30), the longest for slow drift, an interior one for a sparse-label ramp. On S2 the
+sign reverses: a short memory costs more than the whole excess. All of S2's numbers are under 0.1 %
+of the 6,283 kg fleet mean — the finding is that the sign flips, not that it matters for weighing.
+
+The growing window (λ = 1) already recovers about two-thirds of λ = 0.99's S4 benefit, which needs
+no forgetting at all — only more data than the 60-pass commissioning window. `PeriodicRefit` is
+worse than RLS at λ = 0.99 everywhere.
+
+A tuned memory, fixed before evaluation, transferred to one of two held-out counterparts:
+λ = 0.95 on H2 beats frozen by 57.8 kg and λ = 0.99 by 15.0 kg (10 of 10 each); λ = 0.999 on H1
+beats neither at thirty seeds. Nothing beats frozen on H1.
+
+### The Kalman's noise model: R matters a little, Q/R a lot
+
+The shipped R = 1.0 × 10⁻⁸ assumes 0.5 kg of label noise against a dynamic error whose rms is
+270 kg. `kr_floor` corrects it to 2.933 × 10⁻³. At fixed Q that also slows the filter, so
+`kq_scaled` rescales Q to keep the shipped Q/R ratio and separates the two:
+
+| | what changes | effect |
+|---|---|---|
+| corrected R, Q fixed | noise model **and** adaptation rate | halves S4/S7/H2 benefit; removes the S6 penalty |
+| corrected R, Q rescaled | noise model only | **0.25–3 kg**, in its favour on 8 of 11 scenarios |
+| adaptation rate (λ, or Q/R) | memory only | **10–25 kg** |
+
+Correct the noise model, but sweep the memory first. With R correct the posterior correlation of
+the two parameters is −0.52 — the value the regressor geometry predicts — where the shipped filter
+sits at −0.29.
+
+### S2's frozen bias, reconstructed
+
+The frozen arm's signed bias on S2 has median −17.6 kg and a seed-to-seed SD of 28.8 kg; the
+adaptive arms' SD is about 7 kg. Refitting the frozen model on each seed's first 60 stored truth
+passes reproduces the stored bias per seed (r = 0.996, median discrepancy 0.66 kg, 10 seeds) and
+splits it in two (`scripts/b3_s2_bias_split.py`):
+
+```mermaid
+flowchart LR
+    W["the 60-pass<br/>fitting window"] --> TH["thermal term<br/>−8.4 to −9.6 kg, every seed<br/>window 7.05 °C colder → gain 0.146 % high<br/>→ the inversion under-predicts"]
+    W --> SA["sampling term<br/>−34.5 to +7.8 kg, by seed<br/>a line through 60 crossings<br/>with ~136 kg of bounce each"]
+    TH --> B["frozen signed bias<br/>median −17.6 kg"]
+    SA --> B
+    B -->|"adaptation discards both"| A["median absolute bias<br/>23.67 → 5.74 kg (RLS)"]
+
+    style SA fill:#fff3cd,stroke:#b8860b
+```
+
+So the fall in median absolute bias is mostly the discarding of a small sample's fitting error; the
+thermal displacement is about 9 kg of it. (An earlier reading quoted the thermal term as **+9.2 kg**:
+that is the gain offset, and as a bias its sign is negative.) In ΔMAE neither term is visible
+above the floor — the window offset costs −0.001 kg, the three-day thermal motion +0.13 kg.
+
+### H1: what the penalty is not
+
+On H1 the Kalman is worse than frozen by +251 kg as shipped (30 seeds, 30 of 30) and +264 kg with
+corrected R (10 of 10). Forty instrumented runs (`scripts/h1_diagnostics.py`; each run asserts its
+per-event MAE equals the stored one) test the obvious mechanism — prediction inverts as
+m̂ = (s − q̂)/k̂, so a k̂ drifting toward zero would blow up:
+
+```mermaid
+flowchart TB
+    P["H1 Kalman penalty<br/>+251 kg shipped, +264 kg corrected R"] --> H1["observation noise R"]
+    P --> H2["adaptation rate"]
+    P --> H3["process noise Q,<br/>four decades"]
+    P --> H4["inversion instability:<br/>k̂ → 0"]
+    P --> H5["covariance growth<br/>over label gaps"]
+
+    H1 --> X1["ruled out: corrected vs shipped<br/>+4.8 kg, p_holm 1.0"]
+    H2 --> X2["ruled out: unchanged<br/>at both rates"]
+    H3 --> X3["ruled out: runs the wrong way,<br/>never near the magnitude"]
+    H4 --> X4["ruled out: no sign change; min k̂ 0.51<br/>of the frozen fit's; penalty in the bulk,<br/>worst 1 % removed leaves +244 kg"]
+    H5 --> X5["ruled out: longest gap 316 s,<br/>3600 s cap never reached"]
+
+    P --> D["what it does look like:<br/>the line is ROTATED — gain ~6 % low,<br/>offset ~430 kg high in mass terms;<br/>light vehicles under-, heavy over-predicted"]
+
+    style X1 fill:#ffe6e6,stroke:#c00
+    style X2 fill:#ffe6e6,stroke:#c00
+    style X3 fill:#ffe6e6,stroke:#c00
+    style X4 fill:#ffe6e6,stroke:#c00
+    style X5 fill:#ffe6e6,stroke:#c00
+    style D fill:#fff3cd,stroke:#b8860b
+```
+
+Substituting only the filter's offset into the frozen model reproduces +215 kg of the penalty; only
+its gain, +115 kg. Why the filter settles at that rotation is not established. The penalty is
+reported as unexplained.
+
+### Provenance lessons from the revision
+
+- **Untracked files make a run dirty.** `git_state()` runs `git status --porcelain` at the
+  package's own checkout, so a scratch file or an analysis edit anywhere in the tree stamps every
+  run in flight as dirty. Running from a separate worktree does not help — the stamp follows the
+  installed package, not the working directory. Five runs (S2, λ = 0.95, seeds 26–30) carry the
+  stamp for this reason; source and configs were verified unchanged and a rerun matched every
+  result field. Keep analysis outputs under the ignored `data/results/` while a queue runs.
+- **Reuse a stored arm only after reproducing it.** Escalations reuse seeds 11–30 of stored sweeps
+  as comparators, but only after a reproduction control at the new commit matches them exactly
+  (12/12 and 8/8 rows, max |Δ| = 0). Control-arm reruns that had already matched 55 rows bit for bit
+  were stopped rather than finished.
+- **Instrumentation must reproduce the stored number.** A wrapped estimator that changes one
+  floating-point operation is a different experiment. The diagnostics assert equality with the
+  closed loop's own score and with the stored sweep on every run.
 
 ## What is still missing
 
