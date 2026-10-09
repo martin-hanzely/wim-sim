@@ -192,7 +192,7 @@ medians is not used in any figure, caption, sidecar or CSV.
 | F11 | `heldout30__accuracy.png` | carried over unchanged |
 | F12 | `F12__development_vs_heldout.png` | regenerated (was F11): adds panel (b), tuned-memory transfer |
 | F13 | `F13__estimator_cost.png` | unchanged |
-| F14 | `F14__h1_process_noise.png` | plot unchanged, caption rewritten |
+| F14 | `F14__h1_process_noise.png` | regenerated: title and caption rewritten, data unchanged |
 
 The repo's former F12 (accuracy against GVW and COST 323 bands) is not in the article and is no
 longer generated; it is in git history at 311101d.
